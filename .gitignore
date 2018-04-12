@@ -1,0 +1,7 @@
+*.deflate
+*.zip
+*.gz
+.settings
+.buildpath
+.project
+
