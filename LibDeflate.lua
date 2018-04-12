@@ -220,80 +220,6 @@ local function WriteBitsInit(buffer)
   _writeBuffer = buffer
 end
 
---[[
-
-local function WriteBits(code, length, doPrint) -- TODO: Write to buffer every 32 bits.
-
-  assert(code, "WriteBits: nil code")
-
-  assert(length, "WriteBits: nil length")
-
-  assert(length>=1 and length <= 16, "WriteBits: Invalid length "..length)
-
-  _writeDebugIndex = _writeDebugIndex + 1
-
-  if _writeRemainderLength+length >= 16 then
-
-    -- we have at least 2 bytes to store; bulk it
-
-    _writeRemainder = _writeRemainder + bit_lshift(code, _writeRemainderLength)
-
-    _writeRemainderLength = length + _writeRemainderLength
-
-    -- remainder now holds at least 2 full bytes to store. So lets do it.
-
-    _writeCompressedSize = _writeCompressedSize + 1
-
-    _writeBuffer[_writeCompressedSize] = string_char(bit_band(_writeRemainder, 255)) .. string_char(bit_band(bit_rshift(_writeRemainder, 8), 255))
-
-    _writeRemainder = bit_rshift(_writeRemainder, 16)
-
-    code = _writeRemainder
-
-    length = _writeRemainderLength - 16
-
-  else
-
-    _writeRemainder = _writeRemainder + bit_lshift(code, _writeRemainderLength)
-
-    _writeRemainderLength = length + _writeRemainderLength
-
-    if _writeRemainderLength >= 8 then
-
-      _writeCompressedSize = _writeCompressedSize + 1
-
-      _writeBuffer[_writeCompressedSize] = string_char(bit_band(_writeRemainder, 255))
-
-      _writeRemainder = bit_rshift(_writeRemainder, 8)
-
-      _writeRemainderLength = _writeRemainderLength -8
-
-    end
-
-  end
-
-end
-
-
-
-local function WriteRemainingBits()
-
-  if _writeRemainderLength > 0 then
-
-    _writeCompressedSize = _writeCompressedSize + 1
-
-    _writeBuffer[_writeCompressedSize] = string_char(_writeRemainder)
-
-    _writeRemainder = 0
-
-    _writeRemainderLength = 0
-
-  end
-
-end
-
---]]
-
 local _byteToChar = {}
 for i=0, 255 do
   _byteToChar[i] = string_char(i)
@@ -414,8 +340,6 @@ local function FindPairs(str, pos) -- TODO: Fix algorithm
   end
 end
 
---print(lib:Compress(str))
-
 --- Push an element into a max heap
 -- Assume element is a table and we compare it using its first value table[1]
 local function MinHeapPush(heap, e, heapSize)
@@ -491,43 +415,6 @@ tree[5]: code length
 tree[6]: huffman code
 
 --]]
-local function CalculatesymbolBitLength(tree, length, symbolBitLength)
-  local leftChild = tree[2]
-  local rightChild = tree[3]
-  if type(leftChild) == "table" then
-    CalculatesymbolBitLength(leftChild, length + 1, symbolBitLength)
-  elseif leftChild ~= nil then
-    symbolBitLength[leftChild] = length
-  end
-  if type(rightChild) == "table" then
-    CalculatesymbolBitLength(rightChild, length + 1, symbolBitLength)
-  end
-  return symbolBitLength
-end
-
-local function CalculateSymbolCode(symbolBitLength, symbolCode)
-  -- From RFC1951
-  local code = 0
-  local lengthCount = {}
-  local nextCode = {}
-  lengthCount[0] = 0
-  for _, length in pairs(symbolBitLength) do
-    lengthCount[length] = (lengthCount[length] or 0) + 1
-  end
-  for length = 1, MAX_CODE_LENGTH do
-    code = (code+(lengthCount[length-1] or 0))*2
-    nextCode[length] = code
-  end
-  for symbol = 0, MAX_SYMBOL do
-    local len = symbolBitLength[symbol]
-    if len then
-      local nextLen = nextCode[len]
-      symbolCode[symbol] = nextLen
-      nextCode[len] = nextLen + 1
-    end
-  end
-  return symbolCode
-end
 
 local function SortByFirstThenSecond(a, b)
   return a[1] < b[1] or
@@ -956,74 +843,6 @@ function lib:Compress(str)
   local HDIST = encodedDistanceHuffmanLengthCount - 1 -- # of Distance codes - 1 (1 - 32)
   if HDIST < 0 then HDIST = 0 end
 
-  --[[
-
-  local t = {}
-
-  for i = 0, 285 do
-
-    table_insert(t, literalLengthHuffmanLength[i] or 0)
-
-  end
-
-  print(table_concat(t, " "))
-
-  --]]
-
-  --[[
-
-  local t = {}
-
-  for _, i in ipairs(encodedLiteralLengthHuffmanLength) do
-
-    table_insert(t, i)
-
-  end
-
-  print("")
-
-  print(table_concat(t, " "))
-
-  local t = {}
-
-  for _, i in ipairs(encodedLiteralLengthHuffmanLengthExtraBits) do
-
-    table_insert(t, i)
-
-  end
-
-  print("")
-
-  print(table_concat(t, " "))
-
-  
-
-  local t = {}
-
-  for _, i in ipairs(encodedDistanceHuffmanLength) do
-
-    table_insert(t, i)
-
-  end
-
-  print("")
-
-  print(table_concat(t, " "))
-
-  local t = {}
-
-  for _, i in ipairs(encodedDistanceHuffmanLengthExtraBits) do
-
-    table_insert(t, i)
-
-  end
-
-  print("")
-
-  print(table_concat(t, " "))
-
-  --]]
-
   local outputBuffer = {}
   WriteBitsInit(outputBuffer)
   WriteBits(1, 1) -- Last block marker
@@ -1091,12 +910,7 @@ function lib:Compress(str)
   WriteRemainingBits()
 
   local result = table_concat(outputBuffer)
-  --print(result:len())
-  --local t = {}
-  --for i=1, result:len() do
-  --table_insert(t, string.format("0x%02x", string_byte(result, i, i)))
-  --end
-  --print(table_concat(t, ", "))
+  
   return result
 end
 
