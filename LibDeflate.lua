@@ -1,3 +1,6 @@
+-- Author: Haoqian He (Github: SafeteeWow)
+-- License: GPLv3
+
 require "bit"
 require "profiler"
 
