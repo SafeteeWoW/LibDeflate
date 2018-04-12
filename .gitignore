@@ -1,6 +1,7 @@
 *.deflate
 *.zip
 *.gz
+*.decompressed
 .settings
 .buildpath
 .project
