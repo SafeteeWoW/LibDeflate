@@ -503,12 +503,13 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
       local parent = e[4]
       local bitLength = parent and (parent[5] + 1) or 0
 
-      if type(e[2]) ~= "table" then
-        symbolBitLength[ e[2] ] = bitLength
-        if (bitLength > maxBitLength) then
+      if (bitLength > maxBitLength) then
           overflow = overflow + 1
           bitLength = maxBitLength
-        end
+      end
+      if type(e[2]) ~= "table" then
+        symbolBitLength[ e[2] ] = bitLength
+
         bitLengthCount[bitLength] = (bitLengthCount[bitLength] or 0) + 1
       end
       e[5] = bitLength
@@ -525,7 +526,7 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
           bitLength = bitLength - 1
         end
         bitLengthCount[bitLength] = bitLengthCount[bitLength] - 1 -- move one leaf down the tree
-        bitLengthCount[bitLength+1] = bitLengthCount[bitLength+1] + 2 -- move one overflow item as its brother
+        bitLengthCount[bitLength+1] = (bitLengthCount[bitLength+1] or 0) + 2 -- move one overflow item as its brother
         bitLengthCount[maxBitLength] = bitLengthCount[maxBitLength] - 1
         overflow = overflow - 2
       until (overflow <= 0)
