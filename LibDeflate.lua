@@ -832,7 +832,10 @@ function lib:Compress(str)
     RunLengthEncodeSymbolBitLength(literalLengthHuffmanLength, 285)
   local encodedDistanceHuffmanLength, encodedDistanceHuffmanLengthExtraBits, encodedDistanceHuffmanLengthCount =
     RunLengthEncodeSymbolBitLength(distanceHuffmanLength, 29)
-
+  if encodedDistanceHuffmanLengthCount == 0 then
+    table_insert(encodedDistanceHuffmanLength, 0)
+    encodedDistanceHuffmanLengthCount = 1
+  end
   local encodedBothLengthCodes = {}
   for _, v in ipairs(encodedLiteralLengthHuffmanLength) do
     table_insert(encodedBothLengthCodes, v)
@@ -876,16 +879,8 @@ function lib:Compress(str)
   WriteEncodedHuffmanLength(encodedLiteralLengthHuffmanLength, encodedLiteralLengthHuffmanLengthExtraBits
     , codeLengthHuffmanCodeLength, codeLengthHuffmanCode)
 
-  if HDIST == 0 then -- TODO: Fix
-    if encodedDistanceHuffmanLengthCount == 0 then
-      WriteBits(0, 1)
-  else
-    WriteBits(1, 1)
-  end
-  else
-    WriteEncodedHuffmanLength(encodedDistanceHuffmanLength, encodedDistanceHuffmanLengthExtraBits
-      , codeLengthHuffmanCodeLength, codeLengthHuffmanCode)
-  end
+  WriteEncodedHuffmanLength(encodedDistanceHuffmanLength, encodedDistanceHuffmanLengthExtraBits
+      ,codeLengthHuffmanCodeLength, codeLengthHuffmanCode)
 
   local lengthCodeCount = 0
   local lengthCodeWithExtraCount = 0
