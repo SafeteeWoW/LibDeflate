@@ -455,8 +455,8 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
 
   local uniqueSymbols = 0
   for symbol, count in pairs(symbolCount) do
-    table_insert(leafs, {count, symbol})
     uniqueSymbols = uniqueSymbols + 1
+    leafs[uniqueSymbols] = {count, symbol, 0, 0, 0, 0} 
   end
 
   if (uniqueSymbols == 0) then
@@ -543,7 +543,7 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
           leafPointer = leafPointer + 1
         end
       end
-      print(leafPointer, uniqueSymbols)
+      --print(leafPointer, uniqueSymbols)
     end
 
     -- From RFC1951. Calculate huffman code from code bit length.
@@ -683,7 +683,7 @@ local function Update(hashTable, hashTable2, hash, i, strLen, str)
 
     if (len >= 3) then
       for j=i+1, i+len-1 do
-        hash = bit_bxor(hash*32, strTable[j+2]) % 32768
+        hash = bit_bxor(hash*32, strTable[j+2] or 0) % 32768 -- TODO: Fix or 0
         hashTable2[hash] = hashTable[hash]
         hashTable[hash] = hash
         foundMatch = true
@@ -756,7 +756,10 @@ local function strToTable(str, t)
 end
 
 function lib:Compress(str)
-  strToTable(str, strTable)
+  local time1 = os.clock()
+  strToTable(str, strTable) -- TODO: Fix memory usage when file is very large.
+  print("time_read_string", os.clock()-time1)
+  local time2 = os.clock()
   --for i=1, str:len() do
   --  assert(strTable[i] == string_byte(str, i, i), "error") end
   local literalLengthCode = {}
@@ -798,6 +801,7 @@ function lib:Compress(str)
         local lenExtraBits = _lengthToExtraBits[len]
         table_insert(lengthExtraBits, lenExtraBits)
       end
+      if not distExtraBitsLength then print(dist) end
       if distExtraBitsLength > 0 then
         local distExtraBits = _distanceToExtraBits[dist]
         table_insert(distanceExtraBits, distExtraBits)
@@ -810,7 +814,8 @@ function lib:Compress(str)
     --print(i)
   end
 
-
+  print("time_find_pairs", os.clock()-time2)
+  local time3 = os.clock()
   table_insert(literalLengthCode, 256)
   local literalLengthHuffmanLength, literalLengthHuffmanCode = GetHuffmanBitLengthAndCode(literalLengthCode, 15, 285)
   local distanceHuffmanLength, distanceHuffmanCode = GetHuffmanBitLengthAndCode(distanceCode, 15, 29)
@@ -842,7 +847,8 @@ function lib:Compress(str)
   local HLIT = encodedLiteralLengthHuffmanLengthCount - 257 -- # of Literal/Length codes - 257 (257 - 286)
   local HDIST = encodedDistanceHuffmanLengthCount - 1 -- # of Distance codes - 1 (1 - 32)
   if HDIST < 0 then HDIST = 0 end
-
+  print("time_contruct_table", os.clock()-time3)
+  local time4 = os.clock()
   local outputBuffer = {}
   WriteBitsInit(outputBuffer)
   WriteBits(1, 1) -- Last block marker
@@ -881,7 +887,7 @@ function lib:Compress(str)
     local huffmanCode = literalLengthHuffmanCode[code]
     local huffmanLength = literalLengthHuffmanLength[code]
     if code <= 256 then -- Literal/end of block
-      WriteBits(huffmanCode, huffmanLength, true)
+      WriteBits(huffmanCode, huffmanLength)
       --print(code, huffmanCode, huffmanLength)
     else -- Length code
       lengthCodeCount = lengthCodeCount + 1
@@ -890,27 +896,29 @@ function lib:Compress(str)
         lengthCodeWithExtraCount = lengthCodeWithExtraCount + 1
         local extraBits = lengthExtraBits[lengthCodeWithExtraCount]
         local extraBitsLength = _literalLengthCodeToExtraBitsLength[code]
-        WriteBits(extraBits, extraBitsLength, true)
+        WriteBits(extraBits, extraBitsLength)
       end
       -- Write distance code
       local distCode = distanceCode[lengthCodeCount]
       local distHuffmanCode = distanceHuffmanCode[distCode]
       local distHuffmanLength = distanceHuffmanLength[distCode]
-      WriteBits(distHuffmanCode, distHuffmanLength, true)
+      WriteBits(distHuffmanCode, distHuffmanLength)
 
       if distCode > 3 then -- dist code with extra bits
         distCodeWithExtraCount = distCodeWithExtraCount + 1
         local distExtraBits = distanceExtraBits[distCodeWithExtraCount]
         local distExtraBitsLength = bit_rshift(distCode, 1) - 1
-        WriteBits(distExtraBits, distExtraBitsLength, true)
+        WriteBits(distExtraBits, distExtraBitsLength)
       end
     end
   end
 
   WriteRemainingBits()
-
+  print("time_write_bits", os.clock()-time4)
+  local time5 = os.clock()
   local result = table_concat(outputBuffer)
-  
+  print("time_table_concat", os.clock()-time5)
+  --local time4 = os.clock()
   return result
 end
 

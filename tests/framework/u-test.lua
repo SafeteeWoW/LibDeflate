@@ -110,7 +110,7 @@ api.equal = function (l, r, reason)
                 additions = additions..("expected: %d, actual: %d"):format(l:len(), r:len())
             end
         end
-        fail(("%s ~= %s : %s %s"):format(tostring(l), tostring(r), reason or "", additions))
+        fail(("%s ~= %s : %s %s"):format(tostring(l):sub(1, 30), tostring(r):sub(1, 30), reason or "", additions))
     end
 end
 

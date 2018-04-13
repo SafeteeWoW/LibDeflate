@@ -44,12 +44,19 @@ local function BasicTests()
 		local testFileContent = testFile:read("*all")
 		testFile:close()
 
-		UTest.equal(inputFileContent, testFileContent, inputFileContent)
+		UTest.equal(inputFileContent, testFileContent, inputFileName)
 	end
 
 	---- Test begins
 	function UTest.FirstTest()
 		CheckFile("tests\\data\\smalltest.txt")
+	end
+	
+	function UTest.BigTest()
+	  local files = {"bib", "pic"} -- "book1", "book2", "geo", "news", "obj1", "obj2", "paper1", "paper2", "pic", "progc", "progl", "progp", "trans"
+	  for _, file in ipairs(files) do
+	   CheckFile("tests\\data\\calgary\\"..file)
+	  end
 	end
 end
 
