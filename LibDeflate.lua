@@ -57,6 +57,14 @@ local function wipe(t)
   end
 end
 
+local function PrintTable(t)
+  local tmp = {}
+  for k,v in ipairs(t) do
+    table_insert(tmp, v)
+  end
+  print(table_concat(tmp, " "))
+end
+
 --local _literalLengthCodeToBaseLength = {}
 local _literalLengthCodeToExtraBitsLength = {}
 
@@ -462,6 +470,7 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
   elseif (uniqueSymbols == 1) then -- Special case
     symbolBitLength[leafs[1][2]] = 1
     symbolCode[leafs[1][2]] = 1
+    symbolCode[leafs[1][2]] = 0
     return symbolBitLength, symbolCode
   else
     table_sort(leafs, SortByFirstThenSecond)
@@ -575,7 +584,7 @@ local function RunLengthEncodeSymbolBitLength(symbolBitLength, maxSymbol)
   local i = 0
   local prevLength = nil
   local lengthDuplicateCount = 0
-  local lastNonZeroSymbol = 0
+  local lastNonZeroSymbol = -1
   for i = 0, maxSymbol+1 do
     local length = symbolBitLength[i] or 0
     if length > maxSymbol then
