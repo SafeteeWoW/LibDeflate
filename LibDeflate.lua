@@ -469,7 +469,6 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
     return {}, {}  -- TODO: Shouldn't happen
   elseif (uniqueSymbols == 1) then -- Special case
     symbolBitLength[leafs[1][2]] = 1
-    symbolCode[leafs[1][2]] = 1
     symbolCode[leafs[1][2]] = 0
     return symbolBitLength, symbolCode
   else
