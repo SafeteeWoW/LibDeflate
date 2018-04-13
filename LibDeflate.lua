@@ -348,14 +348,14 @@ local function MinHeapPush(heap, e, heapSize)
   heapSize = heapSize + 1
   heap[heapSize] = e
   local pos = heapSize
-  local parentPos = math_floor(pos/2)
+  local parentPos = (pos-pos%2)/2
 
   while (parentPos >= 1 and heap[parentPos][1] > e[1]) do
     local t = heap[parentPos]
     heap[parentPos] = e
     heap[pos] = t
     pos = parentPos
-    parentPos = math_floor(parentPos/2)
+    parentPos = (parentPos-parentPos%2)/2
   end
 end
 
