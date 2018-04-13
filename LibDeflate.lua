@@ -667,7 +667,9 @@ local function Update(hashTable, hashTable2, hash, i, strLen, str)
   local len = 0
   hash = bit_bxor(hash*32, strTable[i+2]) %32768
   local prev = hashTable[hash]
-
+  local prev2 = hashTable2[hash]
+  hashTable2[hash] = hashTable[hash]
+  hashTable[hash] = i
   local foundMatch = false
   if prev and i > prev and i-prev <= SLIDING_WINDOW then
     dist = i-prev
@@ -677,7 +679,7 @@ local function Update(hashTable, hashTable2, hash, i, strLen, str)
       else
         break
       end
-    until (len >= 258 or i+len >= strLen)
+    until (len >= 258 or i+len > strLen)
 
     if (len >= 3) then
       for j=i+1, i+len-1 do
@@ -693,7 +695,7 @@ local function Update(hashTable, hashTable2, hash, i, strLen, str)
   
   if not foundMatch then
     len = 0
-    local prev2 = hashTable2[hash]
+
 
     local foundMatch = false
     if prev2 and i > prev2 and i-prev2 <= SLIDING_WINDOW then
@@ -705,7 +707,7 @@ local function Update(hashTable, hashTable2, hash, i, strLen, str)
         else
           break
         end
-      until (len >= 258 or i+len >= strLen)
+      until (len >= 258 or i+len > strLen)
 
       if (len >= 3) then
         for j=i+1, i+len-1 do
@@ -718,8 +720,7 @@ local function Update(hashTable, hashTable2, hash, i, strLen, str)
 
     end
   end
-  hashTable2[hash] = hashTable[hash]
-  hashTable[hash] = i
+
 
   return len, dist, hash
 end
