@@ -224,6 +224,12 @@ local _byteToChar = {}
 for i=0, 255 do
   _byteToChar[i] = string_char(i)
 end
+
+local _twoBytesToChar = {}
+for i=0,256*256-1 do
+  _twoBytesToChar[i] = string_char(i%256)..string_char((i-i%256)/256)
+end
+
 local function WriteBits(code, length) -- TODO: Write to buffer every 32 bits.
   --assert(code, "WriteBits: nil code")
   --assert(length, "WriteBits: nil length")
@@ -233,15 +239,11 @@ local function WriteBits(code, length) -- TODO: Write to buffer every 32 bits.
   _writeRemainderLength = length + _writeRemainderLength
   if _writeRemainderLength >= 32 then
     -- we have at least 4 bytes to store; bulk it
-    _writeBuffer[_writeCompressedSize+1] = _byteToChar[_writeRemainder % 256]
-    _writeBuffer[_writeCompressedSize+2] = _byteToChar[((_writeRemainder-_writeRemainder%256)/256 % 256)]
-    _writeBuffer[_writeCompressedSize+3] = _byteToChar[((_writeRemainder-_writeRemainder%65536)/65536 % 256)]
-    _writeBuffer[_writeCompressedSize+4] = _byteToChar[((_writeRemainder-_writeRemainder%16777216)/16777216 % 256)]
-    _writeCompressedSize = _writeCompressedSize + 4
+    _writeBuffer[_writeCompressedSize+1] = _twoBytesToChar[_writeRemainder % 65536]
+    _writeBuffer[_writeCompressedSize+2] = _twoBytesToChar[((_writeRemainder-_writeRemainder%65536)/65536 % 65536)]
+    _writeCompressedSize = _writeCompressedSize + 2
     _writeRemainder = bit_rshift(code, 32 - _writeRemainderLength + length)
     _writeRemainderLength = _writeRemainderLength - 32
-  else
-
   end
 end
 
@@ -886,12 +888,10 @@ function lib:Compress(str)
   for _, code in ipairs(literalLengthCode) do
     local huffmanCode = literalLengthHuffmanCode[code]
     local huffmanLength = literalLengthHuffmanLength[code]
-    if code <= 256 then -- Literal/end of block
-      WriteBits(huffmanCode, huffmanLength)
+    WriteBits(huffmanCode, huffmanLength)
       --print(code, huffmanCode, huffmanLength)
-    else -- Length code
+    if code > 256 then -- Length code
       lengthCodeCount = lengthCodeCount + 1
-      WriteBits(huffmanCode, huffmanLength)
       if code > 264 and code < 285 then -- Length code with extra bits
         lengthCodeWithExtraCount = lengthCodeWithExtraCount + 1
         local extraBits = lengthExtraBits[lengthCodeWithExtraCount]
