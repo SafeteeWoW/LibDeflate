@@ -669,7 +669,7 @@ local function Update(hashTable, hashTable2, hash, i, strLen, str)
   local prev = hashTable[hash]
 
   local foundMatch = false
-  if prev and i-prev <= SLIDING_WINDOW then
+  if prev and i > prev and i-prev <= SLIDING_WINDOW then
     dist = i-prev
     repeat
       if (strTable[prev+len] == strTable[i+len]) then
@@ -696,7 +696,7 @@ local function Update(hashTable, hashTable2, hash, i, strLen, str)
     local prev2 = hashTable2[hash]
 
     local foundMatch = false
-    if prev2 and i-prev2 <= SLIDING_WINDOW then
+    if prev2 and i > prev2 and i-prev2 <= SLIDING_WINDOW then
       dist = i-prev2
 
       repeat
