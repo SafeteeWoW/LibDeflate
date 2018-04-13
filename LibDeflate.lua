@@ -203,10 +203,6 @@ for dist=1, 32768 do
   end
 end
 
--- From LibCompress
--- Authors: jjsheets and Galmok of European Stormrage (Horde)
--- Email : sheets.jeff@gmail.com and galmok@gmail.com
--- Licence: GPL version 2 (General Public License)
 local _writeCompressedSize = nil
 local _writeRemainder = nil
 local _writeRemainderLength = nil
