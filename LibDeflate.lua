@@ -560,70 +560,61 @@ end
 
 local _codeLengthHuffmanCodeOrder = {16, 17, 18,
 	0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15}
-local function WriteCodeLengthHuffmanCode(codeLengthHuffmanCodeLength)
+
+local _niceLength; -- quit search above this match length
+local _max_chain;
+
+local _strTable = {}
+local _strLen = 0
+
+local function FastestUpdate(hashTables, hash, i)
 
 end
 
-local strTable = {}
-local function Update(hashTable, hashTable2, hash, i, strLen, str)
+local function Update(hashTable, hashTable2, hash, i)
 	local dist = 0
 	local len = 0
-	hash = bit_bxor(hash*32, strTable[i+2]) %32768
+	local len2 = 0
+	local dist2 = 0
+
+	hash = bit_bxor(hash*32, _strTable[i+2]) %32768
 	local prev = hashTable[hash]
 	local prev2 = hashTable2[hash]
 	hashTable2[hash] = hashTable[hash]
 	hashTable[hash] = i
-	local foundMatch = false
+	
 	if prev and i > prev and i-prev <= SLIDING_WINDOW then
 		dist = i-prev
 		repeat
-			if (strTable[prev+len] == strTable[i+len]) then
+			if (_strTable[prev+len] == _strTable[i+len]) then
 				len = len + 1
 			else
 				break
 			end
-		until (len >= 258 or i+len > strLen)
-
-		if (len >= 3) then
-			for j=i+1, i+len-1 do
-				hash = bit_bxor(hash*32, strTable[j+2] or 0) % 32768 -- TODO: Fix or 0
-				hashTable2[hash] = hashTable[hash]
-				hashTable[hash] = hash
-				foundMatch = true
-			end
-		end
-
+		until (len >= 258 or i+len > _strLen)
 	end
 
-
-	if not foundMatch then
-		len = 0
-
-
-		local foundMatch = false
-		if prev2 and i > prev2 and i-prev2 <= SLIDING_WINDOW then
-			dist = i-prev2
-
-			repeat
-				if (strTable[prev2+len] == strTable[i+len]) then
-					len = len + 1
-				else
-					break
-				end
-			until (len >= 258 or i+len > strLen)
-
-			if (len >= 3) then
-				for j=i+1, i+len-1 do
-					hash = bit_bxor(hash*32, strTable[j+2] or 0) % 32768 -- TODO: "or 0", wtf?
-					hashTable2[hash] = hashTable[hash]
-					hashTable[hash] = hash
-					foundMatch = true
-				end
+	if prev2 and i > prev2 and i-prev2 <= SLIDING_WINDOW then
+		dist2 = i-prev2
+		repeat
+			if (_strTable[prev2+len2] == _strTable[i+len2]) then
+				len2 = len2 + 1
+			else
+				break
 			end
-
+		until (len2 >= 258 or i+len2 > _strLen)
+	end
+	
+	dist = (len2 > len) and dist2 or dist
+	len = (len2 > len) and len2 or len
+	
+	if (len >= 3) then
+		for j=i+1, i+len-1 do
+			hash = bit_bxor(hash*32, _strTable[j+2] or 0) % 32768
+			hashTable2[hash] = hashTable[hash]
+			hashTable[hash] = hash
 		end
 	end
-
 
 	return len, dist, hash
 end
@@ -659,7 +650,8 @@ end
 
 function lib:Compress(str)
 	local time1 = os.clock()
-	strToTable(str, strTable) -- TODO: Fix memory usage when file is very large.
+	strToTable(str, _strTable) -- TODO: Fix memory usage when file is very large.
+	_strLen = str:len()
 	print("time_read_string", os.clock()-time1)
 	local time2 = os.clock()
 	--for i=1, str:len() do
@@ -684,19 +676,20 @@ function lib:Compress(str)
 	--local hashTable2 = {}
 	local hash = 0
 	if (strLen >= 1) then
-		hash = bit_band(bit_bxor(bit_lshift(hash, 5), strTable[1]), 32767)
+		hash = bit_band(bit_bxor(bit_lshift(hash, 5), _strTable[1]), 32767)
 	end
 	if (strLen >= 2) then
-		hash = bit_band(bit_bxor(bit_lshift(hash, 5), strTable[2]), 32767)
+		hash = bit_band(bit_bxor(bit_lshift(hash, 5), _strTable[2]), 32767)
 	end
 	while (i <= strLen) do
 		local len, dist
 		if (i+2 <= strLen) then
-			len, dist, hash = Update(hashTable, hashTable2, hash, i, strLen, str)
+			len, dist, hash = Update(hashTable, hashTable2, hash, i)
 		end
 		if len and (len == 3 and dist < 4096 or len > 3) then
 			local code = _lengthToLiteralLengthCode[len]
 			local distCode = _distanceToCode[dist]
+			if not distCode then print("nil distcode", dist) end
 
 			local lenExtraBitsLength = _lengthToExtraBitsLength[len]
 			local distExtraBitsLength = _distanceToExtraBitsLength[dist]
@@ -720,7 +713,7 @@ function lib:Compress(str)
 			end
 			i = i + len
 		else
-			local code = strTable[i]
+			local code = _strTable[i]
 			lCodeTblSize = lCodeTblSize + 1
 			lCodes[lCodeTblSize] = code
 			lCodesCount[code] = (lCodesCount[code] or 0) + 1
