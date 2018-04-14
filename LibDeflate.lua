@@ -724,9 +724,17 @@ function lib:Compress(str)
 	--for i=1, str:len() do
 	--  assert(strTable[i] == string_byte(str, i, i), "error") end
 	local lCodes = {}
+	local lCodeTblSize = 0
+	local lCodesCount = {}
 	local dCodes = {}
+	local dCodeTblSize = 0
+	local dCodesCount = {}
+	
 	local lExtraBits = {}
+	local lExtraBitTblSize = 0
 	local dExtraBits = {}
+	local dExtraBitTblSize = 0
+	
 
 	local i = 1
 	local strLen = str:len()
@@ -741,14 +749,11 @@ function lib:Compress(str)
 		hash = bit_band(bit_bxor(bit_lshift(hash, 5), strTable[2]), 32767)
 	end
 	while (i <= strLen) do
-		--local len, dist = FindPairs(str, i)
 		local len, dist
 		if (i+2 <= strLen) then
 			len, dist, hash = Update(hashTable, hashTable2, hash, i, strLen, str)
 		end
-		--len, dist = FindPairs(str, i)
 		if len and (len == 3 and dist < 4096 or len > 3) then
-			--print("pair", i, len, dist)
 			local code = _lengthToLiteralLengthCode[len]
 			assert (code > 256 and code <= 285, "Invalid code")
 			local distCode = _distanceToCode[dist]
@@ -756,23 +761,31 @@ function lib:Compress(str)
 			local lenExtraBitsLength = _lengthToExtraBitsLength[len]
 			local distExtraBitsLength = _distanceToExtraBitsLength[dist]
 
-			table_insert(lCodes, code)
+			lCodeTblSize = lCodeTblSize + 1
+			lCodes[lCodeTblSize] = code
+			
+			dCodeTblSize = dCodeTblSize + 1
+			dCodes[dCodeTblSize] = distCode
+
 			table_insert(dCodes, distCode)
 			if lenExtraBitsLength > 0 then
 				local lenExtraBits = _lengthToExtraBits[len]
-				table_insert(lExtraBits, lenExtraBits)
+				lExtraBitTblSize = lExtraBitTblSize + 1
+				lExtraBits[lExtraBitTblSize] = lenExtraBits
 			end
-			if not distExtraBitsLength then print(dist) end
 			if distExtraBitsLength > 0 then
 				local distExtraBits = _distanceToExtraBits[dist]
-				table_insert(dExtraBits, distExtraBits)
+				dExtraBitTblSize = dExtraBitTblSize + 1
+				dExtraBits[dExtraBitTblSize] = distExtraBits
 			end
 			i = i + len
 		else
-			table_insert(lCodes, strTable[i])
+			local code = strTable[i]
+			lCodeTblSize = lCodeTblSize + 1
+			lCodes[lCodeTblSize] = code
+			lCodesCount[code] = (lCodesCount[code] or 0) + 1
 			i = i + 1
 		end
-		--print(i)
 	end
 
 	print("time_find_pairs", os.clock()-time2)
