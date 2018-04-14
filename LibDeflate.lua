@@ -7,10 +7,6 @@ require "bit"
 local lib = {}
 
 -- local is faster than global
-local CreateFrame = CreateFrame
-local tostring = tostring
-local select = select
-local next = next
 local error = error
 local assert = assert
 local table_concat = table.concat
@@ -29,6 +25,14 @@ local bit_bnot = bit.bnot
 local bit_lshift = bit.lshift
 local bit_rshift = bit.rshift
 
+if not wipe then
+	wipe = function(t)
+		for k in pairs(t) do
+			t[k] = nil
+		end
+	end
+end
+
 local SLIDING_WINDOW = 32768
 local MIN_MATCH_LEN = 3
 local MAX_MATCH_LEN = 258
@@ -37,15 +41,6 @@ local MAX_CODE_LENGTH = 15
 local BLOCK_SIZE = 32768
 
 local function print() end
-
-local function wipe(t)
-	for k in pairs(t) do
-		t[k] = nil
-	end
-	for k in pairs(t) do
-		t[k] = nil
-	end
-end
 
 local function PrintTable(t)
 	local tmp = {}
@@ -205,7 +200,6 @@ local _writeCompressedSize = nil
 local _writeRemainder = nil
 local _writeRemainderLength = nil
 local _writeBuffer = nil
-local _writeDebugIndex = 0
 local function WriteBitsInit(buffer)
 	wipe(buffer)
 	_writeCompressedSize = 0
@@ -224,11 +218,7 @@ for i=0,256*256-1 do
 	_twoBytesToChar[i] = string_char(i%256)..string_char((i-i%256)/256)
 end
 
-local function WriteBits(code, length) -- TODO: Write to buffer every 32 bits.
-	--assert(code, "WriteBits: nil code")
-	--assert(length, "WriteBits: nil length")
-	--assert(length>=1 and length <= 16, "WriteBits: Invalid length "..length)
-	--_writeDebugIndex = _writeDebugIndex + 1
+local function WriteBits(code, length)
 	_writeRemainder = _writeRemainder + bit_lshift(code, _writeRemainderLength) -- Overflow?
 	_writeRemainderLength = length + _writeRemainderLength
 	if _writeRemainderLength >= 32 then
@@ -306,34 +296,6 @@ local function ReadBits(length)
 		_readByte = byte2
 	end
 	return code
-end
-
-local function FindPairs(str, pos) -- TODO: Fix algorithm
-	local len = MIN_MATCH_LEN - 1
-	local dist = 0
-
-	local startPos = pos - SLIDING_WINDOW
-	if startPos < 1 then
-		startPos = 1
-	end
-
-	local strLen = str:len()
-	for i = startPos, pos-1 do
-		for j = MAX_MATCH_LEN, len+1, -1 do
-			if pos + j -1 <= strLen then
-				if str:sub(i, i+j-1) == str:sub(pos, pos+j-1) then
-					if j > len then
-						len = j
-						dist = pos - i
-					end
-				end
-			end
-		end
-	end
-
-	if len >= MIN_MATCH_LEN then
-		return len, dist
-	end
 end
 
 --- Push an element into a max heap
