@@ -598,7 +598,7 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
 
 end
 
-local function RunLengthEncodeHuffmanHeader(lcodeLens, maxNonZeroLenlCode, dcodeLens, maxNonZeroLendCode)
+local function RunLengthEncodeHuffmanLens(lcodeLens, maxNonZeroLenlCode, dcodeLens, maxNonZeroLendCode)
 	local rleCodesTblLen = 0
 	local rleCodes = {}
 	local rleExtraBitsTblLen = 0
@@ -661,36 +661,6 @@ local function WriteCodeLengthHuffmanCode(codeLengthHuffmanCodeLength)
 
 end
 
--- TODO: The code length repeat codes can cross from HLIT + 257 to the HDIST + 1 code lengths.
--- In other words, all code lengths form a single sequence of HLIT + HDIST + 258 values.
-local function WriteEncodedHuffmanLength(encodedHuffmanLength, encodedHuffmanExtraBits, codeLengthHuffmanCodeLength, codeLengthHuffmanCode)
-	local extraBitsPointer = 1
-	for code=0, 18 do
-		local huffmanCode = codeLengthHuffmanCode[code]
-		local huffmanLength = codeLengthHuffmanCodeLength[code]
-		if huffmanCode then
-		--print(code, huffmanCode, huffmanLength)
-		end
-	end
-	for _, code in ipairs(encodedHuffmanLength) do
-		--print(code)
-		local huffmanCode = codeLengthHuffmanCode[code]
-		local huffmanLength = codeLengthHuffmanCodeLength[code]
-		WriteBits(huffmanCode, huffmanLength)
-		if code >= 16 then
-			local extraBits = encodedHuffmanExtraBits[extraBitsPointer]
-			if code == 16 then
-				WriteBits(extraBits, 2)
-			elseif code == 17 then
-				WriteBits(extraBits, 3)
-			else
-				WriteBits(extraBits, 7)
-			end
-			extraBitsPointer = extraBitsPointer + 1
-		end
-	end
-	--print("---------------------------------")
-end
 local strTable = {}
 local function Update(hashTable, hashTable2, hash, i, strLen, str)
 	local dist = 0
@@ -791,10 +761,10 @@ function lib:Compress(str)
 	local time2 = os.clock()
 	--for i=1, str:len() do
 	--  assert(strTable[i] == string_byte(str, i, i), "error") end
-	local literalLengthCode = {}
-	local distanceCode = {}
-	local lengthExtraBits = {}
-	local distanceExtraBits = {}
+	local lCodes = {}
+	local dCodes = {}
+	local lExtraBits = {}
+	local dExtraBits = {}
 
 	local i = 1
 	local strLen = str:len()
@@ -824,20 +794,20 @@ function lib:Compress(str)
 			local lenExtraBitsLength = _lengthToExtraBitsLength[len]
 			local distExtraBitsLength = _distanceToExtraBitsLength[dist]
 
-			table_insert(literalLengthCode, code)
-			table_insert(distanceCode, distCode)
+			table_insert(lCodes, code)
+			table_insert(dCodes, distCode)
 			if lenExtraBitsLength > 0 then
 				local lenExtraBits = _lengthToExtraBits[len]
-				table_insert(lengthExtraBits, lenExtraBits)
+				table_insert(lExtraBits, lenExtraBits)
 			end
 			if not distExtraBitsLength then print(dist) end
 			if distExtraBitsLength > 0 then
 				local distExtraBits = _distanceToExtraBits[dist]
-				table_insert(distanceExtraBits, distExtraBits)
+				table_insert(dExtraBits, distExtraBits)
 			end
 			i = i + len
 		else
-			table_insert(literalLengthCode, strTable[i])
+			table_insert(lCodes, strTable[i])
 			i = i + 1
 		end
 		--print(i)
@@ -845,20 +815,22 @@ function lib:Compress(str)
 
 	print("time_find_pairs", os.clock()-time2)
 	local time3 = os.clock()
-	table_insert(literalLengthCode, 256)
-	local literalLengthHuffmanLength, literalLengthHuffmanCode, maxNonZeroLenlCode = GetHuffmanBitLengthAndCode(literalLengthCode, 15, 285)
-	local distanceHuffmanLength, distanceHuffmanCode, maxNonZeroLendCode = GetHuffmanBitLengthAndCode(distanceCode, 15, 29)
+	
+	table_insert(lCodes, 256)
+	local lCodeLens, lCodeCodes, maxNonZeroLenlCode = GetHuffmanBitLengthAndCode(lCodes, 15, 285)
+	local dCodeLens, dCodeCodes, maxNonZeroLendCode = GetHuffmanBitLengthAndCode(dCodes, 15, 29)
 
+	print("time_contruct_table1", os.clock()-time3)
 	--print("maxNonZeroLenlCode", maxNonZeroLenlCode, "maxNonZeroLendCode", maxNonZeroLendCode)
-	local encodedBothLengthCodes, encodedBothLengthExtraBits =
-		RunLengthEncodeHuffmanHeader(literalLengthHuffmanLength, maxNonZeroLenlCode, distanceHuffmanLength, maxNonZeroLendCode)
+	local rleCodes, rleExtraBits =
+		RunLengthEncodeHuffmanLens(lCodeLens, maxNonZeroLenlCode, dCodeLens, maxNonZeroLendCode)
 
-	local codeLengthHuffmanCodeLength, codeLengthHuffmanCode = GetHuffmanBitLengthAndCode(encodedBothLengthCodes, 7, 18)
+	local codeLensCodeLens, codeLensCodeCodes = GetHuffmanBitLengthAndCode(rleCodes, 7, 18)
 
 	local HCLEN = 0
 	for i=1, 19 do
 		local symbol = _codeLengthHuffmanCodeOrder[i]
-		local length = codeLengthHuffmanCodeLength[symbol] or 0
+		local length = codeLensCodeLens[symbol] or 0
 		if length ~= 0 then
 			HCLEN = i
 		end
@@ -868,7 +840,7 @@ function lib:Compress(str)
 	local HLIT = maxNonZeroLenlCode + 1 - 257 -- # of Literal/Length codes - 257 (257 - 286)
 	local HDIST = maxNonZeroLendCode + 1 - 1 -- # of Distance codes - 1 (1 - 32)
 	if HDIST < 0 then HDIST = 0 end
-	--print("time_contruct_table", os.clock()-time3)
+	print("time_contruct_table2", os.clock()-time3)
 	local time4 = os.clock()
 	local outputBuffer = {}
 	WriteBitsInit(outputBuffer)
@@ -881,40 +853,55 @@ function lib:Compress(str)
 
 	for i = 1, HCLEN+4 do
 		local symbol = _codeLengthHuffmanCodeOrder[i]
-		local length = codeLengthHuffmanCodeLength[symbol] or 0
+		local length = codeLensCodeLens[symbol] or 0
 		--print(symbol, length)
 		WriteBits(length, 3)
 	end
 
-	WriteEncodedHuffmanLength(encodedBothLengthCodes, encodedBothLengthExtraBits
-		, codeLengthHuffmanCodeLength, codeLengthHuffmanCode)
+	local rleExtraBitsIndex = 1
+	for _, code in ipairs(rleCodes) do
+		local huffmanCode = codeLensCodeCodes[code]
+		local huffmanLength = codeLensCodeLens[code]
+		WriteBits(huffmanCode, huffmanLength)
+		if code >= 16 then
+			local extraBits = rleExtraBits[rleExtraBitsIndex]
+			if code == 16 then
+				WriteBits(extraBits, 2)
+			elseif code == 17 then
+				WriteBits(extraBits, 3)
+			else
+				WriteBits(extraBits, 7)
+			end
+			rleExtraBitsIndex = rleExtraBitsIndex + 1
+		end
+	end
 
 	local lengthCodeCount = 0
 	local lengthCodeWithExtraCount = 0
 	local distCodeWithExtraCount = 0
 
-	for _, code in ipairs(literalLengthCode) do
-		local huffmanCode = literalLengthHuffmanCode[code]
-		local huffmanLength = literalLengthHuffmanLength[code]
+	for _, code in ipairs(lCodes) do
+		local huffmanCode = lCodeCodes[code]
+		local huffmanLength = lCodeLens[code]
 		WriteBits(huffmanCode, huffmanLength)
 		--print(code, huffmanCode, huffmanLength)
 		if code > 256 then -- Length code
 			lengthCodeCount = lengthCodeCount + 1
 			if code > 264 and code < 285 then -- Length code with extra bits
 				lengthCodeWithExtraCount = lengthCodeWithExtraCount + 1
-				local extraBits = lengthExtraBits[lengthCodeWithExtraCount]
+				local extraBits = lExtraBits[lengthCodeWithExtraCount]
 				local extraBitsLength = _literalLengthCodeToExtraBitsLength[code]
 				WriteBits(extraBits, extraBitsLength)
 			end
 			-- Write distance code
-			local distCode = distanceCode[lengthCodeCount]
-			local distHuffmanCode = distanceHuffmanCode[distCode]
-			local distHuffmanLength = distanceHuffmanLength[distCode]
+			local distCode = dCodes[lengthCodeCount]
+			local distHuffmanCode = dCodeCodes[distCode]
+			local distHuffmanLength = dCodeLens[distCode]
 			WriteBits(distHuffmanCode, distHuffmanLength)
 
 			if distCode > 3 then -- dist code with extra bits
 				distCodeWithExtraCount = distCodeWithExtraCount + 1
-				local distExtraBits = distanceExtraBits[distCodeWithExtraCount]
+				local distExtraBits = dExtraBits[distCodeWithExtraCount]
 				local distExtraBitsLength = bit_rshift(distCode, 1) - 1
 				WriteBits(distExtraBits, distExtraBitsLength)
 			end
