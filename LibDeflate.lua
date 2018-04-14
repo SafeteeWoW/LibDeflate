@@ -407,36 +407,6 @@ local function MinHeapPop(heap, heapSize)
 	return top
 end
 
---[[
-
-
-
-tree[1]: weight
-
-
-
-tree[2]: left child
-
-
-
-tree[3]: right child
-
-
-
-tree[4]: parent
-
-
-
-tree[5]: code length
-
-
-
-tree[6]: huffman code
-
-
-
---]]
-
 local function SortByFirstThenSecond(a, b)
 	return a[1] < b[1] or
 		(a[1] == b[1] and a[2] < b[2]) -- This is important so our result is stable regardless of interpreter implementation.
@@ -446,11 +416,11 @@ local function bitReverse(code, len)
 	local res = 0
 	repeat
 		res = bit_bor(res, code % 2)
-		code = bit_rshift(code, 1)
-		res = bit_lshift(res, 1)
+		code = (code-code%2)/2
+		res = res*2
 		len = len - 1
 	until (len <= 0)
-	return bit_rshift(res, 1)
+	return (res-res%2)/2
 end
 
 --@treturn {table, table} symbol length table and symbol code table
@@ -458,14 +428,21 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
 	if not dataTable[1] then
 		return {}, {}, -1
 	end
-	local symbolCount = {}
+	local symCount = {}
 	local heapSize = 0
 	local totalNodeCount = 0
 
-	for _, symbol in ipairs(dataTable) do
-		symbolCount[symbol] = (symbolCount[symbol] or 0) + 1
+	for _, sym in ipairs(dataTable) do
+		symCount[sym] = (symCount[sym] or 0) + 1
 	end
 
+	--[[
+		tree[1]: weight
+		tree[2]: left child
+		tree[3]: right child
+		tree[4]: parent
+		tree[5]: code length
+	--]]
 	-- Create Heap for constructing Huffman tree
 	local leafs = {}
 	local heap = {}
@@ -477,9 +454,9 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
 	local maxNonZeroLenSym = -1
 
 	local uniqueSymbols = 0
-	for symbol, count in pairs(symbolCount) do
+	for symbol, count in pairs(symCount) do
 		uniqueSymbols = uniqueSymbols + 1
-		leafs[uniqueSymbols] = {count, symbol, 0, 0, 0, 0}
+		leafs[uniqueSymbols] = {count, symbol, 0, 0, 0}
 	end
 
 	if (uniqueSymbols == 0) then
@@ -516,14 +493,17 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
 
 		-- Calculate bit length of all nodes
 		local fifo = {heap[1]}
-		local pointer = 1
-		while (fifo[pointer]) do -- Breath first search
-			local e = fifo[pointer]
+		local fifoSize = 1
+		local index = 1
+		while (index <= fifoSize) do -- Breath first search
+			local e = fifo[index]
 			if type(e[2]) == "table" then
-				table_insert(fifo, e[2])
+				fifoSize = fifoSize + 1
+				fifo[fifoSize] = e[2]
 			end
 			if type(e[3]) == "table" then
-				table_insert(fifo, e[3])
+				fifoSize = fifoSize + 1
+				fifo[fifoSize] = e[3]
 			end
 
 			local parent = e[4]
@@ -537,11 +517,10 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
 				local sym = e[2]
 				symbolBitLength[sym] = bitLength
 				maxNonZeroLenSym = (sym > maxNonZeroLenSym) and sym or maxNonZeroLenSym
-				assert(maxNonZeroLenSym ~= nil, "nil??")
 				bitLengthCount[bitLength] = (bitLengthCount[bitLength] or 0) + 1
 			end
 			e[5] = bitLength
-			pointer = pointer + 1
+			index = index + 1
 		end
 
 		-- Resolve overflow (Huffman tree with any nodes bit length greater than 15)
@@ -567,7 +546,6 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
 					local sym = leafs[leafPointer][2]
 					symbolBitLength[sym] = bitLength
 					maxNonZeroLenSym = (sym > maxNonZeroLenSym) and sym or maxNonZeroLenSym
-					assert(maxNonZeroLenSym ~= nil, "nil??")
 					n = n - 1
 					leafPointer = leafPointer + 1
 				end
@@ -583,12 +561,20 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
 			nextCode[bitLength] = code
 		end
 		for symbol = 0, maxSymbol do
-			local bitLength = symbolBitLength[symbol]
-			if bitLength then
-				local nextLen = nextCode[bitLength]
-				if not nextLen then error("nil nextLen "..bitLength.." "..maxBitLength.." "..overflow) end
-				symbolCode[symbol] = bitReverse(nextLen, bitLength)
-				nextCode[bitLength] = nextLen + 1
+			local len = symbolBitLength[symbol]
+			if len then
+				local code = nextCode[len]
+				nextCode[len] = code + 1
+				
+				-- Reverse the bits
+				local res = 0
+				repeat
+					res = bit_bor(res, code % 2)
+					code = (code-code%2)/2
+					res = res*2
+					len = len - 1
+				until (len <= 0)
+				symbolCode[symbol] = (res-res%2)/2
 			end
 		end
 		return symbolBitLength, symbolCode, maxNonZeroLenSym
