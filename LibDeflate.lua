@@ -425,42 +425,36 @@ end
 
 --@treturn {table, table} symbol length table and symbol code table
 local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
-	if not dataTable[1] then
-		return {}, {}, -1
-	end
 	local symCount = {}
 	local heapSize = 0
-	local totalNodeCount = 0
 
 	for _, sym in ipairs(dataTable) do
 		symCount[sym] = (symCount[sym] or 0) + 1
 	end
 
-	--[[
-		tree[1]: weight
-		tree[2]: left child
-		tree[3]: right child
-		tree[4]: parent
-		tree[5]: code length
-	--]]
 	-- Create Heap for constructing Huffman tree
 	local leafs = {}
 	local heap = {}
 	local symbolBitLength = {}
 	local symbolCode = {}
-
 	local bitLengthCount = {}
 
 	local maxNonZeroLenSym = -1
 
+	--[[
+		tree[1]: weight, temporarily used as parent and bitLengths
+		tree[2]: symbol
+		tree[3]: left child
+		tree[4]: right child
+	--]]
 	local uniqueSymbols = 0
 	for symbol, count in pairs(symCount) do
 		uniqueSymbols = uniqueSymbols + 1
-		leafs[uniqueSymbols] = {count, symbol, 0, 0, 0}
+		leafs[uniqueSymbols] = {count, symbol}
 	end
 
 	if (uniqueSymbols == 0) then
-		return {}, {}, -1  -- TODO: Shouldn't happen
+		return {}, {}, -1
 	elseif (uniqueSymbols == 1) then -- Special case
 		local sym = leafs[1][2]
 		symbolBitLength[sym] = 1
@@ -468,8 +462,7 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
 		return symbolBitLength, symbolCode, sym
 	else
 		table_sort(leafs, SortByFirstThenSecond)
-		heapSize = #leafs
-		totalNodeCount = heapSize
+		heapSize = uniqueSymbols
 		for i=1, heapSize do
 			heap[i] = leafs[i]
 		end
@@ -477,50 +470,48 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
 		while (heapSize > 1) do
 			local leftChild = MinHeapPop(heap, heapSize) -- Note: pop does not change table size
 			heapSize = heapSize - 1
-			local rightChild = MinHeapPop(heap, heapSize) -- Note: pop does not change table size
+			local rightChild = MinHeapPop(heap, heapSize)
 			heapSize = heapSize - 1
-			local newNode = {leftChild[1]+rightChild[1], leftChild, rightChild} -- TODO: Remove one pop for better performance
-			leftChild[4] = newNode
-			rightChild[4] = newNode
+			local newNode = {leftChild[1]+rightChild[1], -1, leftChild, rightChild}
 			MinHeapPush(heap, newNode, heapSize)
 			heapSize = heapSize + 1
-			totalNodeCount = totalNodeCount + 1
 		end
-
 
 		local overflow = 0 -- Number of leafs whose bit length is greater than 15.
 		-- Deflate does not allow any bit length greater than 15.
 
 		-- Calculate bit length of all nodes
-		local fifo = {heap[1]}
+		local fifo = {heap[1], 0, 0, 0} -- preallocate some spaces.
 		local fifoSize = 1
 		local index = 1
+		heap[1][1] = 0
 		while (index <= fifoSize) do -- Breath first search
 			local e = fifo[index]
-			if type(e[2]) == "table" then
+			local bitLength = e[1]
+			local sym = e[2]
+			local leftChild = e[3]
+			local rightChild = e[4]
+			if leftChild then
 				fifoSize = fifoSize + 1
-				fifo[fifoSize] = e[2]
+				fifo[fifoSize] = leftChild
+				leftChild[1] = bitLength + 1
 			end
-			if type(e[3]) == "table" then
+			if rightChild then
 				fifoSize = fifoSize + 1
-				fifo[fifoSize] = e[3]
+				fifo[fifoSize] = rightChild
+				rightChild[1] = bitLength + 1
 			end
-
-			local parent = e[4]
-			local bitLength = parent and (parent[5] + 1) or 0
-
+			index = index + 1
+			
 			if (bitLength > maxBitLength) then
 				overflow = overflow + 1
 				bitLength = maxBitLength
 			end
-			if type(e[2]) ~= "table" then
-				local sym = e[2]
+			if sym >= 0 then
 				symbolBitLength[sym] = bitLength
 				maxNonZeroLenSym = (sym > maxNonZeroLenSym) and sym or maxNonZeroLenSym
 				bitLengthCount[bitLength] = (bitLengthCount[bitLength] or 0) + 1
 			end
-			e[5] = bitLength
-			index = index + 1
 		end
 
 		-- Resolve overflow (Huffman tree with any nodes bit length greater than 15)
@@ -539,18 +530,17 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
 			until (overflow <= 0)
 
 			-- Update symbolBitLength
-			local leafPointer = 1
+			local index = 1
 			for bitLength = maxBitLength, 1, -1 do
 				local n = bitLengthCount[bitLength] or 0
 				while (n > 0) do
-					local sym = leafs[leafPointer][2]
+					local sym = leafs[index][2]
 					symbolBitLength[sym] = bitLength
 					maxNonZeroLenSym = (sym > maxNonZeroLenSym) and sym or maxNonZeroLenSym
 					n = n - 1
-					leafPointer = leafPointer + 1
+					index = index + 1
 				end
 			end
-			--print(leafPointer, uniqueSymbols)
 		end
 
 		-- From RFC1951. Calculate huffman code from code bit length.
@@ -566,21 +556,18 @@ local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
 				local code = nextCode[len]
 				nextCode[len] = code + 1
 				
-				-- Reverse the bits
+				-- Reverse the bits of "code"
 				local res = 0
-				repeat
+				for i=1, len do
 					res = bit_bor(res, code % 2)
 					code = (code-code%2)/2
 					res = res*2
-					len = len - 1
-				until (len <= 0)
-				symbolCode[symbol] = (res-res%2)/2
+				end
+				symbolCode[symbol] = (res-res%2)/2 -- Bit reverse of the variable "code"
 			end
 		end
 		return symbolBitLength, symbolCode, maxNonZeroLenSym
 	end
-
-
 
 end
 

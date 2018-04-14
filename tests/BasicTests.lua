@@ -6,11 +6,17 @@ dofile("tests\\TestHeader.lua")
 
 local function BasicTests()
 
-	function TestEmpty()
+	function UTest.Empty()
 		CheckStr("")
+	end
+	
+	function UTest.AllLiterals()
 		CheckStr("abcdefgh")
-		CheckStr("aaaaaaaaaaaaaaaaaa")
 		CheckStr("ab")
+	end
+	
+	function UTest.ShortRepeat()
+		CheckStr("aaaaaaaaaaaaaaaaaa")
 	end
 	
 	function ItemStringsFile()
@@ -23,11 +29,11 @@ local function BasicTests()
 	end
 
 	---- Test begins
-	function ReconnectData()
+	function UTest.ReconnectData()
 		CheckFile("tests\\data\\reconnectData.txt")
 	end
 	
-	function RepeatedStr()
+	function UTest.LongRepeat()
 		local repeated = {}
 		for i=1, 300000 do
 			repeated[i] = "a"

@@ -26,7 +26,7 @@ function CheckStr(str)
 	--    Enter the command: "cl puff.c pufftest.c", the executable "puff.c" should be generated.
 	-- 5. Put "puff.exe" under the PATH of your computer.
 	os.execute("rm -f "..fileName..".decompressed")
-	os.execute("puff -w "..fileName.. "> "..fileName..".decompressed")
+	assert(os.execute("puff -w "..fileName.. "> "..fileName..".decompressed") == 0, "puff decompression failed")
 
 	local testFile = io.open(fileName..".decompressed", "rb")
 	local testFileContent = testFile:read("*all")
