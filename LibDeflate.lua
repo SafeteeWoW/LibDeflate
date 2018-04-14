@@ -45,7 +45,7 @@ local function print() end
 local function PrintTable(t)
 	local tmp = {}
 	for k,v in ipairs(t) do
-		table_insert(tmp, v)
+		table.insert(tmp, v)
 	end
 	print(table_concat(tmp, " "))
 end
@@ -91,19 +91,6 @@ for code=0, 285 do
 	elseif code == 285 then
 		--_literalLengthCodeToBaseLength[code] = 258
 		_literalLengthCodeToExtraBitsLength[code] = 0
-	end
-end
-
-local power2 = {}
-for i=0, 31 do
-	power2[i] = bit_lshift(1, i)
-end
-
-local function log2Floor(n)
-	for i=0, 31 do
-		if power2[i] >= n then
-			return i
-		end
 	end
 end
 
@@ -303,10 +290,11 @@ end
 local function MinHeapPush(heap, e, heapSize)
 	heapSize = heapSize + 1
 	heap[heapSize] = e
+	local value = e[1]
 	local pos = heapSize
 	local parentPos = (pos-pos%2)/2
 
-	while (parentPos >= 1 and heap[parentPos][1] > e[1]) do
+	while (parentPos >= 1 and heap[parentPos][1] > value) do
 		local t = heap[parentPos]
 		heap[parentPos] = e
 		heap[pos] = t
@@ -321,6 +309,7 @@ end
 local function MinHeapPop(heap, heapSize)
 	local top = heap[1]
 	local e = heap[heapSize]
+	local value = e[1]
 	heap[1] = e
 	heap[heapSize] = top
 	heapSize = heapSize - 1
@@ -333,7 +322,7 @@ local function MinHeapPop(heap, heapSize)
 		local leftChild = heap[leftChildPos]
 		if (rightChildPos <= heapSize and heap[rightChildPos][1] < leftChild[1]) then
 			local rightChild = heap[rightChildPos]
-			if rightChild[1] < e[1] then
+			if rightChild[1] < value then
 				heap[rightChildPos] = e
 				heap[pos] = rightChild
 				pos = rightChildPos
@@ -343,7 +332,7 @@ local function MinHeapPop(heap, heapSize)
 				break
 			end
 		else
-			if leftChild[1] < e[1] then
+			if leftChild[1] < value then
 				heap[leftChildPos] = e
 				heap[pos] = leftChild
 				pos = leftChildPos
