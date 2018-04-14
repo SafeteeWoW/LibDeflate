@@ -49,6 +49,7 @@ function CheckFile(inputFileName, count)
 	--os.execute("rm -f profileresult.txt")
 	--profiler.start("profileresult.txt")
 	local compressed
+	count = count or 1
 	for i=1, count or 1 do
 		compressed = Lib:Compress(inputFileContent)
 	end

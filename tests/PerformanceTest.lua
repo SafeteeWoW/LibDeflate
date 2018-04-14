@@ -7,7 +7,7 @@ dofile("tests\\TestHeader.lua")
 local function PerformanceTests()
 
 	function UTest.SmallTestFile()
-		CheckFile("tests\\data\\smalltest.txt", 200)
+		CheckFile("tests\\data\\smalltest.txt", 50)
 	end
 end
 
