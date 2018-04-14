@@ -755,7 +755,6 @@ function lib:Compress(str)
 		end
 		if len and (len == 3 and dist < 4096 or len > 3) then
 			local code = _lengthToLiteralLengthCode[len]
-			assert (code > 256 and code <= 285, "Invalid code")
 			local distCode = _distanceToCode[dist]
 
 			local lenExtraBitsLength = _lengthToExtraBitsLength[len]
@@ -766,8 +765,6 @@ function lib:Compress(str)
 			
 			dCodeTblSize = dCodeTblSize + 1
 			dCodes[dCodeTblSize] = distCode
-
-			table_insert(dCodes, distCode)
 			if lenExtraBitsLength > 0 then
 				local lenExtraBits = _lengthToExtraBits[len]
 				lExtraBitTblSize = lExtraBitTblSize + 1
