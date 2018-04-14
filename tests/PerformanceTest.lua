@@ -9,6 +9,10 @@ local function PerformanceTests()
 	function UTest.SmallTestFile()
 		CheckFile("tests\\data\\smalltest.txt", 50)
 	end
+	
+	function UTest.ItemStringsFile()
+		CheckFile("tests\\data\\ItemStrings.txt", 50)
+	end
 end
 
 PerformanceTests()

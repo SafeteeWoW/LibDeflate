@@ -19,7 +19,7 @@ local function BasicTests()
 		CheckStr("aaaaaaaaaaaaaaaaaa")
 	end
 	
-	function ItemStringsFile()
+	function UTest.ItemStringsFile()
 		CheckFile("tests\\data\\ItemStrings.txt")
 	end
 

@@ -694,8 +694,8 @@ function lib:Compress(str)
 	local strLen = str:len()
 	local hashTables = {}
 	
-	_niceLength = 32
-	_max_chain = 2
+	_niceLength = 8
+	_max_chain = 4
 	
 	for i=1, _max_chain do
 		hashTables[i] = {}
