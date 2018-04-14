@@ -412,17 +412,6 @@ local function SortByFirstThenSecond(a, b)
 		(a[1] == b[1] and a[2] < b[2]) -- This is important so our result is stable regardless of interpreter implementation.
 end
 
-local function bitReverse(code, len)
-	local res = 0
-	repeat
-		res = bit_bor(res, code % 2)
-		code = (code-code%2)/2
-		res = res*2
-		len = len - 1
-	until (len <= 0)
-	return (res-res%2)/2
-end
-
 --@treturn {table, table} symbol length table and symbol code table
 local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
 	local symCount = {}
