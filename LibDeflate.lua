@@ -561,27 +561,16 @@ end
 local _codeLengthHuffmanCodeOrder = {16, 17, 18,
 	0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15}
 
-local _niceLength; -- quit search above this match length
-local _max_chain;
-
 local _strTable = {}
 local _strLen = 0
 
-local function FastestUpdate(hashTables, hash, i)
-
-end
-
-local function Update(hashTable, hashTable2, hash, i)
+local function FastestFindPairs(hashTable, hash, i)
 	local dist = 0
 	local len = 0
-	local len2 = 0
-	local dist2 = 0
 
 	hash = bit_bxor(hash*32, _strTable[i+2]) %32768
 	local prev = hashTable[hash]
-	local prev2 = hashTable2[hash]
-	hashTable2[hash] = hashTable[hash]
-	hashTable[hash] = i
+	hashTable[hash] = prev
 	
 	if prev and i > prev and i-prev <= SLIDING_WINDOW then
 		dist = i-prev
@@ -593,26 +582,58 @@ local function Update(hashTable, hashTable2, hash, i)
 			end
 		until (len >= 258 or i+len > _strLen)
 	end
-
-	if prev2 and i > prev2 and i-prev2 <= SLIDING_WINDOW then
-		dist2 = i-prev2
-		repeat
-			if (_strTable[prev2+len2] == _strTable[i+len2]) then
-				len2 = len2 + 1
-			else
-				break
-			end
-		until (len2 >= 258 or i+len2 > _strLen)
-	end
-	
-	dist = (len2 > len) and dist2 or dist
-	len = (len2 > len) and len2 or len
 	
 	if (len >= 3) then
 		for j=i+1, i+len-1 do
 			hash = bit_bxor(hash*32, _strTable[j+2] or 0) % 32768
-			hashTable2[hash] = hashTable[hash]
 			hashTable[hash] = hash
+		end
+	end
+
+	return len, dist, hash
+end
+
+local _niceLength; -- quit search above this match length
+local _max_chain;
+
+local function FastFindPairs(hashTables, hash, index)
+	local dist = 0
+	local len = 0
+	hash = bit_bxor(hash*32, _strTable[index+2]) % 32768
+
+	for i=1, _max_chain do
+		local prev = hashTables[i][hash]
+		if prev and prev < index and index - prev <= SLIDING_WINDOW then
+			local j = 0
+			repeat
+				if (_strTable[prev+j] == _strTable[index+j]) then
+					j = j + 1
+				else
+					break
+				end
+			until (j >= 258 or index+j > _strLen)
+			if j > len then
+				len = j
+				dist = index - prev
+			end
+			if len >= _niceLength then
+				break
+			end
+		end	
+	end
+	
+	for i=_max_chain, 2, -1 do
+		hashTables[i][hash] = hashTables[i-1][hash]
+	end
+	hashTables[1][hash] = index
+	
+	if (len >= 3) then
+		for i=index+1, index+len-1 do
+			hash = bit_bxor(hash*32, _strTable[i+2] or 0) % 32768
+			for j=_max_chain, 2, -1 do
+				hashTables[j][hash] = hashTables[j-1][hash]
+			end
+			hashTables[1][hash] = i
 		end
 	end
 
@@ -671,9 +692,15 @@ function lib:Compress(str)
 
 	local i = 1
 	local strLen = str:len()
-	local hashTable = {}
-	local hashTable2 = {}
-	--local hashTable2 = {}
+	local hashTables = {}
+	
+	_niceLength = 32
+	_max_chain = 2
+	
+	for i=1, _max_chain do
+		hashTables[i] = {}
+	end
+
 	local hash = 0
 	if (strLen >= 1) then
 		hash = bit_band(bit_bxor(bit_lshift(hash, 5), _strTable[1]), 32767)
@@ -684,7 +711,7 @@ function lib:Compress(str)
 	while (i <= strLen) do
 		local len, dist
 		if (i+2 <= strLen) then
-			len, dist, hash = Update(hashTable, hashTable2, hash, i)
+			len, dist, hash = FastFindPairs(hashTables, hash, i)
 		end
 		if len and (len == 3 and dist < 4096 or len > 3) then
 			local code = _lengthToLiteralLengthCode[len]
