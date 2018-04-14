@@ -1,4 +1,4 @@
--- Author: Haoqian He (Github: SafeteeWow)
+-- Author: Haoqian He (Github: SafeteeWoW)
 -- License: GPLv3
 
 require "bit"
@@ -8,28 +8,19 @@ local lib = {}
 
 -- local is faster than global
 local CreateFrame = CreateFrame
-local type = type
 local tostring = tostring
 local select = select
 local next = next
-local loadstring = loadstring
 local error = error
-local setmetatable = setmetatable
-local rawset = rawset
 local assert = assert
-local table_insert = table.insert
-local table_remove = table.remove
 local table_concat = table.concat
 local table_sort = table.sort
 local string_char = string.char
 local string_byte = string.byte
 local string_len = string.len
-local string_sub = string.sub
-local unpack = unpack
 local pairs = pairs
 local ipairs = ipairs
 local wipe = wipe
-local math_modf = math.modf
 local math_floor = math.floor
 local bit_band = bit.band
 local bit_bor = bit.bor
@@ -44,8 +35,6 @@ local MAX_MATCH_LEN = 258
 local MAX_SYMBOL = 285
 local MAX_CODE_LENGTH = 15
 local BLOCK_SIZE = 32768
-local str = "As mentioned above,there are many kinds of wireless systems other than cellular."
-local END_MARKER = function () end
 
 --local function print() end
 
@@ -413,15 +402,8 @@ local function SortByFirstThenSecond(a, b)
 end
 
 --@treturn {table, table} symbol length table and symbol code table
-local function GetHuffmanBitLengthAndCode(dataTable, maxBitLength, maxSymbol)
-	local symCount = {}
+local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol)
 	local heapSize = 0
-
-	for _, sym in ipairs(dataTable) do
-		symCount[sym] = (symCount[sym] or 0) + 1
-	end
-
-	-- Create Heap for constructing Huffman tree
 	local leafs = {}
 	local heap = {}
 	local symbolBitLength = {}
@@ -563,6 +545,7 @@ end
 local function RunLengthEncodeHuffmanLens(lcodeLens, maxNonZeroLenlCode, dcodeLens, maxNonZeroLendCode)
 	local rleCodesTblLen = 0
 	local rleCodes = {}
+	local rleCodesCount = {}
 	local rleExtraBitsTblLen = 0
 	local rleExtraBits = {}
 	local prev = nil
@@ -579,26 +562,32 @@ local function RunLengthEncodeHuffmanLens(lcodeLens, maxNonZeroLenlCode, dcodeLe
 				rleCodes[rleCodesTblLen] = 16
 				rleExtraBitsTblLen = rleExtraBitsTblLen + 1
 				rleExtraBits[rleExtraBitsTblLen] = 3
+				rleCodesCount[16] = (rleCodesCount[16] or 0) + 1
 				count = 0
 			elseif len == 0 and count == 138 then
 				rleCodesTblLen = rleCodesTblLen + 1
 				rleCodes[rleCodesTblLen] = 18
 				rleExtraBitsTblLen = rleExtraBitsTblLen + 1
 				rleExtraBits[rleExtraBitsTblLen] = 127
+				rleCodesCount[18] = (rleCodesCount[18] or 0) + 1
 				count = 0
 			end
 		else
 			if count == 1 then
 				rleCodesTblLen = rleCodesTblLen + 1
 				rleCodes[rleCodesTblLen] = prev
+				rleCodesCount[prev] = (rleCodesCount[prev] or 0) + 1
 			elseif count == 2 then
 				rleCodesTblLen = rleCodesTblLen + 1
 				rleCodes[rleCodesTblLen] = prev
 				rleCodesTblLen = rleCodesTblLen + 1
 				rleCodes[rleCodesTblLen] = prev
+				rleCodesCount[prev] = (rleCodesCount[prev] or 0) + 2
 			elseif count >= 3 then
 				rleCodesTblLen = rleCodesTblLen + 1
-				rleCodes[rleCodesTblLen] = (prev ~= 0) and 16 or (count <= 10 and 17 or 18)
+				local rleCode = (prev ~= 0) and 16 or (count <= 10 and 17 or 18)
+				rleCodes[rleCodesTblLen] = rleCode
+				rleCodesCount[rleCode] = (rleCodesCount[rleCode] or 0) + 1
 				rleExtraBitsTblLen = rleExtraBitsTblLen + 1
 				rleExtraBits[rleExtraBitsTblLen] = (count <= 10) and (count - 3) or (count - 11)
 			end
@@ -607,6 +596,7 @@ local function RunLengthEncodeHuffmanLens(lcodeLens, maxNonZeroLenlCode, dcodeLe
 			if len and len ~= 0 then
 				rleCodesTblLen = rleCodesTblLen + 1
 				rleCodes[rleCodesTblLen] = len
+				rleCodesCount[len] = (rleCodesCount[len] or 0) + 1
 				count = 0
 			else
 				count = 1
@@ -614,7 +604,7 @@ local function RunLengthEncodeHuffmanLens(lcodeLens, maxNonZeroLenlCode, dcodeLe
 		end
 	end
 
-	return rleCodes, rleExtraBits, rleCodesTblLen
+	return rleCodes, rleExtraBits, rleCodesTblLen, rleCodesCount
 end
 
 local _codeLengthHuffmanCodeOrder = {16, 17, 18,
@@ -762,9 +752,11 @@ function lib:Compress(str)
 
 			lCodeTblSize = lCodeTblSize + 1
 			lCodes[lCodeTblSize] = code
+			lCodesCount[code] = (lCodesCount[code] or 0) + 1
 			
 			dCodeTblSize = dCodeTblSize + 1
 			dCodes[dCodeTblSize] = distCode
+			dCodesCount[distCode] = (dCodesCount[distCode] or 0) + 1
 			if lenExtraBitsLength > 0 then
 				local lenExtraBits = _lengthToExtraBits[len]
 				lExtraBitTblSize = lExtraBitTblSize + 1
@@ -788,16 +780,18 @@ function lib:Compress(str)
 	print("time_find_pairs", os.clock()-time2)
 	local time3 = os.clock()
 	
-	table_insert(lCodes, 256)
-	local lCodeLens, lCodeCodes, maxNonZeroLenlCode = GetHuffmanBitLengthAndCode(lCodes, 15, 285)
-	local dCodeLens, dCodeCodes, maxNonZeroLendCode = GetHuffmanBitLengthAndCode(dCodes, 15, 29)
+	lCodeTblSize = lCodeTblSize + 1
+	lCodes[lCodeTblSize] = 256
+	lCodesCount[256] = (lCodesCount[256] or 0) + 1
+	local lCodeLens, lCodeCodes, maxNonZeroLenlCode = GetHuffmanBitLengthAndCode(lCodesCount, 15, 285)
+	local dCodeLens, dCodeCodes, maxNonZeroLendCode = GetHuffmanBitLengthAndCode(dCodesCount, 15, 29)
 
 	print("time_contruct_table1", os.clock()-time3)
 	--print("maxNonZeroLenlCode", maxNonZeroLenlCode, "maxNonZeroLendCode", maxNonZeroLendCode)
-	local rleCodes, rleExtraBits, rleCodesTblLen =
+	local rleCodes, rleExtraBits, rleCodesTblLen, rleCodesCount =
 		RunLengthEncodeHuffmanLens(lCodeLens, maxNonZeroLenlCode, dCodeLens, maxNonZeroLendCode)
 
-	local codeLensCodeLens, codeLensCodeCodes = GetHuffmanBitLengthAndCode(rleCodes, 7, 18)
+	local codeLensCodeLens, codeLensCodeCodes = GetHuffmanBitLengthAndCode(rleCodesCount, 7, 18)
 
 	local HCLEN = 0
 	for i=1, 19 do
