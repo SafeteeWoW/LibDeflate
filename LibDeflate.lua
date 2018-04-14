@@ -652,7 +652,7 @@ local function RunLengthEncodeHuffmanLens(lcodeLens, maxNonZeroLenlCode, dcodeLe
 		end
 	end
 
-	return rleCodes, rleExtraBits
+	return rleCodes, rleExtraBits, rleCodesTblLen
 end
 
 local _codeLengthHuffmanCodeOrder = {16, 17, 18,
@@ -822,7 +822,7 @@ function lib:Compress(str)
 
 	print("time_contruct_table1", os.clock()-time3)
 	--print("maxNonZeroLenlCode", maxNonZeroLenlCode, "maxNonZeroLendCode", maxNonZeroLendCode)
-	local rleCodes, rleExtraBits =
+	local rleCodes, rleExtraBits, rleCodesTblLen =
 		RunLengthEncodeHuffmanLens(lCodeLens, maxNonZeroLenlCode, dCodeLens, maxNonZeroLendCode)
 
 	local codeLensCodeLens, codeLensCodeCodes = GetHuffmanBitLengthAndCode(rleCodes, 7, 18)
@@ -859,19 +859,12 @@ function lib:Compress(str)
 	end
 
 	local rleExtraBitsIndex = 1
-	for _, code in ipairs(rleCodes) do
-		local huffmanCode = codeLensCodeCodes[code]
-		local huffmanLength = codeLensCodeLens[code]
-		WriteBits(huffmanCode, huffmanLength)
+	for i=1, rleCodesTblLen do
+		local code = rleCodes[i]
+		WriteBits(codeLensCodeCodes[code], codeLensCodeLens[code])
 		if code >= 16 then
 			local extraBits = rleExtraBits[rleExtraBitsIndex]
-			if code == 16 then
-				WriteBits(extraBits, 2)
-			elseif code == 17 then
-				WriteBits(extraBits, 3)
-			else
-				WriteBits(extraBits, 7)
-			end
+			WriteBits(extraBits, (code == 16) and 2 or (code == 17 and 3 or 7))
 			rleExtraBitsIndex = rleExtraBitsIndex + 1
 		end
 	end
