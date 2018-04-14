@@ -22,48 +22,48 @@ local table_insert = table.insert
 local bit_band = bit.band
 local t = {}
 for i = 1, 285 do
-  t[i] = i
+	t[i] = i
 end
 
 local numToChar = {}
 for i=0, 255 do
-  numToChar[i] = string_char(i)
+	numToChar[i] = string_char(i)
 end
 
 local charToByte = {}
 for i=0, 255 do
-  charToByte[string_char(i)] = i
+	charToByte[string_char(i)] = i
 end
 
 local pairs = pairs
 local ipairs = ipairs
 
 local function helper()
-  print("end")
-  return 285
+	print("end")
+	return 285
 end
 
 local function helper1()
-  print("start")
-  return 1
+	print("start")
+	return 1
 end
 
 local function helper2()
-  print("step")
-  return 1
+	print("step")
+	return 1
 end
 
 local str ="abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1abj;sdfjakldjfldfjlaj;123012903912-3491-24-1"
 local function test()
-  local x = 192391309182031
-  for i=1, 300000 do
-    for j=1, 32 do
-      local a,b,c,d,e, f, g, h=string_byte(str, j*8+1, j*8+8)
-      x=x+a+b+c+d+e+f+g+h
-    end
-       
-  end
-  return x
+	local x = 192391309182031
+	for i=1, 300000 do
+		for j=1, 32 do
+			local a,b,c,d,e, f, g, h=string_byte(str, j*8+1, j*8+8)
+			x=x+a+b+c+d+e+f+g+h
+		end
+
+	end
+	return x
 end
 
 local time = os.clock()

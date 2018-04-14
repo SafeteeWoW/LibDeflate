@@ -10,7 +10,7 @@ function CheckStr(str)
 	print(("compressed size: %d, time: %.4f"):format(compressed:len(), elapsed))
 	--profiler.stop()
 
-  local fileName = "tests\\data\\str.deflate"
+	local fileName = "tests\\data\\str.deflate"
 	local outputFile = io.open(fileName, "wb")
 	outputFile:write(compressed)
 	outputFile:close()
@@ -38,13 +38,13 @@ end
 function CheckFile(inputFileName)
 	local inputFile = io.open(inputFileName, "rb")
 	if not inputFile then
-	 error("Cannot find "..inputFileName)
+		error("Cannot find "..inputFileName)
 	end
 	local inputFileContent = inputFile:read("*all")
 	local inputFileLen = inputFileContent:len()
 	print(("%s: %d bytes"):format(inputFileName, inputFileLen))
 	inputFile:close()
-	
+
 	local startTime = os.clock()
 	--os.execute("rm -f profileresult.txt")
 	--profiler.start("profileresult.txt")
