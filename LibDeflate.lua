@@ -36,7 +36,7 @@ local MAX_SYMBOL = 285
 local MAX_CODE_LENGTH = 15
 local BLOCK_SIZE = 32768
 
---local function print() end
+local function print() end
 
 local function wipe(t)
 	for k in pairs(t) do

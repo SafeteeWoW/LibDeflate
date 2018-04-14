@@ -35,7 +35,7 @@ function CheckStr(str)
 	UTest.equal(str, testFileContent)
 end
 
-function CheckFile(inputFileName)
+function CheckFile(inputFileName, count)
 	local inputFile = io.open(inputFileName, "rb")
 	if not inputFile then
 		error("Cannot find "..inputFileName)
@@ -48,9 +48,12 @@ function CheckFile(inputFileName)
 	local startTime = os.clock()
 	--os.execute("rm -f profileresult.txt")
 	--profiler.start("profileresult.txt")
-	local compressed = Lib:Compress(inputFileContent)
+	local compressed
+	for i=1, count or 1 do
+		compressed = Lib:Compress(inputFileContent)
+	end
 	local elapsed = os.clock()-startTime
-	print(("compressed size: %d, time: %.4f"):format(compressed:len(), elapsed))
+	print(("compressed size: %d, time: %.4f"):format(compressed:len(), elapsed/count))
 	--profiler.stop()
 
 	local outputFile = io.open(inputFileName..".deflate", "wb")
