@@ -9,6 +9,8 @@ local function BasicTests()
 	function UTest.TestEmpty()
     CheckStr("")
     CheckStr("abcdefgh")
+    CheckStr("aaaaaaaaaaaaaaaaaa")
+    CheckStr("ab")
 	end
 	---- Test begins
 	function UTest.SmallTestFile()

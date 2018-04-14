@@ -37,11 +37,14 @@ end
 
 function CheckFile(inputFileName)
 	local inputFile = io.open(inputFileName, "rb")
+	if not inputFile then
+	 error("Cannot find "..inputFileName)
+	end
 	local inputFileContent = inputFile:read("*all")
 	local inputFileLen = inputFileContent:len()
 	print(("%s: %d bytes"):format(inputFileName, inputFileLen))
 	inputFile:close()
-
+	
 	local startTime = os.clock()
 	--os.execute("rm -f profileresult.txt")
 	--profiler.start("profileresult.txt")

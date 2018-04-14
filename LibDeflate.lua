@@ -2,7 +2,7 @@
 -- License: GPLv3
 
 require "bit"
-require "profiler"
+--require "profiler"
 
 local lib = {}
 
