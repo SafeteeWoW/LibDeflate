@@ -608,6 +608,9 @@ local function FastFindPairs(hashTables, hash, index)
 
 	while (head and chain <= _max_chain) do
 		local prev = head[1]
+		if chain == _max_chain then
+			head[2] = nil
+		end
 		head = head[2]
 		chain = chain + 1
 		if prev and prev < index and index - prev <= SLIDING_WINDOW then
