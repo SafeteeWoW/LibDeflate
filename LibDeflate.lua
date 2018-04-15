@@ -685,7 +685,11 @@ while (i <= strLen) do
 end
 
 --]]
-	
+
+_niceLength = 32
+_max_chain = 32
+local _max_lazy_match = 32
+
 function lib:Compress(str)
 	--collectgarbage("stop")
 	local time1 = os.clock()
@@ -716,27 +720,30 @@ function lib:Compress(str)
 	hash = bit_band(bit_bxor(bit_lshift(hash, 5), _strTable[1] or 0), 32767)
 	hash = bit_band(bit_bxor(bit_lshift(hash, 5), _strTable[2] or 0), 32767)
 	
-	_niceLength = 258
-	_max_chain = 4096
+
 	local matchAvailable = false
 	local prevLen = 0
 	local prevDist = 0
 	local curLen = 0
 	local curDist = 0
-	local _max_lazy_match = 258
-	
 	local hashIndex = 0
-	while (index <= strLen + 1) do
+	
+	local useLazyEvaluation = false
+	local indexEnd = strLen + (useLazyEvaluation and 1 or 0)
+	while (index <= indexEnd) do
 		prevLen = curLen
 		prevDist = curDist
 		curLen = 0
 		hash = bit_bxor(hash*32, _strTable[index+2] or 0) % 32768
-		if (index+2 <= strLen and prevLen < _max_lazy_match) then
+		if (index+2 <= strLen and (not useLazyEvaluation or prevLen < _max_lazy_match)) then
 			curLen, curDist = FindPairs(hashTables, hash, index) -- TODO: Put update hash out of FastFindPairs
 		end
 		hashIndex = index
 		hashTables[hash] = {index, hashTables[hash]}
-		if (matchAvailable and (prevLen > 3 or (prevLen == 3 and prevDist < 4096)) and curLen <= prevLen )then
+		if not useLazyEvaluation then
+			prevLen, prevDist = curLen, curDist
+		end
+		if ((not useLazyEvaluation or matchAvailable) and (prevLen > 3 or (prevLen == 3 and prevDist < 4096)) and curLen <= prevLen )then
 			local code = _lengthToLiteralLengthCode[prevLen]
 			local distCode = _distanceToCode[prevDist]
 
@@ -761,15 +768,15 @@ function lib:Compress(str)
 				dExtraBits[dExtraBitTblSize] = distExtraBits
 			end
 			
-			for i=index+1, index+prevLen-2 do
+			for i=index+1, index+prevLen-(useLazyEvaluation and 2 or 1) do
 				hash = bit_bxor(hash*32, _strTable[i+2] or 0) % 32768
 				hashTables[hash] = {i, hashTables[hash]}
 				hashIndex = i
 			end
-			index = index + prevLen - 1
+			index = index + prevLen - (useLazyEvaluation and 1 or 0)
 			matchAvailable = false
-		elseif matchAvailable then
-			local code = _strTable[index-1]
+		elseif (not useLazyEvaluation) or matchAvailable then
+			local code = _strTable[useLazyEvaluation and (index-1) or index]
 			lCodeTblSize = lCodeTblSize + 1
 			lCodes[lCodeTblSize] = code
 			lCodesCount[code] = (lCodesCount[code] or 0) + 1
