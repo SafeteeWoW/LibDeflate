@@ -564,17 +564,6 @@ local _codeLengthHuffmanCodeOrder = {16, 17, 18,
 local _strTable = {}
 local _strLen = 0
 
-
-
-local function FindPairs(hashTables, hash, index)
-	local curDist = 0
-	local curLen = 0
-
-
-	return curLen, curDist
-end
-
-
 local function strToTable(str, t)
 	wipe(t)
 	for i=0, str:len()-16, 16 do
@@ -634,16 +623,11 @@ local _configuration_table = {
 }
 
 function lib:Compress(str, level)
-
 	if not level then
 		level = 1
 	end
 	
-	local config_use_lazy_evaluation, config_good_prev_length, config_max_lazy_match
-			, config_nice_length, config_max_hash_chain  = unpack(_configuration_table[level])
-	local config_max_insert_length = config_max_lazy_match
-	
-	local config_good_hash_chain = math_floor(config_max_hash_chain/4)
+	local config_use_lazy, _, config_max_lazy_match, config_max_hash_chain, config_nice_length = unpack(_configuration_table[level])
 	--collectgarbage("stop")
 	local time1 = os.clock()
 	strToTable(str, _strTable) -- TODO: Fix memory usage when file is very large.
@@ -663,7 +647,6 @@ function lib:Compress(str, level)
 	local lExtraBitTblSize = 0
 	local dExtraBits = {}
 	local dExtraBitTblSize = 0
-	
 
 	local index = 1
 	local strLen = str:len()
@@ -672,32 +655,28 @@ function lib:Compress(str, level)
 	local hash = 0
 	hash = bit_band(bit_bxor(bit_lshift(hash, 5), _strTable[1] or 0), 32767)
 	hash = bit_band(bit_bxor(bit_lshift(hash, 5), _strTable[2] or 0), 32767)
-	
+
 	local matchAvailable = false
 	local prevLen = 0
 	local prevDist = 0
 	local curLen = 0
 	local curDist = 0
-	local indexEnd = strLen + (config_use_lazy_evaluation and 1 or 0)
+	local hashIndex = 0
 	
-
+	local indexEnd = strLen + (config_use_lazy and 1 or 0)
 	while (index <= indexEnd) do
 		prevLen = curLen
 		prevDist = curDist
 		curLen = 0
 		hash = bit_bxor(hash*32, _strTable[index+2] or 0) % 32768
+		if (index+2 <= strLen and (not config_use_lazy or prevLen < config_max_lazy_match)) then
 		
-		-- Find LZ77 Pairs
-		if (index+2 <= strLen and (not config_use_lazy_evaluation or prevLen < config_max_lazy_match)) then
 			local hashHead = hashTables[hash]
 			local prevHead = nil
 			local head = hashHead
 			local chain = 1
-			local chainSize = config_max_hash_chain
-			if (config_use_lazy_evaluation) and prevLen > config_good_prev_length then
-				chainSize = config_good_hash_chain
-			end
-			while (head and chain <= chainSize) do
+		
+			while (head and chain <= config_max_hash_chain) do
 				local prev = head[1]
 				if chain == config_max_hash_chain then
 					head[2] = nil
@@ -726,20 +705,18 @@ function lib:Compress(str, level)
 						curLen = j
 						curDist = index - prev
 					end
-					if curLen > config_nice_length then
+					if curLen >= config_nice_length then
 						break
 					end
 				end	
 			end
 		end
-		
+		hashIndex = index
 		hashTables[hash] = {index, hashTables[hash]}
-		
-		if not config_use_lazy_evaluation then
+		if not config_use_lazy then
 			prevLen, prevDist = curLen, curDist
 		end
-
-		if ((not config_use_lazy_evaluation or matchAvailable) and (prevLen > 3 or (prevLen == 3 and prevDist < 4096)) and curLen <= prevLen )then
+		if ((not config_use_lazy or matchAvailable) and (prevLen > 3 or (prevLen == 3 and prevDist < 4096)) and curLen <= prevLen )then
 			local code = _lengthToLiteralLengthCode[prevLen]
 			local distCode = _distanceToCode[prevDist]
 
@@ -764,17 +741,15 @@ function lib:Compress(str, level)
 				dExtraBits[dExtraBitTblSize] = distExtraBits
 			end
 			
-			
-			for i=index+1, index+prevLen-(config_use_lazy_evaluation and 2 or 1) do
+			for i=index+1, index+prevLen-(config_use_lazy and 2 or 1) do
 				hash = bit_bxor(hash*32, _strTable[i+2] or 0) % 32768
-				if (not config_use_lazy_evaluation and prevLen <= config_max_insert_length) then
-					hashTables[hash] = {i, hashTables[hash]}
-				end
+				hashTables[hash] = {i, hashTables[hash]}
+				hashIndex = i
 			end
-			index = index + prevLen - (config_use_lazy_evaluation and 1 or 0)
+			index = index + prevLen - (config_use_lazy and 1 or 0)
 			matchAvailable = false
-		elseif (not config_use_lazy_evaluation) or matchAvailable then
-			local code = _strTable[config_use_lazy_evaluation and (index-1) or index]
+		elseif (not config_use_lazy) or matchAvailable then
+			local code = _strTable[config_use_lazy and (index-1) or index]
 			lCodeTblSize = lCodeTblSize + 1
 			lCodes[lCodeTblSize] = code
 			lCodesCount[code] = (lCodesCount[code] or 0) + 1
