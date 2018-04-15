@@ -564,54 +564,14 @@ local _codeLengthHuffmanCodeOrder = {16, 17, 18,
 local _strTable = {}
 local _strLen = 0
 
-local _niceLength; -- quit search above this match length
-local _max_chain;
+
 
 local function FindPairs(hashTables, hash, index)
-	local dist = 0
-	local len = 0
-	local hashHead = hashTables[hash]
-	
-	local prevHead = nil
-	local head = hashHead
-	local chain = 1
+	local curDist = 0
+	local curLen = 0
 
-	while (head and chain <= _max_chain) do
-		local prev = head[1]
-		if chain == _max_chain then
-			head[2] = nil
-		end
-		if index - prev > SLIDING_WINDOW then
-			head[2] = nil
-			if not prevHead then 
-				hashTables[hash] = nil
-			else 
-				prevHead[2] = nil
-			end
-			break
-		end
-		head = head[2]
-		chain = chain + 1
-		if prev and prev < index then
-			local j = 0
-			repeat
-				if (_strTable[prev+j] == _strTable[index+j]) then
-					j = j + 1
-				else
-					break
-				end
-			until (j >= 258 or index+j > _strLen)
-			if j > len then
-				len = j
-				dist = index - prev
-			end
-			if len >= _niceLength then
-				break
-			end
-		end	
-	end
 
-	return len, dist
+	return curLen, curDist
 end
 
 
@@ -644,53 +604,46 @@ local function strToTable(str, t)
 end
 
 --[[
-while (i <= strLen) do
-	local len, dist
-	if (i+2 <= strLen) then
-		len, dist, hash = FastFindPairs(hashTables, hash, i)
-	end
-	if len and (len == 3 and dist < 4096 or len > 3) then
-		local code = _lengthToLiteralLengthCode[len]
-		local distCode = _distanceToCode[dist]
-		if not distCode then print("nil distcode", dist) end
-
-		local lenExtraBitsLength = _lengthToExtraBitsLength[len]
-		local distExtraBitsLength = _distanceToExtraBitsLength[dist]
-
-		lCodeTblSize = lCodeTblSize + 1
-		lCodes[lCodeTblSize] = code
-		lCodesCount[code] = (lCodesCount[code] or 0) + 1
-		
-		dCodeTblSize = dCodeTblSize + 1
-		dCodes[dCodeTblSize] = distCode
-		dCodesCount[distCode] = (dCodesCount[distCode] or 0) + 1
-		if lenExtraBitsLength > 0 then
-			local lenExtraBits = _lengthToExtraBits[len]
-			lExtraBitTblSize = lExtraBitTblSize + 1
-			lExtraBits[lExtraBitTblSize] = lenExtraBits
-		end
-		if distExtraBitsLength > 0 then
-			local distExtraBits = _distanceToExtraBits[dist]
-			dExtraBitTblSize = dExtraBitTblSize + 1
-			dExtraBits[dExtraBitTblSize] = distExtraBits
-		end
-		i = i + len
-	else
-		local code = _strTable[i]
-		lCodeTblSize = lCodeTblSize + 1
-		lCodes[lCodeTblSize] = code
-		lCodesCount[code] = (lCodesCount[code] or 0) + 1
-		i = i + 1
-	end
-end
+	key of the configuration table is the compression level, and its value stores the compression setting
+	See also https://github.com/madler/zlib/blob/master/doc/algorithm.txt,
+	And https://github.com/madler/zlib/blob/master/deflate.c for more infomration
+	
+	The meaning of each field:
+	1. use_lazy_evaluation: true/false. Whether the program uses lazy evaluation.
+							See what is "lazy evaluation" in the link above.
+							lazy_evaluation improves ratio, but relatively slow.
+	2. good_prev_length: Only effective if lazy is set, Only use 1/4 of max_chain if prev length of lazy match is above this.
+	3. max_insert_length/max_lazy_match: 
+			If not using lazy evaluation, Insert new strings in the hash table only if the match length is not greater than this length.Only continue lazy evaluation
+			If using lazy evaluation, only continue lazy evaluation if prev length is strictly smaller than this.
+	4. nice_length: Number. Don't continue to go down the hash chain if match length is above this.
+	5. max_chain: Number. The maximum number of hash chains we look.
 
 --]]
+local _configuration_table = {
+	[1] = {false,	nil,	4,	8, 	4},		-- gzip -1
+	[2] = {false,	nil,	5,	18, 8},		-- gzip -2
+	[3] = {false,	nil,	6, 	32,	32,},	-- gzip -3
 
-_niceLength = 32
-_max_chain = 32
-local _max_lazy_match = 32
+	[4] = {true,	4,		4,		16,	16},	-- gzip -4
+	[5] = {true,	8,		16,		32,	32},	-- gzip -5
+	[6] = {true,	8,		16,		128,128},  	-- gzip -6
+	[7] = {true,	8,		32,		128,256},  	-- gzip -7
+	[8] = {true,	32, 	128,	258,1024}, 	-- gzip -8
+	[9] = {true,	32, 	258,	258,4096}, 	-- gzip -9 (maximum compression)
+}
 
-function lib:Compress(str)
+function lib:Compress(str, level)
+
+	if not level then
+		level = 1
+	end
+	
+	local config_use_lazy_evaluation, config_good_prev_length, config_max_lazy_match
+			, config_nice_length, config_max_hash_chain  = unpack(_configuration_table[level])
+	local config_max_insert_length = config_max_lazy_match
+	
+	local config_good_hash_chain = math_floor(config_max_hash_chain/4)
 	--collectgarbage("stop")
 	local time1 = os.clock()
 	strToTable(str, _strTable) -- TODO: Fix memory usage when file is very large.
@@ -720,30 +673,73 @@ function lib:Compress(str)
 	hash = bit_band(bit_bxor(bit_lshift(hash, 5), _strTable[1] or 0), 32767)
 	hash = bit_band(bit_bxor(bit_lshift(hash, 5), _strTable[2] or 0), 32767)
 	
-
 	local matchAvailable = false
 	local prevLen = 0
 	local prevDist = 0
 	local curLen = 0
 	local curDist = 0
-	local hashIndex = 0
+	local indexEnd = strLen + (config_use_lazy_evaluation and 1 or 0)
 	
-	local useLazyEvaluation = false
-	local indexEnd = strLen + (useLazyEvaluation and 1 or 0)
+
 	while (index <= indexEnd) do
 		prevLen = curLen
 		prevDist = curDist
 		curLen = 0
 		hash = bit_bxor(hash*32, _strTable[index+2] or 0) % 32768
-		if (index+2 <= strLen and (not useLazyEvaluation or prevLen < _max_lazy_match)) then
-			curLen, curDist = FindPairs(hashTables, hash, index) -- TODO: Put update hash out of FastFindPairs
+		
+		-- Find LZ77 Pairs
+		if (index+2 <= strLen and (not config_use_lazy_evaluation or prevLen < config_max_lazy_match)) then
+			local hashHead = hashTables[hash]
+			local prevHead = nil
+			local head = hashHead
+			local chain = 1
+			local chainSize = config_max_hash_chain
+			if (config_use_lazy_evaluation) and prevLen > config_good_prev_length then
+				chainSize = config_good_hash_chain
+			end
+			while (head and chain <= chainSize) do
+				local prev = head[1]
+				if chain == config_max_hash_chain then
+					head[2] = nil
+				end
+				if index - prev > SLIDING_WINDOW then
+					head[2] = nil
+					if not prevHead then 
+						hashTables[hash] = nil
+					else 
+						prevHead[2] = nil
+					end
+					break
+				end
+				head = head[2]
+				chain = chain + 1
+				if prev and prev < index then
+					local j = 0
+					repeat
+						if (_strTable[prev+j] == _strTable[index+j]) then
+							j = j + 1
+						else
+							break
+						end
+					until (j >= 258 or index+j > _strLen)
+					if j > curLen then
+						curLen = j
+						curDist = index - prev
+					end
+					if curLen > config_nice_length then
+						break
+					end
+				end	
+			end
 		end
-		hashIndex = index
+		
 		hashTables[hash] = {index, hashTables[hash]}
-		if not useLazyEvaluation then
+		
+		if not config_use_lazy_evaluation then
 			prevLen, prevDist = curLen, curDist
 		end
-		if ((not useLazyEvaluation or matchAvailable) and (prevLen > 3 or (prevLen == 3 and prevDist < 4096)) and curLen <= prevLen )then
+
+		if ((not config_use_lazy_evaluation or matchAvailable) and (prevLen > 3 or (prevLen == 3 and prevDist < 4096)) and curLen <= prevLen )then
 			local code = _lengthToLiteralLengthCode[prevLen]
 			local distCode = _distanceToCode[prevDist]
 
@@ -768,15 +764,17 @@ function lib:Compress(str)
 				dExtraBits[dExtraBitTblSize] = distExtraBits
 			end
 			
-			for i=index+1, index+prevLen-(useLazyEvaluation and 2 or 1) do
+			
+			for i=index+1, index+prevLen-(config_use_lazy_evaluation and 2 or 1) do
 				hash = bit_bxor(hash*32, _strTable[i+2] or 0) % 32768
-				hashTables[hash] = {i, hashTables[hash]}
-				hashIndex = i
+				if (not config_use_lazy_evaluation and prevLen <= config_max_insert_length) then
+					hashTables[hash] = {i, hashTables[hash]}
+				end
 			end
-			index = index + prevLen - (useLazyEvaluation and 1 or 0)
+			index = index + prevLen - (config_use_lazy_evaluation and 1 or 0)
 			matchAvailable = false
-		elseif (not useLazyEvaluation) or matchAvailable then
-			local code = _strTable[useLazyEvaluation and (index-1) or index]
+		elseif (not config_use_lazy_evaluation) or matchAvailable then
+			local code = _strTable[config_use_lazy_evaluation and (index-1) or index]
 			lCodeTblSize = lCodeTblSize + 1
 			lCodes[lCodeTblSize] = code
 			lCodesCount[code] = (lCodesCount[code] or 0) + 1

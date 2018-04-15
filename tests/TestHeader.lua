@@ -1,6 +1,7 @@
 UTest = require 'tests\\framework\\u-test'
 Lib = require 'LibDeflate'
 
+math.randomseed(os.time())
 function CheckStr(str)
 	local startTime = os.clock()
 	--os.execute("rm -f profileresult.txt")
@@ -35,26 +36,35 @@ function CheckStr(str)
 	UTest.equal(str, testFileContent)
 end
 
-function CheckFile(inputFileName, count)
+function CheckFile(inputFileName, count, level, ...)
 	local inputFile = io.open(inputFileName, "rb")
 	if not inputFile then
 		error("Cannot find "..inputFileName)
 	end
 	local inputFileContent = inputFile:read("*all")
 	local inputFileLen = inputFileContent:len()
-	print(("%s: %d bytes"):format(inputFileName, inputFileLen))
 	inputFile:close()
 
-	local startTime = os.clock()
-	--os.execute("rm -f profileresult.txt")
-	--profiler.start("profileresult.txt")
-	local compressed
-	count = count or 1
-	for i=1, count or 1 do
-		compressed = Lib:Compress(inputFileContent)
+	if not level then
+		level = math.random(1, 9)
 	end
-	local elapsed = os.clock()-startTime
-	print(("compressed size: %d, time: %.4f"):format(compressed:len(), elapsed/count))
+	local levels = {...}
+	table.insert(levels, 1, level)
+
+	local compressed
+	for _, level in ipairs(levels) do
+		print(("Compressing %s: %d, Level: %d"):format(inputFileName, inputFileLen, level))
+		local startTime = os.clock()
+		--os.execute("rm -f profileresult.txt")
+		--profiler.start("profileresult.txt")
+
+		count = count or 1
+		for i=1, count or 1 do
+			compressed = Lib:Compress(inputFileContent, level)
+		end
+		local elapsed = os.clock()-startTime
+		print(("Done: %s: orig: %d compressed: %d, time: %.4f, Level: %d"):format(inputFileName, inputFileLen, compressed:len(), elapsed/count, level))
+	end
 	--profiler.stop()
 
 	local outputFile = io.open(inputFileName..".deflate", "wb")
