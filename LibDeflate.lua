@@ -44,6 +44,7 @@ local ipairs = ipairs
 local unpack = unpack
 local wipe = wipe
 local math_floor = math.floor
+local math_min = math.min
 local bit_band = bit.band
 local bit_bor = bit.bor
 local bit_bxor = bit.bxor
@@ -576,7 +577,7 @@ end
 local _codeLengthHuffmanCodeOrder = {16, 17, 18,
 	0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15}
 
-local function strToTable(str, t, start, stop)
+local function loadStrToTable(str, t, start, stop)
 	for i=start-1, stop-16, 16 do
 		local x1, x2, x3, x4, x5, x6, x7, x8,
 			x9, x10, x11, x12, x13, x14, x15, x16 = string_byte(str, i+1, i+16)
@@ -645,12 +646,22 @@ function LibDeflate:Compress(str, level)
 	local time1 = os.clock()
 	local strLen = str:len()
 	local strTable = {}
-	strToTable(str, strTable, 1, strLen) -- TODO: Fix memory usage when file is very large.
+
+	-- Only hold max of 256KB string in the strTable at one time.
+	-- When we have read half of it, wipe the first 64KB bytes of the strTable and load the next 64KB.
+	-- Don't bother this if the input string is shorter than 256KB.
+	-- This is to use less memory when the file is very large, so we don't get out of memory error when
+	-- the file is on the order of ~10MB.
+	local MAX_LOAD_STRING_SIZE = 256*1024
+	local strLoadEnd = MAX_LOAD_STRING_SIZE
+	loadStrToTable(str, strTable, 1, math_min(strLen, strLoadEnd))
+	for i=1,  math_min(strLen, strLoadEnd) do
+		assert(strTable[i] == string_byte(str, i, i), "WTJFLdfsdfasdfsadJSDLFJDS")
+	end
+	local nextLoadStrIndex = MAX_LOAD_STRING_SIZE/2+1
 
 	print("time_read_string", os.clock()-time1)
 	local time2 = os.clock()
-	--for i=1, str:len() do
-	--  assert(strTable[i] == string_byte(str, i, i), "error") end
 	local lCodes = {}
 	local lCodeTblSize = 0
 	local lCodesCount = {}
@@ -679,6 +690,14 @@ function LibDeflate:Compress(str, level)
 	
 	local indexEnd = strLen + (config_use_lazy and 1 or 0)
 	while (index <= indexEnd) do
+		if strLoadEnd < strLen and index >= nextLoadStrIndex then
+			for i=nextLoadStrIndex-MAX_LOAD_STRING_SIZE/2, nextLoadStrIndex-MAX_LOAD_STRING_SIZE/4-1 do
+				strTable[i] = nil
+			end
+			nextLoadStrIndex =  nextLoadStrIndex + MAX_LOAD_STRING_SIZE/4
+			strLoadEnd = strLoadEnd + MAX_LOAD_STRING_SIZE/4
+			loadStrToTable(str, strTable, strLoadEnd-MAX_LOAD_STRING_SIZE/4+1, math_min(strLen, strLoadEnd))
+		end
 		prevLen = curLen
 		prevDist = curDist
 		curLen = 0

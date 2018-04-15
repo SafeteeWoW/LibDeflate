@@ -19,6 +19,10 @@ local function PerformanceTests()
 	function UTest.ReconnectData()
 		CheckFile("tests\\data\\ReconnectData.txt", 100, 1,2,3,4,5,6,7,8,9)
 	end
+	
+	function UTest.Kennedy()
+		CheckFile("tests\\data\\Cantrbry\\Kennedy.xls", 1, 1,2,3,4,5,6,7,8,9)
+	end
 end
 
 PerformanceTests()
