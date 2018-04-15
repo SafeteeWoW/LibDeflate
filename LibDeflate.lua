@@ -611,9 +611,13 @@ local function FastFindPairs(hashTables, hash, index)
 		if chain == _max_chain then
 			head[2] = nil
 		end
+		if index - prev > SLIDING_WINDOW then
+			head[2] = nil
+			break
+		end
 		head = head[2]
 		chain = chain + 1
-		if prev and prev < index and index - prev <= SLIDING_WINDOW then
+		if prev and prev < index then
 			local j = 0
 			repeat
 				if (_strTable[prev+j] == _strTable[index+j]) then
