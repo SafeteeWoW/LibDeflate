@@ -40,21 +40,6 @@ local bit_bnot = bit.bnot
 local bit_lshift = bit.lshift
 local bit_rshift = bit.rshift
 
-if not wipe then
-	wipe = function(t)
-		for k in pairs(t) do
-			t[k] = nil
-		end
-	end
-end
-
-local SLIDING_WINDOW = 32768
-local MIN_MATCH_LEN = 3
-local MAX_MATCH_LEN = 258
-local MAX_SYMBOL = 285
-local MAX_CODE_LENGTH = 15
-local BLOCK_SIZE = 32768
-
 local function print() end
 
 local function PrintTable(t)
@@ -65,138 +50,152 @@ local function PrintTable(t)
 	print(table_concat(tmp, " "))
 end
 
---local _literalLengthCodeToBaseLength = {}
-local _literalLengthCodeToExtraBitsLength = {}
+if not wipe then
+	wipe = function(t)
+		for k in pairs(t) do
+			t[k] = nil
+		end
+	end
+end
 
-local _lengthToLiteralLengthCode = {}
+---------------------------------------
+--	Precalculated tables start.
+---------------------------------------
+local _literalCodeToExtraBitsLen = {}
+
+local _lengthToLiteralCode = {}
 local _lengthToExtraBits = {}
-local _lengthToExtraBitsLength = {}
-
-local _distanceCodeToExtraBitsLength = {}
+local _lengthToExtraBitsLen = {}
 
 local _distanceToCode = {}
 local _distanceToExtraBits = {}
-local _distanceToExtraBitsLength = {}
+local _distanceToExtraBitsLen = {}
+
+local _byteToChar = {}
+local _twoBytesToChar = {}
 
 for code=0, 285 do
 	if code <= 255 then
-		--_literalLengthCodeToBaseLength[code] = 1
-		_literalLengthCodeToExtraBitsLength[code] = 0
+		_literalCodeToExtraBitsLen[code] = 0
 	elseif code == 256 then
-		--_literalLengthCodeToBaseLength[code] = 1
-		_literalLengthCodeToExtraBitsLength[code] = 0
+		_literalCodeToExtraBitsLen[code] = 0
 	elseif code <= 264 then
-		--_literalLengthCodeToBaseLength[code] = code - 254
-		_literalLengthCodeToExtraBitsLength[code] = 0
+		_literalCodeToExtraBitsLen[code] = 0
 	elseif code <= 268 then
-		--_literalLengthCodeToBaseLength[code] = (code-265)*2+11
-		_literalLengthCodeToExtraBitsLength[code] = 1
+		_literalCodeToExtraBitsLen[code] = 1
 	elseif code <= 272 then
-		--_literalLengthCodeToBaseLength[code] = (code-269)*4+19
-		_literalLengthCodeToExtraBitsLength[code] = 2
+		_literalCodeToExtraBitsLen[code] = 2
 	elseif code <= 276 then
-		--_literalLengthCodeToBaseLength[code] = (code-273)*8+35
-		_literalLengthCodeToExtraBitsLength[code] = 3
+		_literalCodeToExtraBitsLen[code] = 3
 	elseif code <= 280 then
-		--_literalLengthCodeToBaseLength[code] = (code-277)*16+67
-		_literalLengthCodeToExtraBitsLength[code] = 4
+		_literalCodeToExtraBitsLen[code] = 4
 	elseif code <= 284 then
-		--_literalLengthCodeToBaseLength[code] = (code-281)*32+131
-		_literalLengthCodeToExtraBitsLength[code] = 5
+		_literalCodeToExtraBitsLen[code] = 5
 	elseif code == 285 then
-		--_literalLengthCodeToBaseLength[code] = 258
-		_literalLengthCodeToExtraBitsLength[code] = 0
+		_literalCodeToExtraBitsLen[code] = 0
 	end
 end
 
 for length=3, 258 do
 	if length <= 10 then
-		_lengthToLiteralLengthCode[length] = length + 254
-		_lengthToExtraBitsLength[length] = 0
+		_lengthToLiteralCode[length] = length + 254
+		_lengthToExtraBitsLen[length] = 0
 	elseif length <= 18 then
-		_lengthToLiteralLengthCode[length] = math_floor((length-11)/2) + 265
-		_lengthToExtraBitsLength[length] = 1
+		_lengthToLiteralCode[length] = math_floor((length-11)/2) + 265
+		_lengthToExtraBitsLen[length] = 1
 		_lengthToExtraBits[length] = (length-11) % 2
 	elseif length <= 34 then
-		_lengthToLiteralLengthCode[length] = math_floor((length-19)/4) + 269
-		_lengthToExtraBitsLength[length] = 2
+		_lengthToLiteralCode[length] = math_floor((length-19)/4) + 269
+		_lengthToExtraBitsLen[length] = 2
 		_lengthToExtraBits[length] = (length-19) % 4
 	elseif length <= 66 then
-		_lengthToLiteralLengthCode[length] = math_floor((length-35)/8) + 273
-		_lengthToExtraBitsLength[length] = 3
+		_lengthToLiteralCode[length] = math_floor((length-35)/8) + 273
+		_lengthToExtraBitsLen[length] = 3
 		_lengthToExtraBits[length] = (length-35) % 8
 	elseif length <= 130 then
-		_lengthToLiteralLengthCode[length] = math_floor((length-67)/16) + 277
-		_lengthToExtraBitsLength[length] = 4
+		_lengthToLiteralCode[length] = math_floor((length-67)/16) + 277
+		_lengthToExtraBitsLen[length] = 4
 		_lengthToExtraBits[length] = (length-67) % 16
 	elseif length <= 257 then
-		_lengthToLiteralLengthCode[length] = math_floor((length-131)/32) + 281
-		_lengthToExtraBitsLength[length] = 5
+		_lengthToLiteralCode[length] = math_floor((length-131)/32) + 281
+		_lengthToExtraBitsLen[length] = 5
 		_lengthToExtraBits[length] = (length-131) % 32
 	elseif length == 258 then
-		_lengthToLiteralLengthCode[length] = 285
-		_lengthToExtraBitsLength[length] = 0
+		_lengthToLiteralCode[length] = 285
+		_lengthToExtraBitsLen[length] = 0
 	end
 end
 
 for dist=1, 32768 do
 	if dist <= 4 then
 		_distanceToCode[dist] = dist - 1
-		_distanceToExtraBitsLength[dist] = 0
+		_distanceToExtraBitsLen[dist] = 0
 	elseif dist <= 8 then
 		_distanceToCode[dist] = math_floor((dist - 5)/2) + 4
-		_distanceToExtraBitsLength[dist] = 1
+		_distanceToExtraBitsLen[dist] = 1
 		_distanceToExtraBits[dist] = (dist-5) % 2
 	elseif dist <= 16 then
 		_distanceToCode[dist] = math_floor((dist - 9)/4) + 6
-		_distanceToExtraBitsLength[dist] = 2
+		_distanceToExtraBitsLen[dist] = 2
 		_distanceToExtraBits[dist] = (dist-9) % 4
 	elseif dist <= 32 then
 		_distanceToCode[dist] = math_floor((dist - 17)/8) + 8
-		_distanceToExtraBitsLength[dist] = 3
+		_distanceToExtraBitsLen[dist] = 3
 		_distanceToExtraBits[dist] = (dist-17) % 8
 	elseif dist <= 64 then
 		_distanceToCode[dist] = math_floor((dist - 33)/16) + 10
-		_distanceToExtraBitsLength[dist] = 4
+		_distanceToExtraBitsLen[dist] = 4
 		_distanceToExtraBits[dist] = (dist-33) % 16
 	elseif dist <= 128 then
 		_distanceToCode[dist] = math_floor((dist - 65)/32) + 12
-		_distanceToExtraBitsLength[dist] = 5
+		_distanceToExtraBitsLen[dist] = 5
 		_distanceToExtraBits[dist] = (dist-65) % 32
 	elseif dist <= 256 then
 		_distanceToCode[dist] = math_floor((dist - 129)/64) + 14
-		_distanceToExtraBitsLength[dist] = 6
+		_distanceToExtraBitsLen[dist] = 6
 		_distanceToExtraBits[dist] = (dist-129) % 64
 	elseif dist <= 512 then
 		_distanceToCode[dist] = math_floor((dist - 257)/128) + 16
-		_distanceToExtraBitsLength[dist] = 7
+		_distanceToExtraBitsLen[dist] = 7
 		_distanceToExtraBits[dist] = (dist-257) % 128
 	elseif dist <= 1024 then
 		_distanceToCode[dist] = math_floor((dist - 513)/256) + 18
-		_distanceToExtraBitsLength[dist] = 8
+		_distanceToExtraBitsLen[dist] = 8
 		_distanceToExtraBits[dist] = (dist-513) % 256
 	elseif dist <= 2048 then
 		_distanceToCode[dist] = math_floor((dist - 1025)/512) + 20
-		_distanceToExtraBitsLength[dist] = 9
+		_distanceToExtraBitsLen[dist] = 9
 		_distanceToExtraBits[dist] = (dist-1025) % 512
 	elseif dist <= 4096 then
 		_distanceToCode[dist] = math_floor((dist - 2049)/1024) + 22
-		_distanceToExtraBitsLength[dist] = 10
+		_distanceToExtraBitsLen[dist] = 10
 		_distanceToExtraBits[dist] = (dist-2049) % 1024
 	elseif dist <= 8192 then
 		_distanceToCode[dist] = math_floor((dist - 4097)/2048) + 24
-		_distanceToExtraBitsLength[dist] = 11
+		_distanceToExtraBitsLen[dist] = 11
 		_distanceToExtraBits[dist] = (dist-4097) % 2048
 	elseif dist <= 16384 then
 		_distanceToCode[dist] = math_floor((dist - 8193)/4096) + 26
-		_distanceToExtraBitsLength[dist] = 12
+		_distanceToExtraBitsLen[dist] = 12
 		_distanceToExtraBits[dist] = (dist-8193) % 4096
 	elseif dist <= 32768 then
 		_distanceToCode[dist] = math_floor((dist - 16385)/8192) + 28
-		_distanceToExtraBitsLength[dist] = 13
+		_distanceToExtraBitsLen[dist] = 13
 		_distanceToExtraBits[dist] = (dist-16385) % 8192
 	end
 end
+
+for i=0, 255 do
+	_byteToChar[i] = string_char(i)
+end
+
+for i=0,256*256-1 do
+	_twoBytesToChar[i] = string_char(i%256)..string_char((i-i%256)/256)
+end
+
+---------------------------------------
+--	Precalculated tables ends.
+---------------------------------------
 
 local _writeCompressedSize = nil
 local _writeRemainder = nil
@@ -210,15 +209,7 @@ local function WriteBitsInit(buffer)
 	_writeBuffer = buffer
 end
 
-local _byteToChar = {}
-for i=0, 255 do
-	_byteToChar[i] = string_char(i)
-end
 
-local _twoBytesToChar = {}
-for i=0,256*256-1 do
-	_twoBytesToChar[i] = string_char(i%256)..string_char((i-i%256)/256)
-end
 
 local function WriteBits(code, length)
 	_writeRemainder = _writeRemainder + bit_lshift(code, _writeRemainderLength) -- Overflow?
@@ -576,12 +567,8 @@ end
 local _codeLengthHuffmanCodeOrder = {16, 17, 18,
 	0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15}
 
-local _strTable = {}
-local _strLen = 0
-
-local function strToTable(str, t)
-	wipe(t)
-	for i=0, str:len()-16, 16 do
+local function strToTable(str, t, start, stop)
+	for i=start-1, stop-16, 16 do
 		local x1, x2, x3, x4, x5, x6, x7, x8,
 			x9, x10, x11, x12, x13, x14, x15, x16 = string_byte(str, i+1, i+16)
 		t[i+1]=x1
@@ -601,7 +588,7 @@ local function strToTable(str, t)
 		t[i+15]=x15
 		t[i+16]=x16
 	end
-	for i=math.floor(str:len()/16)*16+1, str:len() do
+	for i=math_floor(stop/16)*16+1, stop do
 		t[i]=string_byte(str, i)
 	end
 	return t
@@ -647,8 +634,10 @@ function lib:Compress(str, level)
 	local config_good_hash_chain = math_floor(config_max_hash_chain/4)
 	
 	local time1 = os.clock()
-	strToTable(str, _strTable) -- TODO: Fix memory usage when file is very large.
-	_strLen = str:len()
+	local strLen = str:len()
+	local strTable = {}
+	strToTable(str, strTable, 1, strLen) -- TODO: Fix memory usage when file is very large.
+
 	print("time_read_string", os.clock()-time1)
 	local time2 = os.clock()
 	--for i=1, str:len() do
@@ -670,8 +659,8 @@ function lib:Compress(str, level)
 	local hashTables = {}
 	
 	local hash = 0
-	hash = bit_band(bit_bxor(bit_lshift(hash, 5), _strTable[1] or 0), 32767)
-	hash = bit_band(bit_bxor(bit_lshift(hash, 5), _strTable[2] or 0), 32767)
+	hash = bit_band(bit_bxor(bit_lshift(hash, 5), strTable[1] or 0), 32767)
+	hash = bit_band(bit_bxor(bit_lshift(hash, 5), strTable[2] or 0), 32767)
 
 	local matchAvailable = false
 	local prevLen = 0
@@ -685,7 +674,7 @@ function lib:Compress(str, level)
 		prevLen = curLen
 		prevDist = curDist
 		curLen = 0
-		hash = bit_bxor(hash*32, _strTable[index+2] or 0) % 32768
+		hash = bit_bxor(hash*32, strTable[index+2] or 0) % 32768
 		if (index+2 <= strLen and (not config_use_lazy or prevLen < config_max_lazy_match)) then
 		
 			local hashHead = hashTables[hash]
@@ -700,7 +689,7 @@ function lib:Compress(str, level)
 				if chain == config_max_hash_chain then
 					head[2] = nil
 				end
-				if index - prev > SLIDING_WINDOW then
+				if index - prev > 32768 then
 					head[2] = nil
 					if not prevHead then 
 						hashTables[hash] = nil
@@ -714,12 +703,12 @@ function lib:Compress(str, level)
 				if prev and prev < index then
 					local j = 0
 					repeat
-						if (_strTable[prev+j] == _strTable[index+j]) then
+						if (strTable[prev+j] == strTable[index+j]) then
 							j = j + 1
 						else
 							break
 						end
-					until (j >= 258 or index+j > _strLen)
+					until (j >= 258 or index+j > strLen)
 					if j > curLen then
 						curLen = j
 						curDist = index - prev
@@ -736,11 +725,11 @@ function lib:Compress(str, level)
 			prevLen, prevDist = curLen, curDist
 		end
 		if ((not config_use_lazy or matchAvailable) and (prevLen > 3 or (prevLen == 3 and prevDist < 4096)) and curLen <= prevLen )then
-			local code = _lengthToLiteralLengthCode[prevLen]
+			local code = _lengthToLiteralCode[prevLen]
 			local distCode = _distanceToCode[prevDist]
 
-			local lenExtraBitsLength = _lengthToExtraBitsLength[prevLen]
-			local distExtraBitsLength = _distanceToExtraBitsLength[prevDist]
+			local lenExtraBitsLength = _lengthToExtraBitsLen[prevLen]
+			local distExtraBitsLength = _distanceToExtraBitsLen[prevDist]
 
 			lCodeTblSize = lCodeTblSize + 1
 			lCodes[lCodeTblSize] = code
@@ -761,7 +750,7 @@ function lib:Compress(str, level)
 			end
 			
 			for i=index+1, index+prevLen-(config_use_lazy and 2 or 1) do
-				hash = bit_bxor(hash*32, _strTable[i+2] or 0) % 32768
+				hash = bit_bxor(hash*32, strTable[i+2] or 0) % 32768
 				if prevLen <= config_max_insert_length then
 					hashTables[hash] = {i, hashTables[hash]}
 				end
@@ -770,7 +759,7 @@ function lib:Compress(str, level)
 			index = index + prevLen - (config_use_lazy and 1 or 0)
 			matchAvailable = false
 		elseif (not config_use_lazy) or matchAvailable then
-			local code = _strTable[config_use_lazy and (index-1) or index]
+			local code = strTable[config_use_lazy and (index-1) or index]
 			lCodeTblSize = lCodeTblSize + 1
 			lCodes[lCodeTblSize] = code
 			lCodesCount[code] = (lCodesCount[code] or 0) + 1
@@ -854,7 +843,7 @@ function lib:Compress(str, level)
 			if code > 264 and code < 285 then -- Length code with extra bits
 				lengthCodeWithExtraCount = lengthCodeWithExtraCount + 1
 				local extraBits = lExtraBits[lengthCodeWithExtraCount]
-				local extraBitsLength = _literalLengthCodeToExtraBitsLength[code]
+				local extraBitsLength = _literalCodeToExtraBitsLen[code]
 				WriteBits(extraBits, extraBitsLength)
 			end
 			-- Write distance code
