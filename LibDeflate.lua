@@ -627,8 +627,9 @@ function lib:Compress(str, level)
 		level = 1
 	end
 	
-	local config_use_lazy, _, config_max_lazy_match, config_max_hash_chain, config_nice_length = unpack(_configuration_table[level])
+	local config_use_lazy, _, config_max_lazy_match, config_nice_length, config_max_hash_chain = unpack(_configuration_table[level])
 	local config_max_insert_length = (not config_use_lazy) and config_max_lazy_match or 2147483647
+	local config_good_hash_chain = math_floor(config_max_hash_chain/4)
 	
 	local time1 = os.clock()
 	strToTable(str, _strTable) -- TODO: Fix memory usage when file is very large.
@@ -676,8 +677,10 @@ function lib:Compress(str, level)
 			local prevHead = nil
 			local head = hashHead
 			local chain = 1
-		
-			while (head and chain <= config_max_hash_chain) do
+			local chainLen = (config_use_lazy and prevLen >= config_good_hash_chain) 
+				and config_good_hash_chain or config_max_hash_chain
+			
+			while (head and chain <= chainLen) do
 				local prev = head[1]
 				if chain == config_max_hash_chain then
 					head[2] = nil
