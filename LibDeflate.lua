@@ -564,43 +564,12 @@ local _codeLengthHuffmanCodeOrder = {16, 17, 18,
 local _strTable = {}
 local _strLen = 0
 
-local function FastestFindPairs(hashTable, hash, i)
-	local dist = 0
-	local len = 0
-
-	hash = bit_bxor(hash*32, _strTable[i+2]) %32768
-	local prev = hashTable[hash]
-	hashTable[hash] = prev
-	
-	if prev and i > prev and i-prev <= SLIDING_WINDOW then
-		dist = i-prev
-		repeat
-			if (_strTable[prev+len] == _strTable[i+len]) then
-				len = len + 1
-			else
-				break
-			end
-		until (len >= 258 or i+len > _strLen)
-	end
-	
-	if (len >= 3) then
-		for j=i+1, i+len-1 do
-			hash = bit_bxor(hash*32, _strTable[j+2] or 0) % 32768
-			hashTable[hash] = hash
-		end
-	end
-
-	return len, dist, hash
-end
-
 local _niceLength; -- quit search above this match length
 local _max_chain;
 
-local function FastFindPairs(hashTables, hash, index)
+local function FindPairs(hashTables, hash, index)
 	local dist = 0
 	local len = 0
-	hash = bit_bxor(hash*32, _strTable[index+2]) % 32768
-
 	local hashHead = hashTables[hash]
 	
 	local prevHead = nil
@@ -641,17 +610,8 @@ local function FastFindPairs(hashTables, hash, index)
 			end
 		end	
 	end
-	
-	hashTables[hash] = {index, hashHead}
-	
-	if (len >= 3) then
-		for i=index+1, index+len-1 do
-			hash = bit_bxor(hash*32, _strTable[i+2] or 0) % 32768
-			hashTables[hash] = {i, hashTables[hash]}
-		end
-	end
 
-	return len, dist, hash
+	return len, dist
 end
 
 
@@ -683,7 +643,51 @@ local function strToTable(str, t)
 	return t
 end
 
+--[[
+while (i <= strLen) do
+	local len, dist
+	if (i+2 <= strLen) then
+		len, dist, hash = FastFindPairs(hashTables, hash, i)
+	end
+	if len and (len == 3 and dist < 4096 or len > 3) then
+		local code = _lengthToLiteralLengthCode[len]
+		local distCode = _distanceToCode[dist]
+		if not distCode then print("nil distcode", dist) end
+
+		local lenExtraBitsLength = _lengthToExtraBitsLength[len]
+		local distExtraBitsLength = _distanceToExtraBitsLength[dist]
+
+		lCodeTblSize = lCodeTblSize + 1
+		lCodes[lCodeTblSize] = code
+		lCodesCount[code] = (lCodesCount[code] or 0) + 1
+		
+		dCodeTblSize = dCodeTblSize + 1
+		dCodes[dCodeTblSize] = distCode
+		dCodesCount[distCode] = (dCodesCount[distCode] or 0) + 1
+		if lenExtraBitsLength > 0 then
+			local lenExtraBits = _lengthToExtraBits[len]
+			lExtraBitTblSize = lExtraBitTblSize + 1
+			lExtraBits[lExtraBitTblSize] = lenExtraBits
+		end
+		if distExtraBitsLength > 0 then
+			local distExtraBits = _distanceToExtraBits[dist]
+			dExtraBitTblSize = dExtraBitTblSize + 1
+			dExtraBits[dExtraBitTblSize] = distExtraBits
+		end
+		i = i + len
+	else
+		local code = _strTable[i]
+		lCodeTblSize = lCodeTblSize + 1
+		lCodes[lCodeTblSize] = code
+		lCodesCount[code] = (lCodesCount[code] or 0) + 1
+		i = i + 1
+	end
+end
+
+--]]
+	
 function lib:Compress(str)
+	--collectgarbage("stop")
 	local time1 = os.clock()
 	strToTable(str, _strTable) -- TODO: Fix memory usage when file is very large.
 	_strLen = str:len()
@@ -704,32 +708,40 @@ function lib:Compress(str)
 	local dExtraBitTblSize = 0
 	
 
-	local i = 1
+	local index = 1
 	local strLen = str:len()
 	local hashTables = {}
 	
-	_niceLength = 8
-	_max_chain = 4
-
 	local hash = 0
-	if (strLen >= 1) then
-		hash = bit_band(bit_bxor(bit_lshift(hash, 5), _strTable[1]), 32767)
-	end
-	if (strLen >= 2) then
-		hash = bit_band(bit_bxor(bit_lshift(hash, 5), _strTable[2]), 32767)
-	end
-	while (i <= strLen) do
-		local len, dist
-		if (i+2 <= strLen) then
-			len, dist, hash = FastFindPairs(hashTables, hash, i)
+	hash = bit_band(bit_bxor(bit_lshift(hash, 5), _strTable[1] or 0), 32767)
+	hash = bit_band(bit_bxor(bit_lshift(hash, 5), _strTable[2] or 0), 32767)
+	
+	_niceLength = 258
+	_max_chain = 4096
+	local matchAvailable = false
+	local prevLen = 0
+	local prevDist = 0
+	local curLen = 0
+	local curDist = 0
+	local _max_lazy_match = 258
+	
+	local hashIndex = 0
+	while (index <= strLen + 1) do
+		prevLen = curLen
+		prevDist = curDist
+		curLen = 0
+		hash = bit_bxor(hash*32, _strTable[index+2] or 0) % 32768
+		if (index+2 <= strLen and prevLen < _max_lazy_match) then
+			curLen, curDist = FindPairs(hashTables, hash, index) -- TODO: Put update hash out of FastFindPairs
 		end
-		if len and (len == 3 and dist < 4096 or len > 3) then
-			local code = _lengthToLiteralLengthCode[len]
-			local distCode = _distanceToCode[dist]
-			if not distCode then print("nil distcode", dist) end
+		hashIndex = index
+		hashTables[hash] = {index, hashTables[hash]}
+		if (matchAvailable and (prevLen > 3 or (prevLen == 3 and prevDist < 4096)) and curLen <= prevLen )then
+			local code = _lengthToLiteralLengthCode[prevLen]
+			local distCode = _distanceToCode[prevDist]
 
-			local lenExtraBitsLength = _lengthToExtraBitsLength[len]
-			local distExtraBitsLength = _distanceToExtraBitsLength[dist]
+			local lenExtraBitsLength = _lengthToExtraBitsLength[prevLen]
+			local distExtraBitsLength = _distanceToExtraBitsLength[prevDist]
 
 			lCodeTblSize = lCodeTblSize + 1
 			lCodes[lCodeTblSize] = code
@@ -739,24 +751,35 @@ function lib:Compress(str)
 			dCodes[dCodeTblSize] = distCode
 			dCodesCount[distCode] = (dCodesCount[distCode] or 0) + 1
 			if lenExtraBitsLength > 0 then
-				local lenExtraBits = _lengthToExtraBits[len]
+				local lenExtraBits = _lengthToExtraBits[prevLen]
 				lExtraBitTblSize = lExtraBitTblSize + 1
 				lExtraBits[lExtraBitTblSize] = lenExtraBits
 			end
 			if distExtraBitsLength > 0 then
-				local distExtraBits = _distanceToExtraBits[dist]
+				local distExtraBits = _distanceToExtraBits[prevDist]
 				dExtraBitTblSize = dExtraBitTblSize + 1
 				dExtraBits[dExtraBitTblSize] = distExtraBits
 			end
-			i = i + len
-		else
-			local code = _strTable[i]
+			
+			for i=index+1, index+prevLen-2 do
+				hash = bit_bxor(hash*32, _strTable[i+2] or 0) % 32768
+				hashTables[hash] = {i, hashTables[hash]}
+				hashIndex = i
+			end
+			index = index + prevLen - 1
+			matchAvailable = false
+		elseif matchAvailable then
+			local code = _strTable[index-1]
 			lCodeTblSize = lCodeTblSize + 1
 			lCodes[lCodeTblSize] = code
 			lCodesCount[code] = (lCodesCount[code] or 0) + 1
-			i = i + 1
+			index = index + 1
+		else
+			matchAvailable = true
+			index = index + 1
 		end
 	end
+	
 
 	print("time_find_pairs", os.clock()-time2)
 	local time3 = os.clock()
@@ -853,6 +876,7 @@ function lib:Compress(str)
 	local time5 = os.clock()
 	local result = table_concat(outputBuffer)
 	print("time_table_concat", os.clock()-time5)
+	--collectgarbage("restart")
 	--local time4 = os.clock()
 	return result
 end
