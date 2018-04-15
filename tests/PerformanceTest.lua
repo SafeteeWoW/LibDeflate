@@ -11,7 +11,11 @@ local function PerformanceTests()
 	end
 	
 	function UTest.ItemStringsFile()
-		CheckFile("tests\\data\\ItemStrings.txt", 50)
+		CheckFile("tests\\data\\ItemStrings.txt", 100)
+	end
+	
+	function UTest.ReconnectData()
+		CheckFile("tests\\data\\ReconnectData.txt", 30)
 	end
 end
 

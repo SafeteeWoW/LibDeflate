@@ -601,8 +601,15 @@ local function FastFindPairs(hashTables, hash, index)
 	local len = 0
 	hash = bit_bxor(hash*32, _strTable[index+2]) % 32768
 
-	for i=1, _max_chain do
-		local prev = hashTables[i][hash]
+	local hashHead = hashTables[hash]
+	
+	local head = hashHead
+	local chain = 1
+
+	while (head and chain <= _max_chain) do
+		local prev = head[1]
+		head = head[2]
+		chain = chain + 1
 		if prev and prev < index and index - prev <= SLIDING_WINDOW then
 			local j = 0
 			repeat
@@ -622,18 +629,12 @@ local function FastFindPairs(hashTables, hash, index)
 		end	
 	end
 	
-	for i=_max_chain, 2, -1 do
-		hashTables[i][hash] = hashTables[i-1][hash]
-	end
-	hashTables[1][hash] = index
+	hashTables[hash] = {index, hashHead}
 	
 	if (len >= 3) then
 		for i=index+1, index+len-1 do
 			hash = bit_bxor(hash*32, _strTable[i+2] or 0) % 32768
-			for j=_max_chain, 2, -1 do
-				hashTables[j][hash] = hashTables[j-1][hash]
-			end
-			hashTables[1][hash] = i
+			hashTables[hash] = {i, hashTables[hash]}
 		end
 	end
 
@@ -696,10 +697,6 @@ function lib:Compress(str)
 	
 	_niceLength = 8
 	_max_chain = 4
-	
-	for i=1, _max_chain do
-		hashTables[i] = {}
-	end
 
 	local hash = 0
 	if (strLen >= 1) then
