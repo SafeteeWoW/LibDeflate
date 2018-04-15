@@ -10,8 +10,6 @@ Calgary: http://www.data-compression.info/Corpora/CalgaryCorpus/
 
 Cantrbry: http://corpus.canterbury.ac.nz/descriptions/
 
-Silesia: http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia
-
 Snappy: https://github.com/google/snappy/tree/master/testdata
 
 Brolti: https://github.com/google/brotli/tree/master/tests
