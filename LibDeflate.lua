@@ -628,7 +628,8 @@ function lib:Compress(str, level)
 	end
 	
 	local config_use_lazy, _, config_max_lazy_match, config_max_hash_chain, config_nice_length = unpack(_configuration_table[level])
-	--collectgarbage("stop")
+	local config_max_insert_length = (not config_use_lazy) and config_max_lazy_match or 2147483647
+	
 	local time1 = os.clock()
 	strToTable(str, _strTable) -- TODO: Fix memory usage when file is very large.
 	_strLen = str:len()
@@ -743,7 +744,9 @@ function lib:Compress(str, level)
 			
 			for i=index+1, index+prevLen-(config_use_lazy and 2 or 1) do
 				hash = bit_bxor(hash*32, _strTable[i+2] or 0) % 32768
-				hashTables[hash] = {i, hashTables[hash]}
+				if prevLen <= config_max_insert_length then
+					hashTables[hash] = {i, hashTables[hash]}
+				end
 				hashIndex = i
 			end
 			index = index + prevLen - (config_use_lazy and 1 or 0)
