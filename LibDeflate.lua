@@ -603,6 +603,7 @@ local function FastFindPairs(hashTables, hash, index)
 
 	local hashHead = hashTables[hash]
 	
+	local prevHead = nil
 	local head = hashHead
 	local chain = 1
 
@@ -613,6 +614,11 @@ local function FastFindPairs(hashTables, hash, index)
 		end
 		if index - prev > SLIDING_WINDOW then
 			head[2] = nil
+			if not prevHead then 
+				hashTables[hash] = nil
+			else 
+				prevHead[2] = nil
+			end
 			break
 		end
 		head = head[2]
