@@ -16,10 +16,20 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 --]]
 
-require "bit"
---require "profiler"
+local LibDeflate
+if LibStub then
+	local MAJOR,MINOR = "LibDeflate", -1
+	LibDeflate = LibStub:NewLibrary(MAJOR, MINOR)
+	if not LibDeflate then
+		return LibStub:GetLibrary(MAJOR)
+	end
+else
+	LibDeflate = {}
+end
 
-local lib = {}
+if not bit then
+	require "bit"
+end
 
 -- local is faster than global
 local error = error
@@ -31,6 +41,7 @@ local string_byte = string.byte
 local string_len = string.len
 local pairs = pairs
 local ipairs = ipairs
+local unpack = unpack
 local wipe = wipe
 local math_floor = math.floor
 local bit_band = bit.band
@@ -96,33 +107,33 @@ for code=0, 285 do
 	end
 end
 
-for length=3, 258 do
-	if length <= 10 then
-		_lengthToLiteralCode[length] = length + 254
-		_lengthToExtraBitsLen[length] = 0
-	elseif length <= 18 then
-		_lengthToLiteralCode[length] = math_floor((length-11)/2) + 265
-		_lengthToExtraBitsLen[length] = 1
-		_lengthToExtraBits[length] = (length-11) % 2
-	elseif length <= 34 then
-		_lengthToLiteralCode[length] = math_floor((length-19)/4) + 269
-		_lengthToExtraBitsLen[length] = 2
-		_lengthToExtraBits[length] = (length-19) % 4
-	elseif length <= 66 then
-		_lengthToLiteralCode[length] = math_floor((length-35)/8) + 273
-		_lengthToExtraBitsLen[length] = 3
-		_lengthToExtraBits[length] = (length-35) % 8
-	elseif length <= 130 then
-		_lengthToLiteralCode[length] = math_floor((length-67)/16) + 277
-		_lengthToExtraBitsLen[length] = 4
-		_lengthToExtraBits[length] = (length-67) % 16
-	elseif length <= 257 then
-		_lengthToLiteralCode[length] = math_floor((length-131)/32) + 281
-		_lengthToExtraBitsLen[length] = 5
-		_lengthToExtraBits[length] = (length-131) % 32
-	elseif length == 258 then
-		_lengthToLiteralCode[length] = 285
-		_lengthToExtraBitsLen[length] = 0
+for len=3, 258 do
+	if len <= 10 then
+		_lengthToLiteralCode[len] = len + 254
+		_lengthToExtraBitsLen[len] = 0
+	elseif len <= 18 then
+		_lengthToLiteralCode[len] = math_floor((len-11)/2) + 265
+		_lengthToExtraBitsLen[len] = 1
+		_lengthToExtraBits[len] = (len-11) % 2
+	elseif len <= 34 then
+		_lengthToLiteralCode[len] = math_floor((len-19)/4) + 269
+		_lengthToExtraBitsLen[len] = 2
+		_lengthToExtraBits[len] = (len-19) % 4
+	elseif len <= 66 then
+		_lengthToLiteralCode[len] = math_floor((len-35)/8) + 273
+		_lengthToExtraBitsLen[len] = 3
+		_lengthToExtraBits[len] = (len-35) % 8
+	elseif len <= 130 then
+		_lengthToLiteralCode[len] = math_floor((len-67)/16) + 277
+		_lengthToExtraBitsLen[len] = 4
+		_lengthToExtraBits[len] = (len-67) % 16
+	elseif len <= 257 then
+		_lengthToLiteralCode[len] = math_floor((len-131)/32) + 281
+		_lengthToExtraBitsLen[len] = 5
+		_lengthToExtraBits[len] = (len-131) % 32
+	elseif len == 258 then
+		_lengthToLiteralCode[len] = 285
+		_lengthToExtraBitsLen[len] = 0
 	end
 end
 
@@ -208,8 +219,6 @@ local function WriteBitsInit(buffer)
 	_writeRemainderLength = 0
 	_writeBuffer = buffer
 end
-
-
 
 local function WriteBits(code, length)
 	_writeRemainder = _writeRemainder + bit_lshift(code, _writeRemainderLength) -- Overflow?
@@ -361,13 +370,13 @@ end
 --@treturn {table, table} symbol length table and symbol code table
 local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol)
 	local heapSize = 0
+	local maxNonZeroLenSym = -1
 	local leafs = {}
 	local heap = {}
 	local symbolBitLength = {}
 	local symbolCode = {}
 	local bitLengthCount = {}
 
-	local maxNonZeroLenSym = -1
 
 	--[[
 		tree[1]: weight, temporarily used as parent and bitLengths
@@ -624,9 +633,9 @@ local _configuration_table = {
 	[9] = {true,	32, 	258,	258,4096}, 	-- gzip -9 (maximum compression)
 }
 
-function lib:Compress(str, level)
+function LibDeflate:Compress(str, level)
 	if not level then
-		level = 1
+		level = 3
 	end
 	
 	local config_use_lazy, _, config_max_lazy_match, config_nice_length, config_max_hash_chain = unpack(_configuration_table[level])
@@ -667,7 +676,6 @@ function lib:Compress(str, level)
 	local prevDist = 0
 	local curLen = 0
 	local curDist = 0
-	local hashIndex = 0
 	
 	local indexEnd = strLen + (config_use_lazy and 1 or 0)
 	while (index <= indexEnd) do
@@ -719,7 +727,6 @@ function lib:Compress(str, level)
 				end	
 			end
 		end
-		hashIndex = index
 		hashTables[hash] = {index, hashTables[hash]}
 		if not config_use_lazy then
 			prevLen, prevDist = curLen, curDist
@@ -754,7 +761,6 @@ function lib:Compress(str, level)
 				if prevLen <= config_max_insert_length then
 					hashTables[hash] = {i, hashTables[hash]}
 				end
-				hashIndex = i
 			end
 			index = index + prevLen - (config_use_lazy and 1 or 0)
 			matchAvailable = false
@@ -871,4 +877,4 @@ function lib:Compress(str, level)
 	return result
 end
 
-return lib
+return LibDeflate
