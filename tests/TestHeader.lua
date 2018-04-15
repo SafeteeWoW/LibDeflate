@@ -15,7 +15,7 @@ function CheckStr(str, count, level, ...)
 	end
 	local compressed
 	for _, level in ipairs(levels) do
-		print(("running: %s, len: %d Level: %d"):format(str:sub(1, 10), str:len(), level))
+		print((">> running: %s, len: %d Level: %d"):format(str:sub(1, 10), str:len(), level))
 		local startTime = os.clock()
 		for i=1, count or 1 do
 			compressed = Lib:Compress(str, level)
@@ -44,7 +44,8 @@ function CheckStr(str, count, level, ...)
 		testFile:close()
 	
 		UTest.equal(str, testFileContent)
-		print((">> Done: %s len: %d compressed: %d, time: %.4f, Level: %d"):format(str:sub(1,10), str:len(), compressed:len(), elapsed, level))
+		print((" Done: %s len: %d compressed: %d, time: %.4f, Level: %d"):format(str:sub(1,10), str:len(), compressed:len(), elapsed, level))
+		print("---------------------------------------------------------------")
 	end
 
 
@@ -69,7 +70,7 @@ function CheckFile(inputFileName, count, level, ...)
 	end
 	local compressed
 	for _, level in ipairs(levels) do
-		print(("Compressing %s: %d, Level: %d"):format(inputFileName, inputFileLen, level))
+		print((">> Compressing %s: %d, Level: %d"):format(inputFileName, inputFileLen, level))
 		local startTime = os.clock()
 		--os.execute("rm -f profileresult.txt")
 		--profiler.start("profileresult.txt")
@@ -104,7 +105,8 @@ function CheckFile(inputFileName, count, level, ...)
 	
 		UTest.equal(inputFileContent, testFileContent, inputFileName)
 
-		print((">> Done: %s: orig: %d compressed: %d, time: %.4f, Level: %d"):format(inputFileName, inputFileLen, compressed:len(), elapsed/count, level))
+		print(("Done: %s: orig: %d compressed: %d, time: %.4f, Level: %d"):format(inputFileName, inputFileLen, compressed:len(), elapsed/count, level))
+		print("---------------------------------------------------------------")
 	end
 
 end

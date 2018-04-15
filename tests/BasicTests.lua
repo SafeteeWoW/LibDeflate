@@ -23,12 +23,10 @@ local function BasicTests()
 		CheckFile("tests\\data\\ItemStrings.txt")
 	end
 
-	---- Test begins
 	function UTest.SmallTestFile()
 		CheckFile("tests\\data\\smalltest.txt")
 	end
 
-	---- Test begins
 	function UTest.ReconnectData()
 		CheckFile("tests\\data\\reconnectData.txt")
 	end
@@ -44,3 +42,4 @@ local function BasicTests()
 end
 
 BasicTests()
+UTest.summary()

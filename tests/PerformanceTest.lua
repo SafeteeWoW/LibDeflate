@@ -4,6 +4,8 @@ local os = os
 
 dofile("tests\\TestHeader.lua")
 
+assert(not jit, "Don't run this in JIT.")
+
 local function PerformanceTests()
 
 	function UTest.SmallTestFile()

@@ -16,3 +16,4 @@ local function LargeCorpusTests()
 end
 
 LargeCorpusTests()
+UTest.summary()
