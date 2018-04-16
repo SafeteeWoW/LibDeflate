@@ -11,11 +11,16 @@ env:
     - LUA=luajit     # latest stable version (2.0.x)
     - LUA=luajit2.0  # current head of 2.0 branch
     - LUA=luajit2.1  # current head of 2.1 branch
+
+os:
+  matrix:
+    - osx
+    - linux
+
   # 'bleeding edge' LuaJIT may fail without breaking the build
-  allow_failures:
-    - env: LUA=luajit2.0
-    - env: LUA=luajit2.1
-    - os: osx
+allow_failures:
+  - env: LUA=luajit2.0
+  - env: LUA=luajit2.1
 
 before_install:
   - source .travis/setenv_lua.sh
