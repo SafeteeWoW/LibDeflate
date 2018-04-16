@@ -1,0 +1,5 @@
+mkdir -p $TRAVIS_BUILD_DIR/install
+export PATH=${PATH}:$HOME/.lua:$HOME/.local/bin:${TRAVIS_BUILD_DIR}/install/luarocks/bin
+bash .travis/setup_lua.sh
+bash .travis/setup_compressor_decompressor.sh
+eval `$HOME/.lua/luarocks path`
