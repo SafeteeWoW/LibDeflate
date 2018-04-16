@@ -52,7 +52,7 @@ function CheckStr(str, levels, minRunTime, inputFileName)
 	print("======================================================================")
 	print("======================================================================")
 end
-CheckStr("WTF")
+
 function CheckFile(inputFileName, levels, minRunTime)
 	local inputFile = io.open(inputFileName, "rb")
 	lu.assertNotNil(inputFile, "Input file "..inputFileName.." does not exist")
