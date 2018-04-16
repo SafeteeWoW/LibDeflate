@@ -23,10 +23,6 @@ before_install:
   - source .travis/setup_compressor_decompressor.sh
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get install -y libxml2-utils; fi
 
-cache:
-  directories:
-    - $HOME/install
-
 script:
   - luacheck . -qo 011
   - lua -v -lluacov tests/LibDeflateTest.lua --shuffle
