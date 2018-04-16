@@ -13,8 +13,8 @@ LUAJIT_BASE="LuaJIT-$LUAJIT_VERSION"
 
 source .travis/platform.sh
 
-LUA_HOME_DIR=$TRAVIS_BUILD_DIR/install/$LUA
-LR_HOME_DIR=$TRAVIS_BUILD_DIR/install/luarocks
+LUA_HOME_DIR=$HOME/install/$LUA
+LR_HOME_DIR=$HOME/install/luarocks
 
 mkdir $HOME/.lua
 
@@ -179,6 +179,7 @@ else # -e $LUA_HOME_DIR
     ln -s $LR_HOME_DIR/bin/luarocks $HOME/.lua/luarocks
     luarocks --version
     luarocks install luacheck
+    luarocks install luaunit
     luarocks install luacov-coveralls
     luarocks install luabitop
     luarocks install luaprofiler
