@@ -96,5 +96,7 @@ set LUA=luajit21\luajit.exe
 
 :AFTERLUA
 choco install luarocks
+set LUA_PATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\share\lua\5.1\?.lua;C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\share\lua\5.1\?\init.lua;%LUA_PATH%
+set LUA_CPATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\lib\lua\5.1\?.dll;%LUA_CPATH%
 luarocks install luabitop
-REM luarocks install luaunit
+luarocks install luaunit
