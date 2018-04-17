@@ -9,10 +9,6 @@ set ZIP_51=lua-%VER_51%_Win32_bin.zip
 set ZIP_52=lua-%VER_52%_Win32_bin.zip
 set ZIP_53=lua-%VER_53%_Win32_bin.zip
 
-choco install luarocks
-luarocks install luabitop
-REM luarocks install luaunit
-
 :cinst
 @echo off
 if NOT "%LUAENV%"=="cinst" goto lua51
@@ -26,7 +22,7 @@ if NOT EXIST "C:\Program Files (x86)\Lua\5.1\lua.exe" (
 )
 set LUA="C:\Program Files (x86)\Lua\5.1\lua.exe"
 @echo off
-goto :EOF
+goto :AFTERLUA
 
 :lua51
 @echo off
@@ -42,7 +38,7 @@ if NOT EXIST "lua51\lua5.1.exe" (
 )
 set LUA=lua51\lua5.1.exe
 @echo off
-goto :EOF
+goto :AFTERLUA
 
 :lua52
 @echo off
@@ -59,7 +55,7 @@ if NOT EXIST "lua52\lua52.exe" (
 @echo on
 set LUA=lua52\lua52.exe
 @echo off
-goto :EOF
+goto :AFTERLUA
 
 :lua53
 @echo off
@@ -76,7 +72,7 @@ if NOT EXIST "lua53\lua53.exe" (
 @echo on
 set LUA=lua53\lua53.exe
 @echo off
-goto :EOF
+goto :AFTERLUA
 
 :luajit
 if NOT "%LUAENV%"=="luajit20" goto luajit21
@@ -87,7 +83,7 @@ if NOT EXIST "luajit20\luajit.exe" (
     echo Using cached version of LuaJIT 2.0
 )
 set LUA=luajit20\luajit.exe
-goto :EOF
+goto :AFTERLUA
 
 :luajit21
 echo Setting up LuaJIT 2.1 ...
@@ -97,3 +93,8 @@ if NOT EXIST "luajit21\luajit.exe" (
     echo Using cached version of LuaJIT 2.1
 )
 set LUA=luajit21\luajit.exe
+
+:AFTERLUA
+choco install luarocks
+luarocks install luabitop
+REM luarocks install luaunit
