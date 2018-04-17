@@ -12,8 +12,7 @@ environment:
 
 # install required binaries via batch file (also sets %LUA% path)
 install:
-- cmd: call "C:\Program Files\Microsoft SDKs\Windows\v7.1\Bin\SetEnv.cmd" /x64
-- cmd: call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" x86_amd64
+- cmd: call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" x86
 - cmd: .appveyor\install-lua.cmd
 - cmd: .appveyor\install-compressor-decompressor.cmd
 
