@@ -15,6 +15,7 @@ install:
 - cmd: call "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat" x86
 - cmd: .appveyor\install-lua.cmd
 - cmd: .appveyor\install-compressor-decompressor.cmd
+- cmd: .appveyor\install-luaunit.cmd
 
 cache:
   - lua51       -> .appveyor\install-lua.cmd
@@ -23,6 +24,7 @@ cache:
   - luajit20    -> .appveyor\install-lua.cmd
   - luajit21    -> .appveyor\install-lua.cmd
   - zlib-1.2.11 -> .appveyor\install-compressor-decompressor.cmd
+  - luaunit.lua -> .appveyor\install-luaunit.cmd
   - 'C:\Program Files (x86)\Lua -> .appveyor\install-lua.cmd'
 
 build: off

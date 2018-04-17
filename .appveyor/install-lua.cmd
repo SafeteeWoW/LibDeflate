@@ -11,7 +11,7 @@ set ZIP_53=lua-%VER_53%_Win32_bin.zip
 
 choco install luarocks
 luarocks install luabitop
-luarocks install luaunit
+REM luarocks install luaunit
 
 :cinst
 @echo off
