@@ -13,6 +13,15 @@ env:
     - LUA=lua5.2  LUANUMBER=double
     - LUA=lua5.3  LUANUMBER=double
     - LUA=luajit     # latest stable version (2.0.x)
+    - LUA=luajit2.0  # current head of 2.0 branch
+    - LUA=luajit2.1  # current head of 2.1 branch
+
+  # 'bleeding edge' LuaJIT may fail without breaking the build
+matrix:
+  # 'bleeding edge' LuaJIT may fail without breaking the build
+  allow_failures:
+    - env: LUA=luajit2.0
+    - env: LUA=luajit2.1
 
 cache:
   directories:
@@ -25,10 +34,13 @@ before_install:
 
 script:
   - luacheck . -qo 011
-  - lua -v -lluacov tests/LibDeflateTest.lua --shuffle
+  #- lua -v -lluacov tests/LibDeflateTest.lua --shuffle
+  # converage test makes it too slow.
+  - lua tests/LibDeflateTest.lua --verbose --shuffle
 
 after_success:
-  - luacov-coveralls -v --include %./LibDeflate.lua
+  # - luacov-coveralls -v --include %./LibDeflate.lua
+  # converage test is a good thing, but not for this project.
 
 notifications:
   email:
