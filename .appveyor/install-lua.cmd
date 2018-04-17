@@ -9,6 +9,10 @@ set ZIP_51=lua-%VER_51%_Win32_bin.zip
 set ZIP_52=lua-%VER_52%_Win32_bin.zip
 set ZIP_53=lua-%VER_53%_Win32_bin.zip
 
+choco install luarocks
+luarocks install luabitop
+luarocks install luaunit
+
 :cinst
 @echo off
 if NOT "%LUAENV%"=="cinst" goto lua51
