@@ -1,7 +1,9 @@
 language: c
 sudo: false
 
-os: linux
+os:
+    - osx
+    - linux
 
 env:
   global:
@@ -12,15 +14,12 @@ env:
     - LUA=luajit2.0  # current head of 2.0 branch
     - LUA=luajit2.1  # current head of 2.1 branch
 
-os:
-  matrix:
-    - osx
-    - linux
-
   # 'bleeding edge' LuaJIT may fail without breaking the build
-allow_failures:
-  - env: LUA=luajit2.0
-  - env: LUA=luajit2.1
+matrix:
+  # 'bleeding edge' LuaJIT may fail without breaking the build
+  allow_failures:
+    - env: LUA=luajit2.0
+    - env: LUA=luajit2.1
 
 before_install:
   - source .travis/setenv_lua.sh
