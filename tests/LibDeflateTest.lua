@@ -4,7 +4,7 @@ local Lib = require("LibDeflate")
 
 math.randomseed(os.time())
 function CheckStr(str, levels, minRunTime, inputFileName)
-	minRunTime = minRunTime or (inputFileName or 0)
+	minRunTime = minRunTime or 0
 	if levels == "all" then
 		levels = {1,2,3,4,5,6,7,8,9}
 	else
