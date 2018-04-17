@@ -27,7 +27,17 @@ else
 	LibDeflate = {}
 end
 
-local bit = bit or bit32 or require("bit")
+local bit = bit or bit32
+if (not bit) and _VERSION and _VERSION >= "Lua 5.3" then -- For Lua5.3
+	bit = {}
+	bit.band = load("return function(a,b) return a&b end")()
+	bit.bor = load("return function(a,b) return a|b end")()
+	bit.bxor = load("return function(a,b) return a~b end")()
+	bit.lshift = load("return function(a,b) return a<<b end")()
+	bit.rshift = load("return function(a,b) return a>>b end")()
+else
+	bit = bit or require("bit")
+end
 
 -- local is faster than global
 local error = error
@@ -46,7 +56,6 @@ local math_min = math.min
 local bit_band = bit.band
 local bit_bor = bit.bor
 local bit_bxor = bit.bxor
-local bit_bnot = bit.bnot
 local bit_lshift = bit.lshift
 local bit_rshift = bit.rshift
 
