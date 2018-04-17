@@ -37,7 +37,11 @@ function CheckStr(str, levels, minRunTime, inputFileName)
 
 		local decompressedFileName = compressedFileName..".decompressed"
 		os.execute("rm -f "..decompressedFileName)
-		lu.assertEquals(os.execute("puff -w "..compressedFileName.. "> "..decompressedFileName), 0, "puff decompression failed")
+
+		-- For lua5.1, "status" stores the returned number of the program. For 5.2/5.3, "ret" stores it.
+		local status, _, ret = os.execute("puff -w "..compressedFileName.. "> "..decompressedFileName)
+		local returnedStatus = type(status)== "number" and status or ret or -255
+		lu.assertEquals(returnedStatus, 0, "puff decompression failed with code "..returnedStatus)
 
 		local testFile = io.open(decompressedFileName, "rb")
 		lu.assertNotNil(testFile, "Decompressed file "..decompressedFileName.." does not exist")
@@ -49,8 +53,6 @@ function CheckStr(str, levels, minRunTime, inputFileName)
 			format(level, str:len(), compressed:len(), str:len()/compressed:len(), elapsed/repeated*1000, str:len()/elapsed/1000, repeated))
 		print("-------------------------------------")
 	end
-	print("======================================================================")
-	print("======================================================================")
 end
 
 function CheckFile(inputFileName, levels, minRunTime)
@@ -75,8 +77,8 @@ Test1Strings = {}
 	end
 	function Test1Strings:testLongRepeat()
 		local repeated = {}
-		for i=1, 300000 do
-			repeated[i] = "a"
+		for i=1, 150000 do
+			repeated[i] = "c"
 		end
 		CheckStr(table.concat(repeated), "all")
 	end
