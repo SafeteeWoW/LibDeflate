@@ -1,0 +1,31 @@
+os: MinGW
+shallow_clone: true
+
+# create a build matrix to use various Lua and LuaJIT versions
+environment:
+  matrix:
+    - LUAENV: lua51
+    - LUAENV: lua52
+    - LUAENV: lua53
+    - LUAENV: luajit20
+    - LUAENV: luajit21
+
+# install required binaries via batch file (also sets %LUA% path)
+install:
+- cmd: .appveyor\install-lua.cmd
+- cmd: .appveyor\install-compressor-decompressor.cmd
+
+cache:
+  - lua51       -> .appveyor\install-lua.cmd
+  - lua52       -> .appveyor\install-lua.cmd
+  - lua53       -> .appveyor\install-lua.cmd
+  - luajit20    -> .appveyor\install-lua.cmd
+  - luajit21    -> .appveyor\install-lua.cmd
+  - zlib-1.2.11 -> .appveyor\install-compressor-decompressor.cmd
+  - 'C:\Program Files (x86)\Lua -> .appveyor\install-lua.cmd'
+
+build: off
+
+test_script:
+- cmd: >-
+    %LUA% -v tests\LibDeflateTest.lua --verbose --shuffle
