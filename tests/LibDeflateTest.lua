@@ -4,7 +4,7 @@ local Lib = require("LibDeflate")
 
 math.randomseed(os.time())
 function CheckStr(str, levels, minRunTime, inputFileName)
-	minRunTime = minRunTime or (inputFileName and 1 or 0)
+	minRunTime = minRunTime or (inputFileName or 0)
 	if levels == "all" then
 		levels = {1,2,3,4,5,6,7,8,9}
 	else
@@ -49,7 +49,7 @@ function CheckStr(str, levels, minRunTime, inputFileName)
 		testFile:close()
 
 		lu.assertEquals(str, testFileContent, "File content does not match decompressed file")
-		print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, TimePerRun: %.2f ms, Speed: %.2f KB/s, Repeated: %d"):
+		print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, TimePerRun: %.3f ms, Speed: %.2f KB/s, Repeated: %d"):
 			format(level, str:len(), compressed:len(), str:len()/compressed:len(), elapsed/repeated*1000, str:len()/elapsed/1000, repeated))
 		print("-------------------------------------")
 	end
@@ -109,8 +109,6 @@ Test3ThirdPartySmall = {}
 		CheckFile("tests/data/3rdparty/xyzzy", "all")
 	end
 
-
-lu.LuaUnit.verbosity = 2
 local runner = lu.LuaUnit.new()
 runner:setOutputType("tap")
 os.exit( runner:runSuite())
