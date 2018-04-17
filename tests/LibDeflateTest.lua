@@ -107,10 +107,6 @@ Test3ThirdPartySmall = {}
 		CheckFile("tests/data/3rdparty/xyzzy", "all")
 	end
 
-	function Test3ThirdPartySmall:TestBackward65536()
-		CheckFile("tests/data/3rdparty/backward65536", "all")
-	end
-
 
 lu.LuaUnit.verbosity = 2
 local runner = lu.LuaUnit.new()

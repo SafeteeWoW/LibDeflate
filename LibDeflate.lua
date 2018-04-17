@@ -27,9 +27,7 @@ else
 	LibDeflate = {}
 end
 
-if not bit then
-	require "bit"
-end
+local bit = bit or bit32 or require("bit")
 
 -- local is faster than global
 local error = error
