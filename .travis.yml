@@ -33,7 +33,7 @@ before_install:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get install -y libxml2-utils; fi
 
 script:
-  - luacheck . -qo 011
+  - luacheck -g -u .
   #- lua -v -lluacov tests/LibDeflateTest.lua --shuffle
   # converage test makes it too slow.
   - lua tests/LibDeflateTest.lua --verbose --shuffle
