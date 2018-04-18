@@ -202,10 +202,6 @@ for dist=1, 32768 do
 	end
 end
 
-for i=0, 255 do
-	_byteToChar[i] = string_char(i)
-end
-
 for i=0,256*256-1 do
 	_twoBytesToChar[i] = string_char(i%256)..string_char((i-i%256)/256)
 end

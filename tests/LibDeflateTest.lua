@@ -65,18 +65,18 @@ function CheckFile(inputFileName, levels, minRunTime)
 	CheckStr(inputFileContent, levels, minRunTime, inputFileName)
 end
 
-Test1Strings = {}
-	function Test1Strings:testEmpty()
+TestMin1Strings = {}
+	function TestMin1Strings:testEmpty()
 		CheckStr("", "all")
 	end
-	function Test1Strings:testAllLiterals()
+	function TestMin1Strings:testAllLiterals()
 		CheckStr("abcdefgh", "all")
 		CheckStr("ab", "all")
 	end
-	function Test1Strings:testRepeat()
+	function TestMin1Strings:testRepeat()
 		CheckStr("aaaaaaaaaaaaaaaaaa", "all")
 	end
-	function Test1Strings:testLongRepeat()
+	function TestMin1Strings:testLongRepeat()
 		local repeated = {}
 		for i=1, 150000 do
 			repeated[i] = "c"
@@ -84,29 +84,29 @@ Test1Strings = {}
 		CheckStr(table.concat(repeated), "all")
 	end
 
-Test2MyData = {}
-	function Test2MyData:TestItemStrings()
+TestMin2MyData = {}
+	function TestMin2MyData:TestItemStrings()
 		CheckFile("tests/data/itemStrings.txt", "all")
 	end
 
-	function Test2MyData:TestSmallTest()
+	function TestMin2MyData:TestSmallTest()
 		CheckFile("tests/data/smalltest.txt", "all")
 	end
 
-	function Test2MyData:TestReconnectData()
+	function TestMin2MyData:TestReconnectData()
 		CheckFile("tests/data/reconnectData.txt", "all")
 	end
 
-Test3ThirdPartySmall = {}
-	function Test3ThirdPartySmall:TestEmpty()
+TestMin3ThirdPartySmall = {}
+	function TestMin3ThirdPartySmall:TestEmpty()
 		CheckFile("tests/data/3rdparty/empty", "all")
 	end
 
-	function Test3ThirdPartySmall:TestX()
+	function TestMin3ThirdPartySmall:TestX()
 		CheckFile("tests/data/3rdparty/x", "all")
 	end
 
-	function Test3ThirdPartySmall:TestXYZZY()
+	function TestMin3ThirdPartySmall:TestXYZZY()
 		CheckFile("tests/data/3rdparty/xyzzy", "all")
 	end
 
