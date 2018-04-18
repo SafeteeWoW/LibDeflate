@@ -1,19 +1,19 @@
 --[[
 	LibDeflate: Pure Lua implemenation of the DEFLATE lossless data compression algorithm.
-    Copyright (C) <2018>  Haoqian He (Github: SafeteeWoW; World of Warcraft: Safetyy-Illidan(US))
+	Copyright (C) <2018>  Haoqian He (Github: SafeteeWoW; World of Warcraft: Safetyy-Illidan(US))
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    any later version.
+	This program is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+	You should have received a copy of the GNU General Public License
+	along with this program.  If not, see <https://www.gnu.org/licenses/>.
 --]]
 
 local LibDeflate
@@ -40,13 +40,11 @@ else
 end
 
 -- local is faster than global
-local error = error
 local assert = assert
 local table_concat = table.concat
 local table_sort = table.sort
 local string_char = string.char
 local string_byte = string.byte
-local string_len = string.len
 local pairs = pairs
 local ipairs = ipairs
 local unpack = unpack or table.unpack
@@ -63,7 +61,7 @@ local function print() end
 
 local function PrintTable(t)
 	local tmp = {}
-	for k,v in ipairs(t) do
+	for _,v in ipairs(t) do
 		table.insert(tmp, v)
 	end
 	print(table_concat(tmp, " "))
@@ -90,7 +88,7 @@ local _distanceToCode = {}
 local _distanceToExtraBits = {}
 local _distanceToExtraBitsLen = {}
 
-local _byteToChar = {}
+--local _byteToChar = {}
 local _twoBytesToChar = {}
 
 for code=0, 285 do
@@ -276,7 +274,7 @@ local function ReadBits(length)
 	assert(length >= 1 and length <= 16)
 	local code
 	if (_readBitPos + length <= 8) then
-		local code = bit_band(bit_rshift(_readByte, _readBitPos), (bit_lshift(1, length)-1))
+		code = bit_band(bit_rshift(_readByte, _readBitPos), (bit_lshift(1, length)-1))
 		if _readBitPos + length < 8 then
 			_readBitPos = _readBitPos + length
 		else
@@ -372,7 +370,8 @@ end
 
 local function SortByFirstThenSecond(a, b)
 	return a[1] < b[1] or
-		(a[1] == b[1] and a[2] < b[2]) -- This is important so our result is stable regardless of interpreter implementation.
+		(a[1] == b[1] and a[2] < b[2])
+	 -- This is important so our result is stable regardless of interpreter implementation.
 end
 
 --@treturn {table, table} symbol length table and symbol code table
@@ -384,7 +383,6 @@ local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol)
 	local symbolBitLength = {}
 	local symbolCode = {}
 	local bitLengthCount = {}
-
 
 	--[[
 		tree[1]: weight, temporarily used as parent and bitLengths
@@ -447,7 +445,7 @@ local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol)
 				rightChild[1] = bitLength + 1
 			end
 			index = index + 1
-			
+
 			if (bitLength > maxBitLength) then
 				overflow = overflow + 1
 				bitLength = maxBitLength
@@ -469,13 +467,14 @@ local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol)
 					bitLength = bitLength - 1
 				end
 				bitLengthCount[bitLength] = bitLengthCount[bitLength] - 1 -- move one leaf down the tree
-				bitLengthCount[bitLength+1] = (bitLengthCount[bitLength+1] or 0) + 2 -- move one overflow item as its brother
+				-- move one overflow item as its brother
+				bitLengthCount[bitLength+1] = (bitLengthCount[bitLength+1] or 0) + 2
 				bitLengthCount[maxBitLength] = bitLengthCount[maxBitLength] - 1
 				overflow = overflow - 2
 			until (overflow <= 0)
 
 			-- Update symbolBitLength
-			local index = 1
+			index = 1
 			for bitLength = maxBitLength, 1, -1 do
 				local n = bitLengthCount[bitLength] or 0
 				while (n > 0) do
@@ -498,9 +497,9 @@ local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol)
 		for symbol = 0, maxSymbol do
 			local len = symbolBitLength[symbol]
 			if len then
-				local code = nextCode[len]
+				code = nextCode[len]
 				nextCode[len] = code + 1
-				
+
 				-- Reverse the bits of "code"
 				local res = 0
 				for i=1, len do
@@ -528,7 +527,8 @@ local function RunLengthEncodeHuffmanLens(lcodeLens, maxNonZeroLenlCode, dcodeLe
 	local maxCode = maxNonZeroLenlCode+maxNonZeroLendCode+1
 
 	for code = 0, maxCode+1 do
-		local len = (code <= maxNonZeroLenlCode) and (lcodeLens[code] or 0) or ((code <= maxCode) and (dcodeLens[code-maxNonZeroLenlCode-1] or 0) or nil)
+		local len = (code <= maxNonZeroLenlCode) and (lcodeLens[code] or 0) or
+			((code <= maxCode) and (dcodeLens[code-maxNonZeroLenlCode-1] or 0) or nil)
 		if len == prev then
 			count = count + 1
 			if len ~= 0 and count == 6 then
@@ -615,41 +615,44 @@ end
 	key of the configuration table is the compression level, and its value stores the compression setting
 	See also https://github.com/madler/zlib/blob/master/doc/algorithm.txt,
 	And https://github.com/madler/zlib/blob/master/deflate.c for more infomration
-	
+
 	The meaning of each field:
 	1. use_lazy_evaluation: true/false. Whether the program uses lazy evaluation.
 							See what is "lazy evaluation" in the link above.
 							lazy_evaluation improves ratio, but relatively slow.
-	2. good_prev_length: Only effective if lazy is set, Only use 1/4 of max_chain if prev length of lazy match is above this.
-	3. max_insert_length/max_lazy_match: 
-			If not using lazy evaluation, Insert new strings in the hash table only if the match length is not greater than this length.Only continue lazy evaluation
+	2. good_prev_length: Only effective if lazy is set, Only use 1/4 of max_chain
+						 if prev length of lazy match is above this.
+	3. max_insert_length/max_lazy_match:
+			If not using lazy evaluation, Insert new strings in the hash table only if the match length is not
+			greater than this length.Only continue lazy evaluation.
 			If using lazy evaluation, only continue lazy evaluation if prev length is strictly smaller than this.
 	4. nice_length: Number. Don't continue to go down the hash chain if match length is above this.
 	5. max_chain: Number. The maximum number of hash chains we look.
 
 --]]
 local _configuration_table = {
-	[1] = {false,	nil,	4,	8, 	4},		-- gzip -1
+	[1] = {false,	nil,	4,	8,	 4},		-- gzip -1
 	[2] = {false,	nil,	5,	18, 8},		-- gzip -2
-	[3] = {false,	nil,	6, 	32,	32,},	-- gzip -3
+	[3] = {false,	nil,	6,	 32,	32,},	-- gzip -3
 
 	[4] = {true,	4,		4,		16,	16},	-- gzip -4
 	[5] = {true,	8,		16,		32,	32},	-- gzip -5
-	[6] = {true,	8,		16,		128,128},  	-- gzip -6
-	[7] = {true,	8,		32,		128,256},  	-- gzip -7
-	[8] = {true,	32, 	128,	258,1024}, 	-- gzip -8
-	[9] = {true,	32, 	258,	258,4096}, 	-- gzip -9 (maximum compression)
+	[6] = {true,	8,		16,		128,128},	  -- gzip -6
+	[7] = {true,	8,		32,		128,256},	  -- gzip -7
+	[8] = {true,	32,	 128,	258,1024},	 -- gzip -8
+	[9] = {true,	32,	 258,	258,4096},	 -- gzip -9 (maximum compression)
 }
 
 function LibDeflate:Compress(str, level)
 	if not level then
 		level = 3
 	end
-	
-	local config_use_lazy, _, config_max_lazy_match, config_nice_length, config_max_hash_chain = unpack(_configuration_table[level])
+
+	local config_use_lazy, _, config_max_lazy_match, config_nice_length
+		, config_max_hash_chain = unpack(_configuration_table[level])
 	local config_max_insert_length = (not config_use_lazy) and config_max_lazy_match or 2147483647
 	local config_good_hash_chain = math_floor(config_max_hash_chain/4)
-	
+
 	local time1 = os.clock()
 	local strLen = str:len()
 	local strTable = {}
@@ -675,16 +678,15 @@ function LibDeflate:Compress(str, level)
 	local dCodes = {}
 	local dCodeTblSize = 0
 	local dCodesCount = {}
-	
+
 	local lExtraBits = {}
 	local lExtraBitTblSize = 0
 	local dExtraBits = {}
 	local dExtraBitTblSize = 0
 
 	local index = 1
-	local strLen = str:len()
 	local hashTables = {}
-	
+
 	local hash = 0
 	hash = bit_band(bit_bxor(bit_lshift(hash, 5), strTable[1] or 0), 32767)
 	hash = bit_band(bit_bxor(bit_lshift(hash, 5), strTable[2] or 0), 32767)
@@ -694,7 +696,7 @@ function LibDeflate:Compress(str, level)
 	local prevDist = 0
 	local curLen = 0
 	local curDist = 0
-	
+
 	local indexEnd = strLen + (config_use_lazy and 1 or 0)
 	while (index <= indexEnd) do
 		if strLoadEnd < strLen and index >= nextLoadStrIndex then
@@ -710,14 +712,14 @@ function LibDeflate:Compress(str, level)
 		curLen = 0
 		hash = bit_bxor(hash*32, strTable[index+2] or 0) % 32768
 		if (index+2 <= strLen and (not config_use_lazy or prevLen < config_max_lazy_match)) then
-		
+
 			local hashHead = hashTables[hash]
 			local prevHead = nil
 			local head = hashHead
 			local chain = 1
-			local chainLen = (config_use_lazy and prevLen >= config_good_hash_chain) 
+			local chainLen = (config_use_lazy and prevLen >= config_good_hash_chain)
 				and config_good_hash_chain or config_max_hash_chain
-			
+
 			while (head and chain <= chainLen) do
 				local prev = head[1]
 				if chain == config_max_hash_chain then
@@ -725,9 +727,9 @@ function LibDeflate:Compress(str, level)
 				end
 				if index - prev > 32768 then
 					head[2] = nil
-					if not prevHead then 
+					if not prevHead then
 						hashTables[hash] = nil
-					else 
+					else
 						prevHead[2] = nil
 					end
 					break
@@ -750,14 +752,15 @@ function LibDeflate:Compress(str, level)
 					if curLen >= config_nice_length then
 						break
 					end
-				end	
+				end
 			end
 		end
 		hashTables[hash] = {index, hashTables[hash]}
 		if not config_use_lazy then
 			prevLen, prevDist = curLen, curDist
 		end
-		if ((not config_use_lazy or matchAvailable) and (prevLen > 3 or (prevLen == 3 and prevDist < 4096)) and curLen <= prevLen )then
+		if ((not config_use_lazy or matchAvailable) and (prevLen > 3 or (prevLen == 3 and prevDist < 4096))
+		and curLen <= prevLen )then
 			local code = _lengthToLiteralCode[prevLen]
 			local distCode = _distanceToCode[prevDist]
 
@@ -767,7 +770,7 @@ function LibDeflate:Compress(str, level)
 			lCodeTblSize = lCodeTblSize + 1
 			lCodes[lCodeTblSize] = code
 			lCodesCount[code] = (lCodesCount[code] or 0) + 1
-			
+
 			dCodeTblSize = dCodeTblSize + 1
 			dCodes[dCodeTblSize] = distCode
 			dCodesCount[distCode] = (dCodesCount[distCode] or 0) + 1
@@ -781,7 +784,7 @@ function LibDeflate:Compress(str, level)
 				dExtraBitTblSize = dExtraBitTblSize + 1
 				dExtraBits[dExtraBitTblSize] = distExtraBits
 			end
-			
+
 			for i=index+1, index+prevLen-(config_use_lazy and 2 or 1) do
 				hash = bit_bxor(hash*32, strTable[i+2] or 0) % 32768
 				if prevLen <= config_max_insert_length then
@@ -801,11 +804,11 @@ function LibDeflate:Compress(str, level)
 			index = index + 1
 		end
 	end
-	
+
 
 	print("time_find_pairs", os.clock()-time2)
 	local time3 = os.clock()
-	
+
 	lCodeTblSize = lCodeTblSize + 1
 	lCodes[lCodeTblSize] = 256
 	lCodesCount[256] = (lCodesCount[256] or 0) + 1

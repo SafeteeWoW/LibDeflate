@@ -1,7 +1,6 @@
 local lu = require("luaunit")
 local Lib = require("LibDeflate")
 
-
 math.randomseed(os.time())
 function CheckStr(str, levels, minRunTime, inputFileName)
 	minRunTime = minRunTime or 0
@@ -19,7 +18,8 @@ function CheckStr(str, levels, minRunTime, inputFileName)
 	end
 
 	for _, level in ipairs(levels) do
-		print((">> %s %s, Level: %d, Size: %s"):format((inputFileName and "File:" or "Str:"),(inputFileName or str):sub(1, 40), level, str:len()))
+		print((">> %s %s, Level: %d, Size: %s"):format((inputFileName and "File:" or "Str:")
+			,(inputFileName or str):sub(1, 40), level, str:len()))
 		local startTime = os.clock()
 		local elapsed = -1
 		local compressed = ""
@@ -50,7 +50,8 @@ function CheckStr(str, levels, minRunTime, inputFileName)
 
 		lu.assertEquals(str, testFileContent, "File content does not match decompressed file")
 		print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, TimePerRun: %.3f ms, Speed: %.2f KB/s, Repeated: %d"):
-			format(level, str:len(), compressed:len(), str:len()/compressed:len(), elapsed/repeated*1000, str:len()/elapsed/1000, repeated))
+			format(level, str:len(), compressed:len(), str:len()/compressed:len()
+				, elapsed/repeated*1000, str:len()/elapsed/1000, repeated))
 		print("-------------------------------------")
 	end
 end
