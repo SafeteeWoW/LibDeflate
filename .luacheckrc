@@ -1,7 +1,7 @@
 files['.luacheckrc'].global = false
 self = false
-files['tests/LibDeflateTest.lua'].ignore = {"241", -- 	Local variable is mutated but never accessed.
-											}
+files['tests/LibDeflateTest.lua'].global = false
+
 stds.wow = {
    read_globals = {"bit", "bit32", "LibStub", "wipe"}
 }

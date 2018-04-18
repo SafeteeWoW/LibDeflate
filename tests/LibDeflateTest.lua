@@ -64,7 +64,7 @@ local function CheckFile(inputFileName, levels, minRunTime)
 	CheckStr(inputFileContent, levels, minRunTime, inputFileName)
 end
 
-local TestMin1Strings = {}
+TestMin1Strings = {}
 	function TestMin1Strings:testEmpty()
 		CheckStr("", "all")
 	end
@@ -83,7 +83,7 @@ local TestMin1Strings = {}
 		CheckStr(table.concat(repeated), "all")
 	end
 
-local TestMin2MyData = {}
+TestMin2MyData = {}
 	function TestMin2MyData:TestItemStrings()
 		CheckFile("tests/data/itemStrings.txt", "all")
 	end
@@ -96,7 +96,7 @@ local TestMin2MyData = {}
 		CheckFile("tests/data/reconnectData.txt", "all")
 	end
 
-local TestMin3ThirdPartySmall = {}
+TestMin3ThirdPartySmall = {}
 	function TestMin3ThirdPartySmall:TestEmpty()
 		CheckFile("tests/data/3rdparty/empty", "all")
 	end
