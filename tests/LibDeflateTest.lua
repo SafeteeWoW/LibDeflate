@@ -2,7 +2,7 @@ local lu = require("luaunit")
 local Lib = require("LibDeflate")
 
 math.randomseed(os.time())
-function CheckStr(str, levels, minRunTime, inputFileName)
+local function CheckStr(str, levels, minRunTime, inputFileName)
 	minRunTime = minRunTime or 0
 	if levels == "all" then
 		levels = {1,2,3,4,5,6,7,8,9}
@@ -56,16 +56,15 @@ function CheckStr(str, levels, minRunTime, inputFileName)
 	end
 end
 
-function CheckFile(inputFileName, levels, minRunTime)
+local function CheckFile(inputFileName, levels, minRunTime)
 	local inputFile = io.open(inputFileName, "rb")
 	lu.assertNotNil(inputFile, "Input file "..inputFileName.." does not exist")
 	local inputFileContent = inputFile:read("*all")
-	local inputFileLen = inputFileContent:len()
 	inputFile:close()
 	CheckStr(inputFileContent, levels, minRunTime, inputFileName)
 end
 
-TestMin1Strings = {}
+local TestMin1Strings = {}
 	function TestMin1Strings:testEmpty()
 		CheckStr("", "all")
 	end
@@ -84,7 +83,7 @@ TestMin1Strings = {}
 		CheckStr(table.concat(repeated), "all")
 	end
 
-TestMin2MyData = {}
+local TestMin2MyData = {}
 	function TestMin2MyData:TestItemStrings()
 		CheckFile("tests/data/itemStrings.txt", "all")
 	end
@@ -97,7 +96,7 @@ TestMin2MyData = {}
 		CheckFile("tests/data/reconnectData.txt", "all")
 	end
 
-TestMin3ThirdPartySmall = {}
+local TestMin3ThirdPartySmall = {}
 	function TestMin3ThirdPartySmall:TestEmpty()
 		CheckFile("tests/data/3rdparty/empty", "all")
 	end

@@ -213,7 +213,7 @@ end
 local _writeCompressedSize = nil
 local _writeRemainder = nil
 local _writeRemainderLength = nil
-local _writeBuffer = nil
+local _writeBuffer = nil -- luacheck: ignore _writeBuffer
 local function WriteBitsInit(buffer)
 	wipe(buffer)
 	_writeCompressedSize = 0
@@ -237,7 +237,7 @@ end
 
 local function WriteRemainingBits()
 	if _writeRemainderLength > 0 then
-		for i=1, _writeRemainderLength, 8 do
+		for _=1, _writeRemainderLength, 8 do
 			_writeCompressedSize = _writeCompressedSize + 1
 			_writeBuffer[_writeCompressedSize] = string_char(bit_band(_writeRemainder, 255))
 			_writeRemainder = bit_rshift(_writeRemainder, 8)
@@ -372,7 +372,7 @@ end
 
 --@treturn {table, table} symbol length table and symbol code table
 local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol)
-	local heapSize = 0
+	local heapSize
 	local maxNonZeroLenSym = -1
 	local leafs = {}
 	local heap = {}
@@ -498,7 +498,7 @@ local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol)
 
 				-- Reverse the bits of "code"
 				local res = 0
-				for i=1, len do
+				for _=1, len do
 					res = bit_bor(res, code % 2)
 					code = (code-code%2)/2
 					res = res*2
@@ -688,8 +688,8 @@ function LibDeflate:Compress(str, level)
 	hash = bit_band(bit_bxor(bit_lshift(hash, 5), strTable[2] or 0), 32767)
 
 	local matchAvailable = false
-	local prevLen = 0
-	local prevDist = 0
+	local prevLen
+	local prevDist
 	local curLen = 0
 	local curDist = 0
 
