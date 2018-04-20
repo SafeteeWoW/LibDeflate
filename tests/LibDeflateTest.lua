@@ -85,15 +85,15 @@ TestMin1Strings = {}
 
 TestMin2MyData = {}
 	function TestMin2MyData:TestItemStrings()
-		CheckFile("tests/data/itemStrings.txt", "all", 1)
+		CheckFile("tests/data/itemStrings.txt", "all")
 	end
 
 	function TestMin2MyData:TestSmallTest()
-		CheckFile("tests/data/smalltest.txt", "all", 1)
+		CheckFile("tests/data/smalltest.txt", "all")
 	end
 
 	function TestMin2MyData:TestReconnectData()
-		CheckFile("tests/data/reconnectData.txt", "all", 1)
+		CheckFile("tests/data/reconnectData.txt", "all")
 	end
 
 TestMin3ThirdPartySmall = {}
