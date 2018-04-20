@@ -51,7 +51,7 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 		lu.assertEquals(str, testFileContent, "File content does not match decompressed file")
 		print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, TimePerRun: %.3f ms, Speed: %.2f KB/s, Repeated: %d"):
 			format(level, str:len(), compressed:len(), str:len()/compressed:len()
-				, elapsed/repeated*1000, str:len()/elapsed/1000, repeated))
+				, elapsed*1000, str:len()/elapsed/1000, repeated))
 		print("-------------------------------------")
 	end
 end
@@ -85,15 +85,15 @@ TestMin1Strings = {}
 
 TestMin2MyData = {}
 	function TestMin2MyData:TestItemStrings()
-		CheckFile("tests/data/itemStrings.txt", "all")
+		CheckFile("tests/data/itemStrings.txt", "all", 1)
 	end
 
 	function TestMin2MyData:TestSmallTest()
-		CheckFile("tests/data/smalltest.txt", "all")
+		CheckFile("tests/data/smalltest.txt", "all", 1)
 	end
 
 	function TestMin2MyData:TestReconnectData()
-		CheckFile("tests/data/reconnectData.txt", "all")
+		CheckFile("tests/data/reconnectData.txt", "all", 1)
 	end
 
 TestMin3ThirdPartySmall = {}
