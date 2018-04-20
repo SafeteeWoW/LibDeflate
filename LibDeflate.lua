@@ -78,6 +78,7 @@ end
 ---------------------------------------
 --	Precalculated tables start.
 ---------------------------------------
+local _literalCodeToBaseLen = {}
 local _literalCodeToExtraBitsLen = {}
 
 local _lengthToLiteralCode = {}
@@ -98,16 +99,22 @@ for code=0, 285 do
 		_literalCodeToExtraBitsLen[code] = 0
 	elseif code <= 264 then
 		_literalCodeToExtraBitsLen[code] = 0
+		_literalCodeToBaseLen[code] = code - 254
 	elseif code <= 268 then
 		_literalCodeToExtraBitsLen[code] = 1
+		_literalCodeToBaseLen[code] = 11 + (code-265)*2
 	elseif code <= 272 then
 		_literalCodeToExtraBitsLen[code] = 2
+		_literalCodeToBaseLen[code] = 19 + (code-269)*4
 	elseif code <= 276 then
 		_literalCodeToExtraBitsLen[code] = 3
+		_literalCodeToBaseLen[code] = 35 + (code-269)*8
 	elseif code <= 280 then
 		_literalCodeToExtraBitsLen[code] = 4
+		_literalCodeToBaseLen[code] = 67 + (code-277)*16
 	elseif code <= 284 then
 		_literalCodeToExtraBitsLen[code] = 5
+		_literalCodeToBaseLen[code] = 131 + (code-281)*32
 	elseif code == 285 then
 		_literalCodeToExtraBitsLen[code] = 0
 	end
@@ -745,7 +752,7 @@ function LibDeflate:Compress(str, level)
 						curLen = j
 						curDist = index - prev
 					end
-					if curLen >= config_nice_length then
+					if curLen >= config_nice_length or curLen == 258 then
 						break
 					end
 				end
@@ -900,6 +907,86 @@ function LibDeflate:Compress(str, level)
 	--collectgarbage("restart")
 	--local time4 = os.clock()
 	return result
+end
+
+local function Decode(lenCount, huffman, maxBitLength)
+	local code = 0 -- Len bits being decoded
+	local first = 0 -- First code of length len
+	local count -- Number of codes of length len
+	local index = 0-- Index of first code of length len in symbol
+
+	for len = 1, maxBitLength do
+		code = code - code % 2 + ReadBits(1) -- Get next bit
+		count = lenCount[len]
+		if code - count < first then
+			assert(huffman[index+code-first] ~= nil
+				, "decoded a code not in the huffman table.")
+			return huffman[index + code - first]
+		end
+		index = index + count
+		first = first + count
+		first = first * 2
+		code = code * 2
+	end
+	return -10 -- Ran out of codes
+end
+
+local function ConstructInflateHuffman(lengths, maxSymbol, maxBitLength)
+	local lenCount = {}
+	for symbol = 0, maxSymbol do
+		local len = lengths[symbol] or 0
+		lenCount[len] = (lenCount[len] or 0) + 1
+	end
+
+	if lenCount[0] == maxSymbol+1 then
+		return 0  -- Complete, but decode will fail
+	end
+
+	local left = 1
+	for len = 1, maxBitLength do
+		left = left * 2
+		left = left - lenCount[len]
+		if left < 0 then
+			return left -- Over-subscribed, return negative
+		end
+	end
+
+	-- Generate offsets info symbol table for each length for sorting
+	local offs = {}
+	offs[1] = 0
+	for len = 1, maxBitLength-1 do
+		offs[len + 1] = offs[len] + (lenCount[len] or 0)
+	end
+
+	local inflateTbl = {}
+	for symbol = 0, maxSymbol do
+		local len = lengths[symbol] or 0
+		if len ~= 0 then
+			local offset = offs[len]
+			inflateTbl[offset] = symbol
+			offs[len] = offs[len] + 1
+		end
+	end
+
+	return inflateTbl, lenCount
+end
+
+local function Codes(lenCode, distCode) -- WIP
+	repeat
+		local symbol = Decode(lenCode, 15)
+		if symbol < 0 then
+			error("Negative code "..symbol)
+			return symbol -- Invalid symbol
+		elseif symbol >= 286 then
+			error("Code too big "..symbol)
+			return -10 -- Invalid fixed code
+		elseif symbol < 256 then
+			_writeCompressedSize = _writeCompressedSize + 1
+			_writeBuffer[_writeCompressedSize] = symbol
+		elseif symbol > 256 then
+			local baseLength = _
+		end
+	until false -- TODO
 end
 
 return LibDeflate
