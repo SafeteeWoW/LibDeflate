@@ -691,8 +691,8 @@ function LibDeflate:Compress(str, level)
 	local hashTables = {}
 
 	local hash = 0
-	hash = bit_band(bit_bxor(bit_lshift(hash, 5), strTable[1] or 0), 32767)
-	hash = bit_band(bit_bxor(bit_lshift(hash, 5), strTable[2] or 0), 32767)
+	hash = (hash*256+(strTable[1] or 0))%16777216
+	hash = (hash*256+(strTable[2] or 0))%16777216
 
 	local matchAvailable = false
 	local prevLen
@@ -713,7 +713,7 @@ function LibDeflate:Compress(str, level)
 		prevLen = curLen
 		prevDist = curDist
 		curLen = 0
-		hash = bit_bxor(hash*32, strTable[index+2] or 0) % 32768
+		hash = (hash*256+(strTable[index+2] or 0))%16777216
 		if (index+2 <= strLen and (not config_use_lazy or prevLen < config_max_lazy_match)) then
 
 			local hashHead = hashTables[hash]
@@ -740,7 +740,7 @@ function LibDeflate:Compress(str, level)
 				head = head[2]
 				chain = chain + 1
 				if prev and prev < index then
-					local j = 0
+					local j = 3
 					repeat
 						if (strTable[prev+j] == strTable[index+j]) then
 							j = j + 1
@@ -752,7 +752,7 @@ function LibDeflate:Compress(str, level)
 						curLen = j
 						curDist = index - prev
 					end
-					if curLen >= config_nice_length or curLen == 258 then
+					if curLen >= config_nice_length then
 						break
 					end
 				end
@@ -789,7 +789,7 @@ function LibDeflate:Compress(str, level)
 			end
 
 			for i=index+1, index+prevLen-(config_use_lazy and 2 or 1) do
-				hash = bit_bxor(hash*32, strTable[i+2] or 0) % 32768
+				hash = (hash*256+(strTable[i+2] or 0))%16777216
 				if prevLen <= config_max_insert_length then
 					hashTables[hash] = {i, hashTables[hash]}
 				end
