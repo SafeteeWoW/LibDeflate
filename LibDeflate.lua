@@ -718,32 +718,25 @@ function LibDeflate:Compress(str, level)
 		prevDist = curDist
 		curLen = 0
 		hash = (hash*256+(strTable[index+2] or 0))%16777216
-		if (index+2 <= strLen and (not config_use_lazy or prevLen < config_max_lazy_match)) then
 
-			local hashHead = hashTables[hash]
-			local prevHead = nil
-			local head = hashHead
-			local chain = 1
-			local chainLen = (config_use_lazy and prevLen >= config_good_hash_chain)
-				and config_good_hash_chain or config_max_hash_chain
+		local hashChain = hashTables[hash]
+		if not hashChain then
+			hashChain = {}
+			hashTables[hash] = hashChain
+		end
+		local chainSize = #hashChain
 
-			while (head and chain <= chainLen) do
-				local prev = head[1]
-				if chain == config_max_hash_chain then
-					head[2] = nil
-				end
+		if (chainSize > 0 and index+2 <= strLen and (not config_use_lazy or prevLen < config_max_lazy_match)) then
+			local iEnd = (config_use_lazy and prevLen >= config_good_hash_chain)
+				and (chainSize - config_good_hash_chain +1) or 1
+			if iEnd < 1 then iEnd = 1 end
+
+			for i=chainSize, iEnd, -1 do
+				local prev = hashChain[i]
 				if index - prev > 32768 then
-					head[2] = nil
-					if not prevHead then
-						hashTables[hash] = nil
-					else
-						prevHead[2] = nil
-					end
 					break
 				end
-				head = head[2]
-				chain = chain + 1
-				if prev and prev < index then
+				if prev < index then
 					local j = 3
 					repeat
 						if (strTable[prev+j] == strTable[index+j]) then
@@ -762,7 +755,9 @@ function LibDeflate:Compress(str, level)
 				end
 			end
 		end
-		hashTables[hash] = {index, hashTables[hash]}
+
+		hashChain[chainSize+1] = index
+
 		if not config_use_lazy then
 			prevLen, prevDist = curLen, curDist
 		end
@@ -795,7 +790,12 @@ function LibDeflate:Compress(str, level)
 			for i=index+1, index+prevLen-(config_use_lazy and 2 or 1) do
 				hash = (hash*256+(strTable[i+2] or 0))%16777216
 				if prevLen <= config_max_insert_length then
-					hashTables[hash] = {i, hashTables[hash]}
+					hashChain = hashTables[hash]
+					if not hashChain then
+						hashChain = {}
+						hashTables[hash] = hashChain
+					end
+					hashChain[#hashChain+1] = i
 				end
 			end
 			index = index + prevLen - (config_use_lazy and 1 or 0)

@@ -48,7 +48,7 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 		local memoryUsed = memoryRunning - memoryBefore
 		local memoryLeaked = memoryAfter - memoryBefore
 
-		if math.abs(memoryLeaked) > 0 then
+		if math.abs(memoryLeaked) > 64 then
 			if memoryLeaked > 0 then
 				print("memory leaking: "..memoryLeaked)
 			else
@@ -87,7 +87,8 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 		testFile:close()
 
 		lu.assertEquals(str, testFileContent, "File content does not match decompressed file")
-		print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, TimePerRun: %.3f ms, Speed: %.2f KB/s, Memory: %d bytes, Memory/input: %.3f Memeory Leakeed: %d bytes, Repeated: %d"):
+		print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, TimePerRun: %.3f"..
+			"ms, Speed: %.2f KB/s, Memory: %d bytes, Memory/input: %.3f Memeory Leaked: %d bytes, Repeated: %d"):
 			format(level, str:len(), compressed:len(), str:len()/compressed:len()
 				, elapsed*1000, str:len()/elapsed/1000, memoryUsed, memoryUsed/str:len(), memoryLeaked, repeated))
 		print("-------------------------------------")
