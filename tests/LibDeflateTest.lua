@@ -2,6 +2,20 @@ local lu = require("luaunit")
 local Lib = require("LibDeflate")
 
 math.randomseed(os.time())
+
+-- Repeatedly collect memory garbarge until memory usage no longer changes
+local function FullMemoryCollect()
+	local memoryUsed = collectgarbage("count")
+	local lastMemoryUsed
+	repeat
+		lastMemoryUsed = memoryUsed
+		collectgarbage("collect")
+		memoryUsed = collectgarbage("count")
+	until memoryUsed >= lastMemoryUsed
+	collectgarbage("collect")
+	collectgarbage("collect")
+end
+
 local function CheckStr(str, levels, minRunTime, inputFileName)
 	minRunTime = minRunTime or 0
 	if levels == "all" then
@@ -18,11 +32,35 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 	end
 
 	for _, level in ipairs(levels) do
+		-- Check memory usage and leaking
+		local memoryBefore
+		local memoryRunning
+		local memoryAfter
+		collectgarbage("stop")
+		FullMemoryCollect()
+		memoryBefore =  collectgarbage("count")*1024
+		FullMemoryCollect()
+		Lib:Compress(str, level)
+		memoryRunning = collectgarbage("count")*1024
+		FullMemoryCollect()
+		memoryAfter = collectgarbage("count")*1024
+		collectgarbage("restart")
+		local memoryUsed = memoryRunning - memoryBefore
+		local memoryLeaked = memoryAfter - memoryBefore
+
+		if math.abs(memoryLeaked) > 0 then
+			if memoryLeaked > 0 then
+				print("memory leaking: "..memoryLeaked)
+			else
+				print("memory unleaking: "..memoryLeaked)
+			end
+		end
+
+		local compressed = ""
 		print((">> %s %s, Level: %d, Size: %s"):format((inputFileName and "File:" or "Str:")
 			,(inputFileName or str):sub(1, 40), level, str:len()))
 		local startTime = os.clock()
 		local elapsed = -1
-		local compressed = ""
 		local repeated = 0
 		while elapsed < minRunTime do
 			compressed = Lib:Compress(str, level)
@@ -49,9 +87,9 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 		testFile:close()
 
 		lu.assertEquals(str, testFileContent, "File content does not match decompressed file")
-		print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, TimePerRun: %.3f ms, Speed: %.2f KB/s, Repeated: %d"):
+		print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, TimePerRun: %.3f ms, Speed: %.2f KB/s, Memory: %d bytes, Memory/input: %.3f Memeory Leakeed: %d bytes, Repeated: %d"):
 			format(level, str:len(), compressed:len(), str:len()/compressed:len()
-				, elapsed*1000, str:len()/elapsed/1000, repeated))
+				, elapsed*1000, str:len()/elapsed/1000, memoryUsed, memoryUsed/str:len(), memoryLeaked, repeated))
 		print("-------------------------------------")
 	end
 end

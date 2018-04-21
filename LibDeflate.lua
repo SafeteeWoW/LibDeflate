@@ -222,7 +222,6 @@ local _writeRemainder = nil
 local _writeRemainderLength = nil
 local _writeBuffer = nil -- luacheck: ignore _writeBuffer
 local function WriteBitsInit(buffer)
-	wipe(buffer)
 	_writeCompressedSize = 0
 	_writeRemainder = 0
 	_writeRemainderLength = 0
@@ -271,6 +270,11 @@ local function ReadBitsGoToNextByte()
 		_readBytePos = _readBytePos + 1
 		_readBitPos = 0
 	end
+end
+
+local function CleanUp()
+	_writeBuffer = nil
+	_readString = nil
 end
 
 local function ReadBits(length)
@@ -906,6 +910,7 @@ function LibDeflate:Compress(str, level)
 	print("time_table_concat", os.clock()-time5)
 	--collectgarbage("restart")
 	--local time4 = os.clock()
+	CleanUp()
 	return result
 end
 
