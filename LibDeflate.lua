@@ -664,12 +664,12 @@ function LibDeflate:Compress(str, level)
 	local strLen = str:len()
 	local strTable = {}
 
-	-- Only hold max of 256KB string in the strTable at one time.
-	-- When we have read half of it, wipe the first 64KB bytes of the strTable and load the next 64KB.
+	-- Only hold max of 128KB string in the strTable at one time.
+	-- When we have read half of it, wipe the first 32KB bytes of the strTable and load the next 64KB.
 	-- Don't bother this if the input string is shorter than 256KB.
 	-- This is to use less memory when the file is very large, so we don't get out of memory error when
 	-- the file is on the order of ~10MB.
-	local MAX_LOAD_STRING_SIZE = 256*1024
+	local MAX_LOAD_STRING_SIZE = 128*1024
 	local strLoadEnd = MAX_LOAD_STRING_SIZE
 	loadStrToTable(str, strTable, 1, math_min(strLen, strLoadEnd))
 	local nextLoadStrIndex = MAX_LOAD_STRING_SIZE/2+1
@@ -709,6 +709,26 @@ function LibDeflate:Compress(str, level)
 			nextLoadStrIndex =  nextLoadStrIndex + MAX_LOAD_STRING_SIZE/4
 			strLoadEnd = strLoadEnd + MAX_LOAD_STRING_SIZE/4
 			loadStrToTable(str, strTable, strLoadEnd-MAX_LOAD_STRING_SIZE/4+1, math_min(strLen, strLoadEnd))
+			for k, t in pairs(hashTables) do
+				local tSize = #t
+				if tSize > 0 and index - t[1] > 32768 then
+					if tSize == 1 then
+						hashTables[k] = nil
+					else
+						local new = {}
+						local newSize = 0
+						for i=2, tSize do
+							local j = t[i]
+							if index - j <= 32768 then
+								newSize = newSize +1
+								new[newSize] = j
+							end
+						end
+						hashTables[k] = new
+					end
+				end
+			end
+			collectgarbage("collect")
 		end
 		prevLen = curLen
 		prevDist = curDist
