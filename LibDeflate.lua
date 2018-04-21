@@ -672,11 +672,7 @@ function LibDeflate:Compress(str, level)
 	local MAX_LOAD_STRING_SIZE = 256*1024
 	local strLoadEnd = MAX_LOAD_STRING_SIZE
 	loadStrToTable(str, strTable, 1, math_min(strLen, strLoadEnd))
-	for i=1,  math_min(strLen, strLoadEnd) do
-		assert(strTable[i] == string_byte(str, i, i), "WTJFLdfsdfasdfsadJSDLFJDS")
-	end
 	local nextLoadStrIndex = MAX_LOAD_STRING_SIZE/2+1
-
 	print("time_read_string", os.clock()-time1)
 	local time2 = os.clock()
 	local lCodes = {}
@@ -812,6 +808,9 @@ function LibDeflate:Compress(str, level)
 		end
 	end
 
+	-- Allow these to be garbaged collected earlier
+	hashTables = nil -- luacheck: ignore 311
+	strTable = nil -- luacheck: ignore 311
 
 	print("time_find_pairs", os.clock()-time2)
 	local time3 = os.clock()
@@ -902,6 +901,22 @@ function LibDeflate:Compress(str, level)
 			end
 		end
 	end
+
+	-- garbage collect earlier
+	lCodeLens = nil -- luacheck: ignore 311
+	lCodeCodes = nil -- luacheck: ignore 311
+	dCodeLens = nil -- luacheck: ignore 311
+	dCodeCodes = nil -- luacheck: ignore 311
+	rleCodes = nil -- luacheck: ignore 311
+	rleExtraBits = nil -- luacheck: ignore 311
+	codeLensCodeLens = nil -- luacheck: ignore 311
+	codeLensCodeCodes = nil -- luacheck: ignore 311
+	lCodes = nil -- luacheck: ignore 311
+	lCodesCount = nil -- luacheck: ignore 311
+	dCodes = nil -- luacheck: ignore 311
+	dCodesCount = nil -- luacheck: ignore 311
+	lExtraBits = nil -- luacheck: ignore 311
+	dExtraBits = nil -- luacheck: ignore 311
 
 	WriteRemainingBits()
 	print("time_write_bits", os.clock()-time4)
