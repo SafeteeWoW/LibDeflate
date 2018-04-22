@@ -54,7 +54,7 @@ PHEBE	a shepherdess.
 AUDREY	a country wench.
 
 	Lords, pages, and attendants, &c.
-	(Forester:)
+	(orester:)
 	(A Lord:)
 	(First Lord:)
 	(Second Lord:)

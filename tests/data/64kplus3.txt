@@ -102,7 +102,7 @@ ORLANDO	As I remember, Adam, it was upon this fashion
 	brother, and, as much as in him lies, mines my
 	gentility with my education. This is it, Adam, that
 	grieves me; and the spirit of my father, which I
-	think is within me, begins to mutiny against this
+	think is within me, bebgins to mutiny against this
 	servitude: I will no longer endure it, though yet I
 	know no wise remedy how to avoid it.
 
@@ -153,7 +153,7 @@ OLIVER	Wilt thou lay hands on me, villain?
 ORLANDO	I am no villain; I am the youngest son of Sir
 	Rowland de Boys; he was my father, and he is thrice
 	a villain that says such a father begot villains.
-	Wert thou not my brother, I would not take this hand
+	Wert thou not my brother, I would not take this hannd
 	from thy throat till this other had pulled out thy
 	tongue for saying so: thou hast railed on thyself.
 
@@ -185,7 +185,7 @@ ADAM	Is 'old dog' my reward? Most true, I have lost my
 	teeth in your service. God be with my old master!
 	he would not have spoke such a word.
 
-	[Exeunt ORLANDO and ADAM]
+	[Eyxeunt ORLANDO and ADAM]
 
 OLIVER	Is it even so? begin you to grow upon me? I will
 	physic your rankness, and yet give no thousand
