@@ -27,18 +27,6 @@ else
 	LibDeflate = {}
 end
 
-local bit = bit or bit32
-if (not bit) and _VERSION and _VERSION >= "Lua 5.3" then -- For Lua5.3
-	bit = {}
-	bit.band = load("return function(a,b) return a&b end")()
-	bit.bor = load("return function(a,b) return a|b end")()
-	bit.bxor = load("return function(a,b) return a~b end")()
-	bit.lshift = load("return function(a,b) return a<<b end")()
-	bit.rshift = load("return function(a,b) return a>>b end")()
-else
-	bit = bit or require("bit")
-end
-
 -- local is faster than global
 local assert = assert
 local table_concat = table.concat
@@ -50,9 +38,6 @@ local ipairs = ipairs
 local unpack = unpack or table.unpack
 local wipe = wipe
 local math_floor = math.floor
-local bit_bor = bit.bor
-local bit_lshift = bit.lshift
-local bit_rshift = bit.rshift
 
 local function print() end
 
@@ -88,6 +73,7 @@ local _distanceToExtraBitsLen = {}
 
 --local _byteToChar = {}
 local _twoBytesToChar = {}
+local _pow2 = {}
 
 for code=0, 285 do
 	if code <= 255 then
@@ -210,6 +196,14 @@ for i=0,256*256-1 do
 	_twoBytesToChar[i] = string_char(i%256)..string_char((i-i%256)/256)
 end
 
+do
+	local pow = 1
+	for i=0, 31 do
+		_pow2[i] = pow
+		pow = pow*2
+	end
+end
+
 ---------------------------------------
 --	Precalculated tables ends.
 ---------------------------------------
@@ -221,14 +215,15 @@ local function CreateWriter()
 	local _writeBuffer = {}
 
 	local function WriteBits(code, length)
-		_writeRemainder = _writeRemainder + bit_lshift(code, _writeRemainderLength) -- Overflow?
+		_writeRemainder = _writeRemainder + code * _pow2[_writeRemainderLength] -- Overflow?
 		_writeRemainderLength = length + _writeRemainderLength
 		if _writeRemainderLength >= 32 then
 			-- we have at least 4 bytes to store; bulk it
 			_writeBuffer[_writeCompressedSize+1] = _twoBytesToChar[_writeRemainder % 65536]
 			_writeBuffer[_writeCompressedSize+2] = _twoBytesToChar[((_writeRemainder-_writeRemainder%65536)/65536 % 65536)]
 			_writeCompressedSize = _writeCompressedSize + 2
-			_writeRemainder = bit_rshift(code, 32 - _writeRemainderLength + length)
+			local rShiftMask = _pow2[32 - _writeRemainderLength + length]
+			_writeRemainder = (code - code%rShiftMask)/rShiftMask
 			_writeRemainderLength = _writeRemainderLength - 32
 		end
 	end
@@ -240,7 +235,7 @@ local function CreateWriter()
 				for _=1, _writeRemainderLength, 8 do
 					_writeCompressedSize = _writeCompressedSize + 1
 					_writeBuffer[_writeCompressedSize] = string_char(_writeRemainder % 256)
-					_writeRemainder = bit_rshift(_writeRemainder, 8)
+					_writeRemainder = (_writeRemainder-_writeRemainder%256)/256
 				end
 				_writeRemainder = 0
 				_writeRemainderLength = 0
@@ -526,7 +521,7 @@ local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol, Wri
 				-- Reverse the bits of "code"
 				local res = 0
 				for _=1, len do
-					res = bit_bor(res, code % 2) -- res-res%2+(res%2==1 or code % 2 == 1) and 1 or 0
+					res = res - res%2 + (((res%2==1) or (code % 2) == 1) and 1 or 0) -- res | (code%2)
 					code = (code-code%2)/2
 					res = res*2
 				end
@@ -887,7 +882,7 @@ local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, bloc
 			if distCode > 3 then -- dist code with extra bits
 				distCodeWithExtraCount = distCodeWithExtraCount + 1
 				local distExtraBits = dExtraBits[distCodeWithExtraCount]
-				local distExtraBitsLength = bit_rshift(distCode, 1) - 1
+				local distExtraBitsLength = (distCode-distCode%2)/2 - 1
 				WriteBits(distExtraBits, distExtraBitsLength)
 			end
 		end
