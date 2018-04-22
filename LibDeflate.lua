@@ -609,7 +609,7 @@ local _codeLengthHuffmanCodeOrder = {16, 17, 18,
 
 local function loadStrToTable(str, t, start, stop)
 	local i=start-1
-	while i <= stop-16 do
+	while i <= stop do
 		local x1, x2, x3, x4, x5, x6, x7, x8,
 			x9, x10, x11, x12, x13, x14, x15, x16 = string_byte(str, i+1, i+16)
 		t[i+1]=x1
@@ -629,11 +629,6 @@ local function loadStrToTable(str, t, start, stop)
 		t[i+15]=x15
 		t[i+16]=x16
 		i = i + 16
-	end
-	i = i + 1
-	while i <= stop do   -- NEVER math.floor(x/16)*16, this does not work!!!!
-		t[i]=string_byte(str, i)
-		i = i + 1
 	end
 	return t
 end
@@ -956,7 +951,7 @@ function LibDeflate:Compress(str, level)
 			end
 		end
 
-		loadStrToTable(str, strTable, blockStart, blockEnd+2) -- +2 is needed
+		loadStrToTable(str, strTable, blockStart, blockEnd+3) -- +3 is needed
 
 		CompressDynamicBlock(level, WriteBits, strTable, hashTables, blockStart, blockEnd, isLastBlock, str)
 
