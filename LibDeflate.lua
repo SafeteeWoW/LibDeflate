@@ -592,7 +592,8 @@ local _codeLengthHuffmanCodeOrder = {16, 17, 18,
 	0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15}
 
 local function loadStrToTable(str, t, start, stop)
-	for i=start-1, stop-16, 16 do
+	local i=start-1
+	while i <= stop-16 do
 		local x1, x2, x3, x4, x5, x6, x7, x8,
 			x9, x10, x11, x12, x13, x14, x15, x16 = string_byte(str, i+1, i+16)
 		t[i+1]=x1
@@ -611,9 +612,12 @@ local function loadStrToTable(str, t, start, stop)
 		t[i+14]=x14
 		t[i+15]=x15
 		t[i+16]=x16
+		i = i + 16
 	end
-	for i=math_floor(stop/16)*16+1, stop do
+	i = i + 1
+	while i <= stop do   -- NEVER math.floor(x/16)*16, this does not work!!!!
 		t[i]=string_byte(str, i)
+		i = i + 1
 	end
 	return t
 end
