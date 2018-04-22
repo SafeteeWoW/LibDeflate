@@ -19,8 +19,7 @@ end
 local function CheckStr(str, levels, minRunTime, inputFileName)
 
 	FullMemoryCollect()
-	local totalMemoryBefore = collectgarbage("count")
-
+	local totalMemoryBefore = math.floor(collectgarbage("count")*1024)
 
 	do
 		minRunTime = minRunTime or 0
@@ -48,12 +47,12 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 			local memoryAfter
 			collectgarbage("stop")
 			FullMemoryCollect()
-			memoryBefore =  collectgarbage("count")*1024
+			memoryBefore =  math.floor(collectgarbage("count")*1024)
 			FullMemoryCollect()
 			Lib:Compress(str, level)
-			memoryRunning = collectgarbage("count")*1024
+			memoryRunning = math.floor(collectgarbage("count")*1024)
 			FullMemoryCollect()
-			memoryAfter = collectgarbage("count")*1024
+			memoryAfter = math.floor(collectgarbage("count")*1024)
 			collectgarbage("restart")
 			local memoryUsed = memoryRunning - memoryBefore
 			local memoryLeaked = memoryAfter - memoryBefore
@@ -108,7 +107,7 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 	end
 
 	FullMemoryCollect()
-	local totalMemoryAfter = collectgarbage("count")
+	local totalMemoryAfter = math.floor(collectgarbage("count")*1024)
 
 	local totalMemoryDifference = totalMemoryBefore - totalMemoryAfter
 
