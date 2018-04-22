@@ -36,7 +36,6 @@ local string_byte = string.byte
 local pairs = pairs
 local ipairs = ipairs
 local unpack = unpack or table.unpack
-local wipe = wipe
 local math_floor = math.floor
 
 local function print() end
@@ -47,14 +46,6 @@ local function PrintTable(t)
 		table.insert(tmp, v)
 	end
 	print(table_concat(tmp, " "))
-end
-
-if not wipe then
-	wipe = function(t)
-		for k in pairs(t) do
-			t[k] = nil
-		end
-	end
 end
 
 ---------------------------------------
@@ -661,9 +652,6 @@ local _configuration_table = {
 }
 
 local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, blockStart, blockEnd, isLastBlock, str)
-	for i=((blockStart-32768) <1) and 1 or (blockStart-32768), blockEnd do
-		assert(string_byte(str, i, i) == strTable[i], ("WTF not matching???: %d"):format(i))
-	end
 	if not level then
 		level = 3
 	end
