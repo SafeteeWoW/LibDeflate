@@ -907,15 +907,21 @@ function LibDeflate:Compress(str, level)
 			isLastBlock = false
 		end
 
+		loadStrToTable(str, strTable, blockStart, blockEnd+3) -- +3 is needed
+
+		CompressDynamicBlock(level, WriteBits, strTable, hashTables, blockStart, blockEnd, isLastBlock, str)
+
+		result = Flush(isLastBlock)
+
 		-- Memory clean up, so memory consumption does not always grow linearly, even if input string is > 64K.
 		if not isLastBlock then
-			for i=blockStart-2*ADDITIONAL_BLOCK_SIZE, blockStart-ADDITIONAL_BLOCK_SIZE-1 do
+			for i=blockEnd-2*ADDITIONAL_BLOCK_SIZE+1, blockEnd-ADDITIONAL_BLOCK_SIZE do
 				strTable[i] = nil
 			end
 
 			for k, t in pairs(hashTables) do
 				local tSize = #t
-				if tSize > 0 and blockStart - t[1] > 32768 then
+				if tSize > 0 and blockEnd+1 - t[1] > 32768 then
 					if tSize == 1 then
 						hashTables[k] = nil
 					else
@@ -923,7 +929,7 @@ function LibDeflate:Compress(str, level)
 						local newSize = 0
 						for i=2, tSize do
 							local j = t[i]
-							if blockStart - j <= 32768 then
+							if blockEnd+1 - j <= 32768 then
 								newSize = newSize + 1
 								new[newSize] = j
 							end
@@ -933,12 +939,6 @@ function LibDeflate:Compress(str, level)
 				end
 			end
 		end
-
-		loadStrToTable(str, strTable, blockStart, blockEnd+3) -- +3 is needed
-
-		CompressDynamicBlock(level, WriteBits, strTable, hashTables, blockStart, blockEnd, isLastBlock, str)
-
-		result = Flush(isLastBlock)
 	end
 
 	return result
