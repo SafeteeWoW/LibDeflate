@@ -753,7 +753,9 @@ local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, bloc
 			end
 		end
 
-		hashChain[chainSize+1] = index
+		if index <= blockEnd then
+			hashChain[chainSize+1] = index
+		end
 
 		if not config_use_lazy then
 			prevLen, prevDist = curLen, curDist
@@ -964,6 +966,7 @@ function LibDeflate:Compress(str, level)
 	return result
 end
 
+--[[
 local function Decode(lenCount, huffman, maxBitLength)
 	local code = 0 -- Len bits being decoded
 	local first = 0 -- First code of length len
