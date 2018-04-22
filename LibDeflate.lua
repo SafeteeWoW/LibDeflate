@@ -45,15 +45,14 @@ local table_concat = table.concat
 local table_sort = table.sort
 local string_char = string.char
 local string_byte = string.byte
+local string_concat = string.concat
 local pairs = pairs
 local ipairs = ipairs
 local unpack = unpack or table.unpack
 local wipe = wipe
 local math_floor = math.floor
 local math_min = math.min
-local bit_band = bit.band
 local bit_bor = bit.bor
-local bit_bxor = bit.bxor
 local bit_lshift = bit.lshift
 local bit_rshift = bit.rshift
 
@@ -217,40 +216,61 @@ end
 --	Precalculated tables ends.
 ---------------------------------------
 
-local _writeCompressedSize = nil
-local _writeRemainder = nil
-local _writeRemainderLength = nil
-local _writeBuffer = nil -- luacheck: ignore _writeBuffer
-local function WriteBitsInit(buffer)
-	_writeCompressedSize = 0
-	_writeRemainder = 0
-	_writeRemainderLength = 0
-	_writeBuffer = buffer
-end
+local function CreateWriter()
+	local _writeCompressedSize = 0
+	local _writeRemainder = 0
+	local _writeRemainderLength = 0
+	local _writeBuffer = {}
 
-local function WriteBits(code, length)
-	_writeRemainder = _writeRemainder + bit_lshift(code, _writeRemainderLength) -- Overflow?
-	_writeRemainderLength = length + _writeRemainderLength
-	if _writeRemainderLength >= 32 then
-		-- we have at least 4 bytes to store; bulk it
-		_writeBuffer[_writeCompressedSize+1] = _twoBytesToChar[_writeRemainder % 65536]
-		_writeBuffer[_writeCompressedSize+2] = _twoBytesToChar[((_writeRemainder-_writeRemainder%65536)/65536 % 65536)]
-		_writeCompressedSize = _writeCompressedSize + 2
-		_writeRemainder = bit_rshift(code, 32 - _writeRemainderLength + length)
-		_writeRemainderLength = _writeRemainderLength - 32
-	end
-end
-
-local function WriteRemainingBits()
-	if _writeRemainderLength > 0 then
-		for _=1, _writeRemainderLength, 8 do
-			_writeCompressedSize = _writeCompressedSize + 1
-			_writeBuffer[_writeCompressedSize] = string_char(bit_band(_writeRemainder, 255))
-			_writeRemainder = bit_rshift(_writeRemainder, 8)
+	local function WriteBits(code, length)
+		_writeRemainder = _writeRemainder + bit_lshift(code, _writeRemainderLength) -- Overflow?
+		_writeRemainderLength = length + _writeRemainderLength
+		if _writeRemainderLength >= 32 then
+			-- we have at least 4 bytes to store; bulk it
+			_writeBuffer[_writeCompressedSize+1] = _twoBytesToChar[_writeRemainder % 65536]
+			_writeBuffer[_writeCompressedSize+2] = _twoBytesToChar[((_writeRemainder-_writeRemainder%65536)/65536 % 65536)]
+			_writeCompressedSize = _writeCompressedSize + 2
+			_writeRemainder = bit_rshift(code, 32 - _writeRemainderLength + length)
+			_writeRemainderLength = _writeRemainderLength - 32
 		end
-		_writeRemainder = 0
-		_writeRemainderLength = 0
 	end
+
+	local function Flush(lastUseWriter)
+		local ret
+		if lastUseWriter then
+			if _writeRemainderLength > 0 then
+				for _=1, _writeRemainderLength, 8 do
+					_writeCompressedSize = _writeCompressedSize + 1
+					_writeBuffer[_writeCompressedSize] = string_char(_writeRemainder % 256)
+					_writeRemainder = bit_rshift(_writeRemainder, 8)
+				end
+				_writeRemainder = 0
+				_writeRemainderLength = 0
+			end
+			ret = table_concat(_writeBuffer)
+			_writeBuffer = nil
+		else
+			ret = table_concat(_writeBuffer)
+			_writeBuffer = {ret}
+			_writeCompressedSize = 1
+		end
+		return ret
+	end
+
+	return WriteBits, Flush
+end
+
+
+--[[
+local function CleanUp()
+	_writeCompressedSize = nil
+	_writeRemainder = nil
+	_writeRemainderLength = nil
+	_writeBuffer = nil -- luacheck: ignore _writeBuffer
+	_readBytePos = nil
+	_readBitPos = nil
+	_readByte = nil
+	_readString = nil
 end
 
 local _readBytePos = nil
@@ -272,10 +292,7 @@ local function ReadBitsGoToNextByte()
 	end
 end
 
-local function CleanUp()
-	_writeBuffer = nil
-	_readString = nil
-end
+
 
 local function ReadBits(length)
 	assert(length >= 1 and length <= 16)
@@ -312,6 +329,7 @@ local function ReadBits(length)
 	end
 	return code
 end
+--]]
 
 --- Push an element into a max heap
 -- Assume element is a table and we compare it using its first value table[1]
@@ -382,7 +400,7 @@ local function SortByFirstThenSecond(a, b)
 end
 
 --@treturn {table, table} symbol length table and symbol code table
-local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol)
+local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol, WriteBits)
 	local heapSize
 	local maxNonZeroLenSym = -1
 	local leafs = {}
@@ -510,7 +528,7 @@ local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol)
 				-- Reverse the bits of "code"
 				local res = 0
 				for _=1, len do
-					res = bit_bor(res, code % 2)
+					res = bit_bor(res, code % 2) -- res-res%2+(res%2==1 or code % 2 == 1) and 1 or 0
 					code = (code-code%2)/2
 					res = res*2
 				end
@@ -654,31 +672,27 @@ local _configuration_table = {
 	[9] = {true,	32,	 258,	258,4096},	 -- gzip -9 (maximum compression)
 }
 
-function LibDeflate:Compress(str, level)
+local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, blockStart, blockEnd, isLastBlock, str)
+	for i=((blockStart-32768) <1) and 1 or (blockStart-32768), blockEnd do
+		assert(string_byte(str, i, i) == strTable[i], ("WTF not matching???: %d"):format(i))
+	end
 	if not level then
 		level = 3
 	end
 
 	local config_use_lazy, _, config_max_lazy_match, config_nice_length
 		, config_max_hash_chain = unpack(_configuration_table[level])
-	local config_max_insert_length = (not config_use_lazy) and config_max_lazy_match or 2147483647
+	local config_max_insert_length = (not config_use_lazy) and config_max_lazy_match or 2147483646
 	local config_good_hash_chain = math_floor(config_max_hash_chain/4)
 
-	local time1 = os.clock()
-	local strLen = str:len()
-	local strTable = {}
+	local index = blockStart
+	local indexEnd = blockEnd + (config_use_lazy and 1 or 0)
+	local hash = (strTable[blockStart] or 0)*256 + (strTable[blockStart+1] or 0)
 
-	-- Only hold max of 128KB string in the strTable at one time.
-	-- When we have read half of it, wipe the first 32KB bytes of the strTable and load the next 64KB.
-	-- Don't bother this if the input string is shorter than 256KB.
-	-- This is to use less memory when the file is very large, so we don't get out of memory error when
-	-- the file is on the order of ~10MB.
-	local MAX_LOAD_STRING_SIZE = 128*1024
-	local strLoadEnd = MAX_LOAD_STRING_SIZE
-	loadStrToTable(str, strTable, 1, math_min(strLen, strLoadEnd))
-	local nextLoadStrIndex = MAX_LOAD_STRING_SIZE/2+1
-	print("time_read_string", os.clock()-time1)
-	local time2 = os.clock()
+	-- Only hold max of 64KB string in the strTable at one time.
+	-- When we have read half of it, wipe the first 32KB bytes of the strTable and load the next 32KB.
+	-- Don't bother this if the input string is shorter than 64KB.
+	-- This is to set a cap on memory, so we don't run out of memory when the file is large.
 	local lCodes = {}
 	local lCodeTblSize = 0
 	local lCodesCount = {}
@@ -691,52 +705,17 @@ function LibDeflate:Compress(str, level)
 	local dExtraBits = {}
 	local dExtraBitTblSize = 0
 
-	local index = 1
-	local hashTables = {}
-
-	local hash = 0
-	hash = (hash*256+(strTable[1] or 0))%16777216
-	hash = (hash*256+(strTable[2] or 0))%16777216
-
 	local matchAvailable = false
 	local prevLen
 	local prevDist
 	local curLen = 0
 	local curDist = 0
 
-	local indexEnd = strLen + (config_use_lazy and 1 or 0)
 	while (index <= indexEnd) do
-		if strLoadEnd < strLen and index >= nextLoadStrIndex then
-			for i=nextLoadStrIndex-MAX_LOAD_STRING_SIZE/2, nextLoadStrIndex-MAX_LOAD_STRING_SIZE/4-1 do
-				strTable[i] = nil
-			end
-			nextLoadStrIndex =  nextLoadStrIndex + MAX_LOAD_STRING_SIZE/4
-			strLoadEnd = strLoadEnd + MAX_LOAD_STRING_SIZE/4
-			loadStrToTable(str, strTable, strLoadEnd-MAX_LOAD_STRING_SIZE/4+1, math_min(strLen, strLoadEnd))
-			for k, t in pairs(hashTables) do
-				local tSize = #t
-				if tSize > 0 and index - t[1] > 32768 then
-					if tSize == 1 then
-						hashTables[k] = nil
-					else
-						local new = {}
-						local newSize = 0
-						for i=2, tSize do
-							local j = t[i]
-							if index - j <= 32768 then
-								newSize = newSize +1
-								new[newSize] = j
-							end
-						end
-						hashTables[k] = new
-					end
-				end
-			end
-			collectgarbage("collect")
-		end
 		prevLen = curLen
 		prevDist = curDist
 		curLen = 0
+
 		hash = (hash*256+(strTable[index+2] or 0))%16777216
 
 		local hashChain = hashTables[hash]
@@ -746,7 +725,7 @@ function LibDeflate:Compress(str, level)
 		end
 		local chainSize = #hashChain
 
-		if (chainSize > 0 and index+2 <= strLen and (not config_use_lazy or prevLen < config_max_lazy_match)) then
+		if (chainSize > 0 and index+2 <= blockEnd and (not config_use_lazy or prevLen < config_max_lazy_match)) then
 			local iEnd = (config_use_lazy and prevLen >= config_good_hash_chain)
 				and (chainSize - config_good_hash_chain +1) or 1
 			if iEnd < 1 then iEnd = 1 end
@@ -758,13 +737,13 @@ function LibDeflate:Compress(str, level)
 				end
 				if prev < index then
 					local j = 3
-					repeat
+					while (j < 258 and index + j < blockEnd) do
 						if (strTable[prev+j] == strTable[index+j]) then
 							j = j + 1
 						else
 							break
 						end
-					until (j >= 258 or index+j > strLen)
+					end
 					if j > curLen then
 						curLen = j
 						curDist = index - prev
@@ -836,16 +815,12 @@ function LibDeflate:Compress(str, level)
 	hashTables = nil -- luacheck: ignore 311
 	strTable = nil -- luacheck: ignore 311
 
-	print("time_find_pairs", os.clock()-time2)
-	local time3 = os.clock()
-
 	lCodeTblSize = lCodeTblSize + 1
 	lCodes[lCodeTblSize] = 256
 	lCodesCount[256] = (lCodesCount[256] or 0) + 1
 	local lCodeLens, lCodeCodes, maxNonZeroLenlCode = GetHuffmanBitLengthAndCode(lCodesCount, 15, 285)
 	local dCodeLens, dCodeCodes, maxNonZeroLendCode = GetHuffmanBitLengthAndCode(dCodesCount, 15, 29)
 
-	print("time_contruct_table1", os.clock()-time3)
 	--print("maxNonZeroLenlCode", maxNonZeroLenlCode, "maxNonZeroLendCode", maxNonZeroLendCode)
 	local rleCodes, rleExtraBits, rleCodesTblLen, rleCodesCount =
 		RunLengthEncodeHuffmanLens(lCodeLens, maxNonZeroLenlCode, dCodeLens, maxNonZeroLendCode)
@@ -865,11 +840,8 @@ function LibDeflate:Compress(str, level)
 	local HLIT = maxNonZeroLenlCode + 1 - 257 -- # of Literal/Length codes - 257 (257 - 286)
 	local HDIST = maxNonZeroLendCode + 1 - 1 -- # of Distance codes - 1 (1 - 32)
 	if HDIST < 0 then HDIST = 0 end
-	print("time_contruct_table2", os.clock()-time3)
-	local time4 = os.clock()
-	local outputBuffer = {}
-	WriteBitsInit(outputBuffer)
-	WriteBits(1, 1) -- Last block marker
+
+	WriteBits(isLastBlock and 1 or 0, 1) -- Last block marker
 	WriteBits(2, 2) -- Dynamic Huffman Code
 
 	WriteBits(HLIT, 5)
@@ -925,31 +897,72 @@ function LibDeflate:Compress(str, level)
 			end
 		end
 	end
+end
 
-	-- garbage collect earlier
-	lCodeLens = nil -- luacheck: ignore 311
-	lCodeCodes = nil -- luacheck: ignore 311
-	dCodeLens = nil -- luacheck: ignore 311
-	dCodeCodes = nil -- luacheck: ignore 311
-	rleCodes = nil -- luacheck: ignore 311
-	rleExtraBits = nil -- luacheck: ignore 311
-	codeLensCodeLens = nil -- luacheck: ignore 311
-	codeLensCodeCodes = nil -- luacheck: ignore 311
-	lCodes = nil -- luacheck: ignore 311
-	lCodesCount = nil -- luacheck: ignore 311
-	dCodes = nil -- luacheck: ignore 311
-	dCodesCount = nil -- luacheck: ignore 311
-	lExtraBits = nil -- luacheck: ignore 311
-	dExtraBits = nil -- luacheck: ignore 311
+function LibDeflate:Compress(str, level)
+	local strLen = str:len()
+	local strTable = {}
+	local hashTables = {}
+	-- The maximum size of the first dynamic block is 64KB
+	local INITIAL_BLOCK_SIZE = 64*1024
+	-- The maximum size of the additional block is 32KB
+	local ADDITIONAL_BLOCK_SIZE = 32*1024
+	local isLastBlock = nil
+	local blockStart
+	local blockEnd
+	local WriteBits, Flush = CreateWriter()
+	local result
 
-	WriteRemainingBits()
-	print("time_write_bits", os.clock()-time4)
-	local time5 = os.clock()
-	local result = table_concat(outputBuffer)
-	print("time_table_concat", os.clock()-time5)
-	--collectgarbage("restart")
-	--local time4 = os.clock()
-	CleanUp()
+	while not isLastBlock do
+		if not blockStart then
+			blockStart = 1
+			blockEnd = INITIAL_BLOCK_SIZE
+		else
+			blockStart = blockEnd + 1
+			blockEnd = blockEnd + ADDITIONAL_BLOCK_SIZE
+		end
+
+		if blockEnd >= strLen then
+			blockEnd = strLen
+			isLastBlock = true
+		else
+			isLastBlock = false
+		end
+
+		-- Memory clean up, so memory consumption does not always grow linearly, even if input string is > 64K.
+		if not isLastBlock then
+			for i=blockStart-2*ADDITIONAL_BLOCK_SIZE, blockStart-ADDITIONAL_BLOCK_SIZE-1 do
+				strTable[i] = nil
+			end
+
+			for k, t in pairs(hashTables) do
+				local tSize = #t
+				if tSize > 0 and blockStart - t[1] > 32768 then
+					if tSize == 1 then
+						hashTables[k] = nil
+					else
+						local new = {}
+						local newSize = 0
+						for i=2, tSize do
+							local j = t[i]
+							if blockStart - j <= 32768 then
+								newSize = newSize + 1
+								new[newSize] = j
+							end
+						end
+						hashTables[k] = new
+					end
+				end
+			end
+		end
+
+		loadStrToTable(str, strTable, blockStart, blockEnd+2) -- +2 is needed
+
+		CompressDynamicBlock(level, WriteBits, strTable, hashTables, blockStart, blockEnd, isLastBlock, str)
+
+		result = Flush(isLastBlock)
+	end
+
 	return result
 end
 
@@ -1032,5 +1045,6 @@ local function Codes(lenCode, distCode) -- WIP
 		end
 	until false -- TODO
 end
+--]]
 
 return LibDeflate
