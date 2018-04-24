@@ -40,32 +40,46 @@ local math_floor = math.floor
 
 local function print() end
 
-local function PrintTable(t)
+local function PrintTable(t, start, stop)
 	local tmp = {}
-	for _,v in ipairs(t) do
-		table.insert(tmp, v)
+	for i=start, stop do
+		table.insert(tmp, tostring(t[i]))
 	end
-	print(table_concat(tmp, " "))
+	_G.print(table_concat(tmp, " "))
 end
 
 ---------------------------------------
 --	Precalculated tables start.
 ---------------------------------------
-local _literalCodeToBaseLen = {}
-local _literalCodeToExtraBitsLen = {}
-
 local _lengthToLiteralCode = {}
 local _lengthToExtraBits = {}
 local _lengthToExtraBitsLen = {}
 
+local _lengthCodeToBaseLen = { -- Size base for length codes 257..285
+	[0] = 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
+	35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
+local _literalCodeToExtraBitsLen = { -- Extra bits for length codes 257..285
+	[0] = 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+	3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
+local _distanceCodeToBaseDist = { -- Offset base for distance codes 0..29
+	[0] = 1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
+	257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145,
+	8193, 12289, 16385, 24577};
+local _distanceCodeToExtraBitsLen = { -- Extra bits for distance codes 0..29
+	[0] = 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+	7, 7, 8, 8, 9, 9, 10, 10, 11, 11,
+	12, 12, 13, 13};
+
+-- TODO: Remove these three large table
 local _distanceToCode = {}
 local _distanceToExtraBits = {}
 local _distanceToExtraBitsLen = {}
 
---local _byteToChar = {}
 local _twoBytesToChar = {}
+local _byteToChar = {}
 local _pow2 = {}
 
+-- TODO
 for code=0, 285 do
 	if code <= 255 then
 		_literalCodeToExtraBitsLen[code] = 0
@@ -73,22 +87,16 @@ for code=0, 285 do
 		_literalCodeToExtraBitsLen[code] = 0
 	elseif code <= 264 then
 		_literalCodeToExtraBitsLen[code] = 0
-		_literalCodeToBaseLen[code] = code - 254
 	elseif code <= 268 then
 		_literalCodeToExtraBitsLen[code] = 1
-		_literalCodeToBaseLen[code] = 11 + (code-265)*2
 	elseif code <= 272 then
 		_literalCodeToExtraBitsLen[code] = 2
-		_literalCodeToBaseLen[code] = 19 + (code-269)*4
 	elseif code <= 276 then
 		_literalCodeToExtraBitsLen[code] = 3
-		_literalCodeToBaseLen[code] = 35 + (code-269)*8
 	elseif code <= 280 then
 		_literalCodeToExtraBitsLen[code] = 4
-		_literalCodeToBaseLen[code] = 67 + (code-277)*16
 	elseif code <= 284 then
 		_literalCodeToExtraBitsLen[code] = 5
-		_literalCodeToBaseLen[code] = 131 + (code-281)*32
 	elseif code == 285 then
 		_literalCodeToExtraBitsLen[code] = 0
 	end
@@ -183,6 +191,10 @@ for dist=1, 32768 do
 	end
 end
 
+for i=0, 255 do
+	_byteToChar[i] = string_char(i)
+end
+
 for i=0,256*256-1 do
 	_twoBytesToChar[i] = string_char(i%256)..string_char((i-i%256)/256)
 end
@@ -195,24 +207,34 @@ do
 	end
 end
 
+--_G.print(("Static memory used: %.2f MB"):format(collectgarbage("count")/1024))
 ---------------------------------------
 --	Precalculated tables ends.
 ---------------------------------------
 
-local function CreateWriter()
+local function CreateWriter(oneBytePerElement)
 	local _writeCompressedSize = 0
 	local _writeRemainder = 0
 	local _writeRemainderLength = 0
 	local _writeBuffer = {}
+	local _oneBytePerElement = oneBytePerElement
 
 	local function WriteBits(code, length)
 		_writeRemainder = _writeRemainder + code * _pow2[_writeRemainderLength] -- Overflow?
 		_writeRemainderLength = length + _writeRemainderLength
 		if _writeRemainderLength >= 32 then
 			-- we have at least 4 bytes to store; bulk it
-			_writeBuffer[_writeCompressedSize+1] = _twoBytesToChar[_writeRemainder % 65536]
-			_writeBuffer[_writeCompressedSize+2] = _twoBytesToChar[((_writeRemainder-_writeRemainder%65536)/65536 % 65536)]
-			_writeCompressedSize = _writeCompressedSize + 2
+			if _oneBytePerElement then
+				_writeBuffer[_writeCompressedSize+1] = _byteToChar[_writeRemainder % 256]
+				_writeBuffer[_writeCompressedSize+2] = _byteToChar[((_writeRemainder-_writeRemainder%256)/256 % 256)]
+				_writeBuffer[_writeCompressedSize+3] = _byteToChar[((_writeRemainder-_writeRemainder%65536)/65536 % 256)]
+				_writeBuffer[_writeCompressedSize+4] = _byteToChar[((_writeRemainder-_writeRemainder%16777216)/16777216 % 256)]
+				_writeCompressedSize = _writeCompressedSize + 4
+			else
+				_writeBuffer[_writeCompressedSize+1] = _twoBytesToChar[_writeRemainder % 65536]
+				_writeBuffer[_writeCompressedSize+2] = _twoBytesToChar[((_writeRemainder-_writeRemainder%65536)/65536 % 65536)]
+				_writeCompressedSize = _writeCompressedSize + 2
+			end
 			local rShiftMask = _pow2[32 - _writeRemainderLength + length]
 			_writeRemainder = (code - code%rShiftMask)/rShiftMask
 			_writeRemainderLength = _writeRemainderLength - 32
@@ -241,79 +263,8 @@ local function CreateWriter()
 		return ret
 	end
 
-	return WriteBits, Flush
+	return WriteBits, Flush, _writeBuffer
 end
-
-
---[[
-local function CleanUp()
-	_writeCompressedSize = nil
-	_writeRemainder = nil
-	_writeRemainderLength = nil
-	_writeBuffer = nil -- luacheck: ignore _writeBuffer
-	_readBytePos = nil
-	_readBitPos = nil
-	_readByte = nil
-	_readString = nil
-end
-
-local _readBytePos = nil
-local _readBitPos = nil
-local _readByte = nil
-local _readString = nil
-
-local function ReadBitsInit(dataString)
-	_readBytePos = 1
-	_readBitPos = 0
-	_readByte = string_byte(dataString, 1, 1)
-	_readString = dataString
-end
-
-local function ReadBitsGoToNextByte()
-	if (_readBitPos > 0) then
-		_readBytePos = _readBytePos + 1
-		_readBitPos = 0
-	end
-end
-
-
-
-local function ReadBits(length)
-	assert(length >= 1 and length <= 16)
-	local code
-	if (_readBitPos + length <= 8) then
-		code = bit_band(bit_rshift(_readByte, _readBitPos), (bit_lshift(1, length)-1))
-		if _readBitPos + length < 8 then
-			_readBitPos = _readBitPos + length
-		else
-			_readBitPos = 0
-			_readBytePos = _readBytePos + 1
-			_readByte = string_byte(_readString, _readBytePos, _readBytePos)
-		end
-	elseif (_readBitPos + length <= 16) then
-		local byte1 = string_byte(_readString, _readBytePos + 1, _readBytePos + 1)
-		local byte = bit_lshift(byte1, 8) + _readByte
-		code = bit_band(bit_rshift(byte, _readBitPos), (bit_lshift(1, length)-1))
-		if _readBitPos + length < 16 then
-			_readBitPos = _readBitPos + length - 8
-			_readBytePos = _readBytePos + 1
-			_readByte = byte1
-		else
-			_readBitPos = 0
-			_readBytePos = _readBytePos + 2
-			_readByte = string_byte(_readString, _readBytePos, _readBytePos)
-		end
-	else
-		local byte1, byte2 = string_byte(_readString, _readBytePos+1, _readBytePos + 2)
-		local byte = bit_lshift(byte2, 16) + bit_lshift(byte1, 8) + _readByte
-		code = bit_band(bit_rshift(byte, _readBitPos), (bit_lshift(1, length)-1))
-		_readBitPos = _readBitPos + length - 16
-		_readBytePos = _readBytePos + 2
-		_readByte = byte2
-	end
-	return code
-end
---]]
 
 --- Push an element into a max heap
 -- Assume element is a table and we compare it using its first value table[1]
@@ -799,7 +750,6 @@ local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, bloc
 	local lCodeLens, lCodeCodes, maxNonZeroLenlCode = GetHuffmanBitLengthAndCode(lCodesCount, 15, 285)
 	local dCodeLens, dCodeCodes, maxNonZeroLendCode = GetHuffmanBitLengthAndCode(dCodesCount, 15, 29)
 
-	--print("maxNonZeroLenlCode", maxNonZeroLenlCode, "maxNonZeroLendCode", maxNonZeroLendCode)
 	local rleCodes, rleExtraBits, rleCodesTblLen, rleCodesCount =
 		RunLengthEncodeHuffmanLens(lCodeLens, maxNonZeroLenlCode, dCodeLens, maxNonZeroLendCode)
 
@@ -829,7 +779,6 @@ local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, bloc
 	for i = 1, HCLEN+4 do
 		local symbol = _codeLengthHuffmanCodeOrder[i]
 		local length = codeLensCodeLens[symbol] or 0
-		--print(symbol, length)
 		WriteBits(length, 3)
 	end
 
@@ -852,7 +801,6 @@ local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, bloc
 		local huffmanCode = lCodeCodes[code]
 		local huffmanLength = lCodeLens[code]
 		WriteBits(huffmanCode, huffmanLength)
-		--print(code, huffmanCode, huffmanLength)
 		if code > 256 then -- Length code
 			lengthCodeCount = lengthCodeCount + 1
 			if code > 264 and code < 285 then -- Length code with extra bits
@@ -944,20 +892,75 @@ function LibDeflate:Compress(str, level)
 	return result
 end
 
---[[
-local function Decode(lenCount, huffman, maxBitLength)
+------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+local function CreateReader(inputString)
+	assert(type(inputString)=="string")
+	local input = inputString
+	local inputSize = inputString:len()
+	local inputNextBytePos = 1
+	local cacheBitRemaining = 0
+	local cache = 0
+
+	local function SkipToNextByteBoundary()
+		local prevBits = cacheBitRemaining
+		cacheBitRemaining = (cacheBitRemaining - cacheBitRemaining%8)
+		local rShiftMask = _pow2[prevBits-cacheBitRemaining]
+		cache = (cache-cache%rShiftMask)/rShiftMask
+	end
+
+	local function ReadBits(length)
+		assert(length >= 1 and length <= 16)
+		local rShiftMask = _pow2[length]
+		local code
+		if length <= cacheBitRemaining then
+			code = cache % rShiftMask
+			cache = (cache - code) / rShiftMask
+			cacheBitRemaining = cacheBitRemaining - length
+		elseif (inputSize-inputNextBytePos+1)*8+cacheBitRemaining < length then
+			error(("Out of input. Required: %d bytes. Have: %d bytes.")
+				:format(length, (inputSize-inputNextBytePos+1)*8+cacheBitRemaining))
+		else
+			local lShiftMask = _pow2[cacheBitRemaining]
+			local byte1, byte2, byte3, byte4 = string_byte(input, inputNextBytePos, inputNextBytePos+3)
+			assert (byte1 ~=  nil)
+			-- This requires lua number to be at least double ()
+			cache = cache + (byte1+(byte2 or 0)*256+(byte3 or 0)*65536+(byte4 or 0)*16777216)*lShiftMask
+			inputNextBytePos = inputNextBytePos + 4
+			cacheBitRemaining = cacheBitRemaining + 32 - length
+			if inputNextBytePos > inputSize then
+				cacheBitRemaining = cacheBitRemaining - (inputNextBytePos-inputSize-1)*8
+				inputNextBytePos = inputSize + 1
+				input = nil -- Help garbage collector
+			end
+			code = cache % rShiftMask
+			cache = (cache - code) / rShiftMask
+			return code
+		end
+
+		return code
+	end
+
+	return ReadBits, SkipToNextByteBoundary
+end
+
+local function Decode(huffmanLenCount, huffmanSymbol, maxBitLength, ReadBits)
+	assert(huffmanLenCount ~= nil)
+	assert(huffmanSymbol ~= nil)
+	assert(maxBitLength > 0)
+	assert(ReadBits ~= nil)
 	local code = 0 -- Len bits being decoded
 	local first = 0 -- First code of length len
 	local count -- Number of codes of length len
 	local index = 0-- Index of first code of length len in symbol
 
 	for len = 1, maxBitLength do
-		code = code - code % 2 + ReadBits(1) -- Get next bit
-		count = lenCount[len]
+		code = code + ((ReadBits(1)==1) and (1 - code % 2) or 0) -- (code |= RadBits(1)) Get next bit
+		count = huffmanLenCount[len] or 0
 		if code - count < first then
-			assert(huffman[index+code-first] ~= nil
+			assert(huffmanSymbol[index+code-first] ~= nil
 				, "decoded a code not in the huffman table.")
-			return huffman[index + code - first]
+			return huffmanSymbol[index + (code - first)]
 		end
 		index = index + count
 		first = first + count
@@ -967,21 +970,21 @@ local function Decode(lenCount, huffman, maxBitLength)
 	return -10 -- Ran out of codes
 end
 
-local function ConstructInflateHuffman(lengths, maxSymbol, maxBitLength)
-	local lenCount = {}
-	for symbol = 0, maxSymbol do
-		local len = lengths[symbol] or 0
-		lenCount[len] = (lenCount[len] or 0) + 1
+local function ConstructInflateHuffman(huffmanLen, n, maxBitLength)
+	local huffmanLenCount = {}
+	for symbol = 0, n-1 do
+		local len = huffmanLen[symbol] or 0
+		huffmanLenCount[len] = (huffmanLenCount[len] or 0) + 1
 	end
 
-	if lenCount[0] == maxSymbol+1 then
+	if huffmanLenCount[0] == n then -- No Codes
 		return 0  -- Complete, but decode will fail
 	end
 
 	local left = 1
 	for len = 1, maxBitLength do
 		left = left * 2
-		left = left - lenCount[len]
+		left = left - (huffmanLenCount[len] or 0)
 		if left < 0 then
 			return left -- Over-subscribed, return negative
 		end
@@ -991,39 +994,186 @@ local function ConstructInflateHuffman(lengths, maxSymbol, maxBitLength)
 	local offs = {}
 	offs[1] = 0
 	for len = 1, maxBitLength-1 do
-		offs[len + 1] = offs[len] + (lenCount[len] or 0)
+		offs[len + 1] = offs[len] + (huffmanLenCount[len] or 0)
 	end
 
-	local inflateTbl = {}
-	for symbol = 0, maxSymbol do
-		local len = lengths[symbol] or 0
+	local huffmanSymbol = {}
+	for symbol = 0, n-1 do
+		local len = huffmanLen[symbol] or 0
 		if len ~= 0 then
 			local offset = offs[len]
-			inflateTbl[offset] = symbol
+			huffmanSymbol[offset] = symbol
 			offs[len] = offs[len] + 1
 		end
 	end
 
-	return inflateTbl, lenCount
+	-- Return zero for complete set, positive for incomplete set.
+	return left, huffmanLenCount, huffmanSymbol
 end
 
-local function Codes(lenCode, distCode) -- WIP
+local function Codes(litHuffmanLen, litHuffmanSym, distHuffmanLen, distHuffmanSym, aheadBufferPointer, bufferPointer
+	, ReadBits)
+	local output = ""
+	local aheadBuffer = aheadBufferPointer[1]
+	local aheadSize = #aheadBuffer
+	aheadBufferPointer[1] = nil
+	local buffer = bufferPointer[1]
+	local bufferSize = #buffer
+	bufferPointer[1] = nil
 	repeat
-		local symbol = Decode(lenCode, 15)
+		local symbol = Decode(litHuffmanLen, litHuffmanSym, 15, ReadBits)
 		if symbol < 0 then
 			error("Negative code "..symbol)
 			return symbol -- Invalid symbol
 		elseif symbol >= 286 then
 			error("Code too big "..symbol)
 			return -10 -- Invalid fixed code
-		elseif symbol < 256 then
-			_writeCompressedSize = _writeCompressedSize + 1
-			_writeBuffer[_writeCompressedSize] = symbol
-		elseif symbol > 256 then
-			local baseLength = _
+		elseif symbol < 256 then -- Literal
+			bufferSize = bufferSize + 1
+			buffer[bufferSize] = _byteToChar[symbol]
+		elseif symbol > 256 then -- Length code
+			symbol = symbol -- TODO
+			local length = _lengthCodeToBaseLen[symbol-257]
+			if symbol >= 265 then
+				local extraBitsLen = _literalCodeToExtraBitsLen[symbol]
+				length = length + ReadBits(extraBitsLen)
+			end
+
+			symbol = Decode(distHuffmanLen, distHuffmanSym, 15, ReadBits)
+			if symbol < 0 then
+				error ("Invalid dist code: "..symbol)
+			end
+			local dist = _distanceCodeToBaseDist[symbol]
+			local distExtraBits = _distanceCodeToExtraBitsLen[symbol]
+			if distExtraBits > 0 then
+				dist = dist + ReadBits(distExtraBits)
+			end
+
+			for index=1, length do
+				local charDist = dist-index+1
+				local char
+				if charDist > bufferSize + aheadSize then
+					return -11 -- Distance too far back
+				elseif charDist <= bufferSize then
+					char = buffer[bufferSize-charDist+1]
+				else
+					char = aheadBuffer[aheadSize-(charDist-bufferSize)+1]
+				end
+				buffer[bufferSize+index] = char
+			end
+			bufferSize = bufferSize + length
 		end
-	until false -- TODO
+
+		if bufferSize >= 32768 then
+			output = output..table_concat(aheadBuffer)
+			aheadBuffer = buffer
+			aheadSize = bufferSize
+			buffer = {}
+			bufferSize = 0
+		end
+	until symbol == 256
+
+	return output, aheadBuffer, buffer
 end
---]]
+
+local function DecompressDynamicBlock(aheadBufferPointer, bufferPointer, ReadBits)
+	local nLen = ReadBits(5) + 257
+	local nDist = ReadBits(5) + 1
+	local nCode = ReadBits(4) + 4
+	if nLen > 286 or nDist > 30 then
+		return -3 -- Bad count
+	end
+
+	local lengthLengths = {}
+
+	for index=1, nCode do
+		lengthLengths[_codeLengthHuffmanCodeOrder[index]] = ReadBits(3)
+	end
+
+	local err, lenLenHuffmanLenCount, lenLenHuffmanSym = ConstructInflateHuffman(lengthLengths, 19, 7)
+	if err ~= 0 then -- Require complete code set here
+		return -4
+	end
+
+	local litHuffmanLen = {}
+	local distHuffmanLen = {}
+	-- Read length/literal and distance code length tables
+	local index = 0
+	while index < nLen + nDist do
+		local symbol -- Decoded value
+		local len -- Last length to repeat
+
+		symbol = Decode(lenLenHuffmanLenCount, lenLenHuffmanSym, 7, ReadBits)
+
+		if symbol < 0 then
+			return symbol -- Invalid symbol
+		elseif symbol < 16 then
+			if index < nLen then
+				litHuffmanLen[index] = symbol
+			else
+				distHuffmanLen[index-nLen] = symbol
+			end
+			index = index + 1
+		else
+			len = 0
+			if symbol == 16 then
+				if index == 0 then
+					return -5 -- No last length
+				end
+				if index-1 < nLen then
+					len = litHuffmanLen[index-1]
+				else
+					len = distHuffmanLen[index-nLen-1]
+				end
+				symbol = 3 + ReadBits(2)
+			elseif symbol == 17 then -- Repeat zero 3..10 times
+				symbol = 3 + ReadBits(3)
+			else -- == 18, repeat zero 11.138 times
+				symbol = 11 + ReadBits(7)
+			end
+			if index + symbol > nLen + nDist then
+				return -6 -- Too many lengths!
+			end
+			while symbol > 0 do -- Repeat last or zero symbol times
+				symbol = symbol - 1
+				if index < nLen then
+					litHuffmanLen[index] = len
+				else
+					distHuffmanLen[index-nLen] = len
+				end
+				index = index + 1
+			end
+		end
+	end
+
+	if (litHuffmanLen[256] or 0) == 0 then
+		return -9 -- No end of block
+	end
+
+	local litErr, litHuffmanLenCount, litHuffmanSym = ConstructInflateHuffman(litHuffmanLen, nLen, 15)
+	if (litErr ~=0 and (litErr < 0 or nLen ~= (litHuffmanLenCount[0] or 0)+(litHuffmanLenCount[1] or 0))) then
+		return -7 -- Incomplete code ok only for single length 1 code
+	end
+
+	local distErr, distHuffmanLenCount, distHuffmanSym = ConstructInflateHuffman(distHuffmanLen, nDist, 15)
+	if (distErr ~=0 and (distErr < 0 or nDist ~= (distHuffmanLenCount[0] or 0)+(distHuffmanLenCount[1] or 0))) then
+		return -8 -- Incomplete code ok only for single length 1 code
+	end
+
+	-- Build buffman table for literal/length codes
+	return Codes(litHuffmanLenCount, litHuffmanSym, distHuffmanLenCount, distHuffmanSym, aheadBufferPointer, bufferPointer
+		, ReadBits)
+end
+
+function LibDeflate:Decompress(str)
+	-- WIP
+	assert(type(str) == "string")
+	local ReadBits = CreateReader(str)
+
+	ReadBits(3)
+	local result, aheadBuffer, buffer = DecompressDynamicBlock({{}}, {{}}, ReadBits)
+	result=result..table_concat(aheadBuffer)..table_concat(buffer)
+	return result
+end
 
 return LibDeflate

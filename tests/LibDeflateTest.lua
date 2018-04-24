@@ -86,7 +86,6 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 			local testFileContent = testFile:read("*all")
 			testFile:close()
 
-
 			if str ~= testFileContent then
 				lu.assertEquals(str:len(), testFileContent:len(), ("level: %d, string size does not match actual size: %d"
 					..", after compress and decompress: %d")
@@ -94,6 +93,16 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 				for i=1, str:len() do
 					lu.assertEquals(string_byte(str, i, i), string_byte(testFileContent, i, i), ("Level: %d, First diff at: %d")
 						:format(level, i))
+				end
+			end
+
+			if str:len() < 32768 then -- TODO: Test larger file.
+				local decompressed = Lib:Decompress(compressed)
+				lu.assertEquals(decompressed, str, "My decompression does not match origin string")
+				if decompressed ~= str then
+					print("My decompress FAILED")
+				else
+					print("My decompress OK")
 				end
 			end
 
@@ -357,6 +366,11 @@ Test6ThirdPartyBig = {}
 	end
 	function Test6ThirdPartyBig:TestKennedyXls()
 		CheckFile("tests/data/3rdparty/kennedy.xls", {1,2,3,4,5})
+	end
+
+Test7WoWData = {}
+	function Test7WoWData:TestWarlockWeakAuras()
+		CheckFile("tests/data/warlockWeakAuras.txt", {1,2,3,4,5,6,7,8,9})
 	end
 
 local runner = lu.LuaUnit.new()
