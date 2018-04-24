@@ -1034,7 +1034,7 @@ local function Codes(litHuffmanLen, litHuffmanSym, distHuffmanLen, distHuffmanSy
 		elseif symbol > 256 then -- Length code
 			symbol = symbol -- TODO
 			local length = _lengthCodeToBaseLen[symbol-257]
-			if symbol >= 265 then
+			if symbol >= 265 and symbol < 285 then
 				local extraBitsLen = _literalCodeToExtraBitsLen[symbol]
 				length = length + ReadBits(extraBitsLen)
 			end
@@ -1165,14 +1165,25 @@ local function DecompressDynamicBlock(aheadBufferPointer, bufferPointer, ReadBit
 		, ReadBits)
 end
 
-function LibDeflate:Decompress(str)
+function LibDeflate:Decompress(str) -- TODO: Unfinished
 	-- WIP
 	assert(type(str) == "string")
 	local ReadBits = CreateReader(str)
 
-	ReadBits(3)
-	local result, aheadBuffer, buffer = DecompressDynamicBlock({{}}, {{}}, ReadBits)
-	result=result..table_concat(aheadBuffer)..table_concat(buffer)
+	local isLastBlock
+	local aheadBufferPointer = {{}}
+	local bufferPointer = {{}}
+	local result = ""
+
+	while not isLastBlock do
+		local blockResult
+		isLastBlock = (ReadBits(1) == 1)
+		local blockType = ReadBits(2) -- TODO
+		blockResult, aheadBufferPointer[1], bufferPointer[1] = DecompressDynamicBlock(aheadBufferPointer, bufferPointer
+		, ReadBits)
+		result=result..blockResult
+	end
+	result=result..table_concat(aheadBufferPointer[1])..table_concat(bufferPointer[1])
 	return result
 end
 

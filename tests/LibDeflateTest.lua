@@ -96,21 +96,31 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 				end
 			end
 
-			if str:len() < 32768 then -- TODO: Test larger file.
-				local decompressed = Lib:Decompress(compressed)
-				lu.assertEquals(decompressed, str, "My decompression does not match origin string")
-				if decompressed ~= str then
-					print("My decompress FAILED")
-				else
-					print("My decompress OK")
-				end
+			local dStartTime = os.clock()
+			local dRepeated = 0
+			local decompressed
+			local dElapsed = -1
+			while dElapsed < minRunTime/10 do
+				decompressed = Lib:Decompress(compressed)
+				dRepeated = dRepeated + 1
+				dElapsed = os.clock() - dStartTime
+			end
+			dElapsed = dElapsed/dRepeated
+
+			lu.assertEquals(decompressed, str, "My decompression does not match origin string")
+			if decompressed ~= str then
+				print("My decompress FAILED")
+			else
+				print("My decompress OK")
 			end
 
-			print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, TimePerRun: %.3f"..
-				"ms, Speed: %.2f KB/s, Memory: %d bytes, Memory/input: %.3f, Possible Memory Leaked: %d bytes"
+			print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, TimePerRun: %.3fms, Decompress Time: %.3fms, "..
+				"Speed: %.2f KB/s, Decompress Speed: %.2f KB/s, Memory: %d bytes"..
+				", Memory/input: %.3f, Possible Memory Leaked: %d bytes"
 				..", Run repeated by: %d times"):
 				format(level, str:len(), compressed:len(), str:len()/compressed:len()
-					, elapsed*1000, str:len()/elapsed/1000, memoryUsed, memoryUsed/str:len(), memoryLeaked, repeated))
+					, elapsed*1000, dElapsed*1000, str:len()/elapsed/1000, str:len()/dElapsed/1000
+					, memoryUsed, memoryUsed/str:len(), memoryLeaked, repeated))
 			print("-------------------------------------")
 		end
 	end
