@@ -2,6 +2,7 @@
 *.zip
 *.gz
 *.decompressed
+*.compressed
 .settings
 .buildpath
 .project

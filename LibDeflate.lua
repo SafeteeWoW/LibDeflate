@@ -139,7 +139,7 @@ for i=0,256*256-1 do
 	_twoBytesToChar[i] = string_char(i%256)..string_char((i-i%256)/256)
 end
 
-_G.print(("Static memory used: %.2f MB"):format(collectgarbage("count")/1024))
+--_G.print(("Static memory used: %.2f MB"):format(collectgarbage("count")/1024))
 ---------------------------------------
 --	Precalculated tables ends.
 ---------------------------------------

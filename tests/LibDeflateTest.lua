@@ -1,5 +1,68 @@
-local lu = require("luaunit")
+-- Commandline tests
 local Lib = require("LibDeflate")
+local args = rawget(_G, "arg")
+if args and #args >= 1 and type(args[0]) == "string" then
+	if #args >= 2 and args[1] == "-o" then
+	-- For testing purpose, check if the file can be opened by lua
+		local input = args[2]
+		local inputFile = io.open(input, "rb")
+		if not inputFile then
+			os.exit(1)
+		end
+		inputFile.close()
+		os.exit(0)
+	elseif #args >= 3 and args[1] == "-c" then
+	-- For testing purpose, check the if a file can be correctly compressed and decompressed to origin
+		local input = args[2]
+		local output = args[3]
+		collectgarbage("stop")
+		local inputFile = io.open(input, "rb")
+		if not inputFile then
+			print(input, "Input file does not exit")
+			os.exit(1)
+		end
+		local inputFileContent = inputFile:read("*all")
+		inputFile:close()
+		local compressed = Lib:Compress(inputFileContent)
+		local outputFile = io.open(output, "wb")
+		if not outputFile then
+			print(input, "cannot open output File")
+			os.exit(2)
+		end
+		outputFile:write(compressed)
+		outputFile:close()
+
+		local decompressed = Lib:Decompress(compressed)
+
+		if decompressed ~= inputFileContent then
+			print(input, "My decompress does not match input")
+			os.exit(3)
+		end
+		local decompressedFileName = output..".decompressed"
+		local ret = os.execute("puff -w "..output.. "> "..decompressedFileName)
+		if ret ~= 0 then
+			print(input, "puff cannot decompress")
+			os.exit(4)
+		end
+
+		local testFile = io.open(decompressedFileName, "rb")
+		if not testFile then
+			print(input, "testFile not found")
+			os.exit(5)
+		end
+		local testFileContent = testFile:read("*all")
+		testFile:close()
+
+		if testFileContent ~= inputFileContent then
+			print(input, "testFileContent does not match input")
+			os.exit(5)
+		end
+		os.exit(0)
+	end
+end
+
+-- UnitTests
+local lu = require("luaunit")
 
 local string_byte = string.byte
 math.randomseed(os.time())
