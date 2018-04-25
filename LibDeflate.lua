@@ -881,7 +881,6 @@ local function CreateReader(inputString)
 		else
 			local lShiftMask = _pow2[cacheBitRemaining]
 			local byte1, byte2, byte3, byte4 = string_byte(input, inputNextBytePos, inputNextBytePos+3)
-			assert (byte1 ~=  nil)
 			-- This requires lua number to be at least double ()
 			cache = cache + (byte1+(byte2 or 0)*256+(byte3 or 0)*65536+(byte4 or 0)*16777216)*lShiftMask
 			inputNextBytePos = inputNextBytePos + 4
@@ -903,10 +902,6 @@ local function CreateReader(inputString)
 end
 
 local function Decode(huffmanLenCount, huffmanSymbol, maxBitLength, ReadBits)
-	assert(huffmanLenCount ~= nil)
-	assert(huffmanSymbol ~= nil)
-	assert(maxBitLength > 0)
-	assert(ReadBits ~= nil)
 	local code = 0 -- Len bits being decoded
 	local first = 0 -- First code of length len
 	local count -- Number of codes of length len
