@@ -35,8 +35,6 @@ local string_char = string.char
 local string_byte = string.byte
 local pairs = pairs
 local ipairs = ipairs
-local unpack = unpack or table.unpack
-local math_floor = math.floor
 
 local function print() end
 
@@ -51,10 +49,6 @@ end
 ---------------------------------------
 --	Precalculated tables start.
 ---------------------------------------
-local _lengthToLiteralCode = {}
-local _lengthToExtraBits = {}
-local _lengthToExtraBitsLen = {}
-
 local _lengthCodeToBaseLen = { -- Size base for length codes 257..285
 	3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
 	35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
@@ -69,44 +63,9 @@ local _distanceCodeToExtraBitsLen = { -- Extra bits for distance codes 0..29
 	7, 7, 8, 8, 9, 9, 10, 10, 11, 11,
 	12, 12, 13, 13};
 
-local _distanceToCode = {} -- For distance 1..256
-local _distanceToExtraBits = {} -- For distance 1..256
-local _distanceToExtraBitsLen = {} -- For distance 1..256
-
 local _twoBytesToChar = {}
 local _byteToChar = {}
 local _pow2 = {}
-
-for len=3, 258 do
-	if len <= 10 then
-		_lengthToLiteralCode[len] = len + 254
-		_lengthToExtraBitsLen[len] = 0
-	elseif len <= 18 then
-		_lengthToLiteralCode[len] = math_floor((len-11)/2) + 265
-		_lengthToExtraBitsLen[len] = 1
-		_lengthToExtraBits[len] = (len-11) % 2
-	elseif len <= 34 then
-		_lengthToLiteralCode[len] = math_floor((len-19)/4) + 269
-		_lengthToExtraBitsLen[len] = 2
-		_lengthToExtraBits[len] = (len-19) % 4
-	elseif len <= 66 then
-		_lengthToLiteralCode[len] = math_floor((len-35)/8) + 273
-		_lengthToExtraBitsLen[len] = 3
-		_lengthToExtraBits[len] = (len-35) % 8
-	elseif len <= 130 then
-		_lengthToLiteralCode[len] = math_floor((len-67)/16) + 277
-		_lengthToExtraBitsLen[len] = 4
-		_lengthToExtraBits[len] = (len-67) % 16
-	elseif len <= 257 then
-		_lengthToLiteralCode[len] = math_floor((len-131)/32) + 281
-		_lengthToExtraBitsLen[len] = 5
-		_lengthToExtraBits[len] = (len-131) % 32
-	elseif len == 258 then
-		_lengthToLiteralCode[len] = 285
-		_lengthToExtraBitsLen[len] = 0
-	end
-end
-
 for i=0, 255 do
 	_byteToChar[i] = string_char(i)
 end
@@ -119,6 +78,41 @@ do
 	end
 end
 
+local _lengthToLiteralCode = {}
+local _lengthToExtraBits = {}
+local _lengthToExtraBitsLen = {}
+do
+	local a = 18
+	local b = 16
+	local c = 265
+	local bitsLen = 1
+	for len=3, 258 do
+		if len <= 10 then
+			_lengthToLiteralCode[len] = len + 254
+			_lengthToExtraBitsLen[len] = 0
+		elseif len == 258 then
+			_lengthToLiteralCode[len] = 285
+			_lengthToExtraBitsLen[len] = 0
+		else
+			if len > a then
+				a = a + b
+				b = b * 2
+				c = c + 4
+				bitsLen = bitsLen + 1
+			end
+			local t = len-a-1+b/2
+			_lengthToLiteralCode[len] = (t-(t%(b/8)))/(b/8) + c
+			_lengthToExtraBitsLen[len] = bitsLen
+			_lengthToExtraBits[len] = t % (b/8)
+		end
+	end
+end
+
+
+
+local _distanceToCode = {} -- For distance 1..256
+local _distanceToExtraBits = {} -- For distance 1..256
+local _distanceToExtraBitsLen = {} -- For distance 1..256
 do
 	_distanceToCode[1] = 0
 	_distanceToCode[2] = 1
@@ -550,10 +544,12 @@ local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, bloc
 		level = 3
 	end
 
-	local config_use_lazy, _, config_max_lazy_match, config_nice_length
-		, config_max_hash_chain = unpack(_configuration_table[level])
+	local config = _configuration_table[level]
+	local config_use_lazy, config_good_prev_length, config_max_lazy_match, config_nice_length
+		, config_max_hash_chain = config[1], config[2], config[3], config[4], config[5]
+
 	local config_max_insert_length = (not config_use_lazy) and config_max_lazy_match or 2147483646
-	local config_good_hash_chain = math_floor(config_max_hash_chain/4)
+	local config_good_hash_chain = (config_max_hash_chain-config_max_hash_chain%4/4)
 
 	local index = blockStart
 	local indexEnd = blockEnd + (config_use_lazy and 1 or 0)
@@ -596,8 +592,8 @@ local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, bloc
 		local chainSize = #hashChain
 
 		if (chainSize > 0 and index+2 <= blockEnd and (not config_use_lazy or prevLen < config_max_lazy_match)) then
-			local iEnd = (config_use_lazy and prevLen >= config_good_hash_chain)
-				and (chainSize - config_good_hash_chain +1) or 1
+			local iEnd = (config_use_lazy and prevLen >= config_good_prev_length)
+				and (chainSize - config_good_hash_chain + 1) or 1
 			if iEnd < 1 then iEnd = 1 end
 
 			for i=chainSize, iEnd, -1 do
@@ -663,57 +659,6 @@ local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, bloc
 					end
 				end
 			end
-			--[[
-			elseif prevDist <= 16 then
-				distCode = (prevDist <= 12) and 6 or 7
-				distExtraBitsLength = 2
-				distExtraBits = (prevDist-9) % 4
-			elseif prevDist <= 32 then
-				distCode = (prevDist <= 24) and 8 or 9
-				distExtraBitsLength = 3
-				distExtraBits = (prevDist-17) % 8
-			elseif prevDist <= 64 then
-				distCode = (prevDist <= 48) and 10 or 11
-				distExtraBitsLength = 4
-				distExtraBits = (prevDist-33) % 16
-			elseif prevDist <= 128 then
-				distCode = (prevDist <= 96) and 12 or 13
-				distExtraBitsLength = 5
-				distExtraBits = (prevDist-65) % 32
-			elseif prevDist <= 256 then
-				distCode = (prevDist <= 192) and 14 or 15
-				distExtraBitsLength = 6
-				distExtraBits = (prevDist-129) % 64
-			elseif prevDist <= 512 then
-				distCode = (prevDist <= 384) and 16 or 17
-				distExtraBitsLength = 7
-				distExtraBits = (prevDist-257) % 128
-			elseif prevDist <= 1024 then
-				distCode = (prevDist <= 768) and 18 or 19
-				distExtraBitsLength = 8
-				distExtraBits = (prevDist-513) % 256
-			elseif prevDist <= 2048 then
-				distCode = (prevDist <= 1536) and 20 or 21
-				distExtraBitsLength = 9
-				distExtraBits = (prevDist-1025) % 512
-			elseif prevDist <= 4096 then
-				distCode = (prevDist <= 3072) and 22 or 23
-				distExtraBitsLength = 10
-				distExtraBits = (prevDist-2049) % 1024
-			elseif prevDist <= 8192 then
-				distCode = (prevDist <= 6144) and 24 or 25
-				distExtraBitsLength = 11
-				distExtraBits = (prevDist-4097) % 2048
-			elseif prevDist <= 16384 then
-				distCode = (prevDist <= 12288) and 26 or 27
-				distExtraBitsLength = 12
-				distExtraBits = (prevDist-8193) % 4096
-			elseif prevDist <= 32768 then
-				distCode = (prevDist <= 24576) and 28 or 29
-				distExtraBitsLength = 13
-				distExtraBits = (prevDist-16385) % 8192
-			end
-			--]]
 			lCodeTblSize = lCodeTblSize + 1
 			lCodes[lCodeTblSize] = code
 			lCodesCount[code] = (lCodesCount[code] or 0) + 1
