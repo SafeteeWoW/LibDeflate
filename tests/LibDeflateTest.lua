@@ -114,7 +114,7 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 				print("My decompress OK")
 			end
 
-			print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, TimePerRun: %.3fms, Decompress Time: %.3fms, "..
+			print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, Compress Time: %.3fms, Decompress Time: %.3fms, "..
 				"Speed: %.2f KB/s, Decompress Speed: %.2f KB/s, Memory: %d bytes"..
 				", Memory/input: %.3f, Possible Memory Leaked: %d bytes"
 				..", Run repeated by: %d times"):

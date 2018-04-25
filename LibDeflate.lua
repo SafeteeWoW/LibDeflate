@@ -34,7 +34,6 @@ local table_sort = table.sort
 local string_char = string.char
 local string_byte = string.byte
 local pairs = pairs
-local ipairs = ipairs
 
 local function print() end
 
@@ -108,8 +107,6 @@ do
 	end
 end
 
-
-
 local _distanceToCode = {} -- For distance 1..256
 local _distanceToExtraBits = {} -- For distance 1..256
 local _distanceToExtraBitsLen = {} -- For distance 1..256
@@ -141,8 +138,6 @@ end
 for i=0,256*256-1 do
 	_twoBytesToChar[i] = string_char(i%256)..string_char((i-i%256)/256)
 end
-
-
 
 _G.print(("Static memory used: %.2f MB"):format(collectgarbage("count")/1024))
 ---------------------------------------
@@ -759,7 +754,8 @@ local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, bloc
 	local lengthCodeWithExtraCount = 0
 	local distCodeWithExtraCount = 0
 
-	for _, code in ipairs(lCodes) do
+	for i=1, lCodeTblSize do
+		local code = lCodes[i]
 		local huffmanCode = lCodeCodes[code]
 		local huffmanLength = lCodeLens[code]
 		WriteBits(huffmanCode, huffmanLength)
