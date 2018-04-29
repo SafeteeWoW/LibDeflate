@@ -924,8 +924,8 @@ local function CreateReader(inputString)
 			return huffmanSymbol[code]
 		end
 		local index = count
-		local first = count*2 -- First code of length lenfirst = first + count
-		code = code * 2
+		local first = count + count -- First code of length lenfirst = first + count
+		code = code + code
 
 		for len = minLen+1, 15 do
 			local bit
@@ -933,7 +933,7 @@ local function CreateReader(inputString)
 			cache = (cache - bit) / 2
 			cacheBitRemaining = cacheBitRemaining - 1
 
-			code = code + ((bit==1) and (1 - code % 2) or 0) -- (code |= RadBits(1)) Get next bit
+			code = (bit==1) and (code + 1 - code % 2) or code -- (code |= RadBits(1)) Get next bit
 			count = huffmanLenCount[len] or 0
 			local diff = code - first
 			if diff < count then
@@ -941,8 +941,8 @@ local function CreateReader(inputString)
 			end
 			index = index + count
 			first = first + count
-			first = first * 2
-			code = code * 2
+			first = first + first
+			code = code + code
 		end
 		return -10 -- Ran out of codes
 	end
@@ -993,15 +993,9 @@ local function ConstructInflateHuffman(huffmanLen, n, maxBitLength)
 	return left, huffmanLenCount, huffmanSymbol, minLen
 end
 
-local function Codes(litHuffmanLen, litHuffmanSym, distHuffmanLen, distHuffmanSym, aheadBufferPointer, bufferPointer
+local function Codes(litHuffmanLen, litHuffmanSym, distHuffmanLen, distHuffmanSym, buffer, bufferSize
 	, ReadBits, Decode, litMinLen, distMinLen)
 	local output = ""
-	local aheadBuffer = aheadBufferPointer[1]
-	local aheadSize = #aheadBuffer
-	aheadBufferPointer[1] = nil
-	local buffer = bufferPointer[1]
-	local bufferSize = #buffer
-	bufferPointer[1] = nil
 	repeat
 		local symbol = Decode(litHuffmanLen, litHuffmanSym, litMinLen)
 		if symbol < 0 then
@@ -1029,34 +1023,30 @@ local function Codes(litHuffmanLen, litHuffmanSym, distHuffmanLen, distHuffmanSy
 			if distExtraBits > 0 then
 				dist = dist + ReadBits(distExtraBits)
 			end
-			for index=1, length do
-				local charDist = dist-index+1
-				local char
-				if charDist <= bufferSize then
-					char = buffer[bufferSize-charDist+1]
-				elseif charDist <= bufferSize + aheadSize then
-					char = aheadBuffer[aheadSize-(charDist-bufferSize)+1]
-				else
-					return -11 -- Distance too far back
-				end
-				buffer[bufferSize+index] = char
+
+			local charBufferIndex = bufferSize-dist
+			for _=1, length do
+				charBufferIndex = charBufferIndex + 1
+				bufferSize = bufferSize + 1
+				buffer[bufferSize] = buffer[charBufferIndex]
+				-- TODO: error checking.
 			end
-			bufferSize = bufferSize + length
 		end
 
-		if bufferSize >= 32768 then
-			output = output..table_concat(aheadBuffer)
-			aheadBuffer = buffer
-			aheadSize = bufferSize
-			buffer = {}
-			bufferSize = 0
+		if bufferSize >= 65536 then
+			output = output..table_concat(buffer, "", 1, 32768)
+			for i=32769, bufferSize do
+				buffer[i-32768] = buffer[i]
+			end
+			bufferSize = bufferSize - 32768
+			buffer[bufferSize+1] = nil
 		end
 	until symbol == 256
 
-	return output, aheadBuffer, buffer
+	return output, buffer, bufferSize
 end
 
-local function DecompressDynamicBlock(aheadBufferPointer, bufferPointer, ReadBits, Decode)
+local function DecompressDynamicBlock(buffer, bufferSize, ReadBits, Decode)
 	local nLen = ReadBits(5) + 257
 	local nDist = ReadBits(5) + 1
 	local nCode = ReadBits(4) + 4
@@ -1141,7 +1131,7 @@ local function DecompressDynamicBlock(aheadBufferPointer, bufferPointer, ReadBit
 	end
 
 	-- Build buffman table for literal/length codes
-	return Codes(litHuffmanLenCount, litHuffmanSym, distHuffmanLenCount, distHuffmanSym, aheadBufferPointer, bufferPointer
+	return Codes(litHuffmanLenCount, litHuffmanSym, distHuffmanLenCount, distHuffmanSym, buffer, bufferSize
 		,ReadBits, Decode, litMinLen, distMinLen)
 end
 
@@ -1151,34 +1141,37 @@ function LibDeflate:Decompress(str) -- TODO: Unfinished
 	local ReadBits, _, Decode = CreateReader(str)
 
 	local isLastBlock
-	local aheadBufferPointer = {{}}
-	local bufferPointer = {{}}
+	local buffer = {}
 	local result = ""
 
+	local bufferSize = 0
 	while not isLastBlock do
 		local blockResult
 		isLastBlock = (ReadBits(1) == 1)
 		local blockType = ReadBits(2) -- TODO
-		blockResult, aheadBufferPointer[1], bufferPointer[1] = DecompressDynamicBlock(aheadBufferPointer, bufferPointer
-		, ReadBits, Decode)
+		blockResult, buffer, bufferSize = DecompressDynamicBlock(buffer, bufferSize, ReadBits, Decode)
 		result=result..blockResult
 	end
-	result=result..table_concat(aheadBufferPointer[1])..table_concat(bufferPointer[1])
+	result=result..table_concat(buffer, "", 1, bufferSize)
 	return result
 end
+
+--local profiler = require "profiler"
 --[[
-local profiler = require "profiler"
 local f = io.open("tests\\data\\smalltest.txt", "rb")
 local str =f:read("*all")
 f:close()
 local c = LibDeflate:Compress(str, 4)
 _G.print("strLen:", c:len())
-profiler.start("profile.out")
+--profiler.start("profile.out")
+local time=os.clock()
 local d
-for i=1, 10 do
+for i=1, 100 do
 	d=LibDeflate:Decompress(c)
 end
+_G.print("time: ", (os.clock()-time)*10)
 assert(d==str)
-profiler.stop()
+
+--profiler.stop()
 --]]
 return LibDeflate

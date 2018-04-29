@@ -163,7 +163,7 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 			local dRepeated = 0
 			local decompressed
 			local dElapsed = -1
-			while dElapsed < minRunTime/5 do
+			while dElapsed < minRunTime/3 do
 				decompressed = Lib:Decompress(compressed)
 				dRepeated = dRepeated + 1
 				dElapsed = os.clock() - dStartTime
