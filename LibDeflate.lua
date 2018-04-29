@@ -51,8 +51,9 @@ end
 local _lengthCodeToBaseLen = { -- Size base for length codes 257..285
 	3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
 	35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
-local _literalCodeToExtraBitsLen = { -- Extra bits for length codes 265..285
-	 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
+local _literalCodeToExtraBitsLen = { -- Extra bits for length codes 257..285
+	0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+	3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
 local _distanceCodeToBaseDist = { -- Offset base for distance codes 0..29
 	[0] = 1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
 	257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145,
@@ -778,7 +779,7 @@ local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, bloc
 			if code > 264 and code < 285 then -- Length code with extra bits
 				lengthCodeWithExtraCount = lengthCodeWithExtraCount + 1
 				local extraBits = lExtraBits[lengthCodeWithExtraCount]
-				local extraBitsLength = _literalCodeToExtraBitsLen[code-264]
+				local extraBitsLength = _literalCodeToExtraBitsLen[code-256]
 				WriteBits(extraBits, extraBitsLength)
 			end
 			-- Write distance code
@@ -998,15 +999,20 @@ local function Codes(litHuffmanLen, litHuffmanSym, distHuffmanLen, distHuffmanSy
 	local output = ""
 	repeat
 		local symbol = Decode(litHuffmanLen, litHuffmanSym, litMinLen)
-		if symbol < 256 then -- Literal
+		if symbol < 0 or symbol > 285 then
+			error("Invalid symbol:", symbol)
+			return -11 -- TODO
+		elseif symbol < 256 then -- Literal
 			bufferSize = bufferSize + 1
-			buffer[bufferSize] = _byteToChar[symbol] -- TODO: error checkingwhen symbol < 0
-		elseif symbol > 256 then -- Length code -- TODO: error checking when symbol >= 286
-			local length = _lengthCodeToBaseLen[symbol-256]
-			length = (symbol >= 265 and symbol < 285) and (length + ReadBits(_literalCodeToExtraBitsLen[symbol-264])) or length
+			buffer[bufferSize] = _byteToChar[symbol]
+		elseif symbol > 256 then -- Length code
+			symbol = symbol - 256
+			local length = _lengthCodeToBaseLen[symbol]
+			length = (symbol >= 8) and (length + ReadBits(_literalCodeToExtraBitsLen[symbol])) or length
 			symbol = Decode(distHuffmanLen, distHuffmanSym, distMinLen)
-			if symbol < 0 then
+			if symbol < 0 or symbol > 29 then
 				error ("Invalid dist code: "..symbol) -- TODO
+				return -11
 			end
 			local dist = _distanceCodeToBaseDist[symbol]
 			dist = (dist > 4) and (dist + ReadBits(_distanceCodeToExtraBitsLen[symbol])) or dist
