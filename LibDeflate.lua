@@ -912,32 +912,25 @@ local function CreateReader(inputString)
 	end
 
 	local function Decode(huffmanLenCount, huffmanSymbol, minLen)
-		local code -- Len bits being decoded
-
-		local rShiftMask = _pow2[minLen]
-		if minLen <= cacheBitRemaining then
-			code = cache % rShiftMask
-			cache = (cache - code) / rShiftMask
-			cacheBitRemaining = cacheBitRemaining - minLen
-		elseif (inputSize-inputNextBytePos+1)*8+cacheBitRemaining < minLen then
-			error(("Out of input. Required: %d bytes. Have: %d bytes.")
-				:format(minLen, (inputSize-inputNextBytePos+1)*8+cacheBitRemaining))
-		else
+		if cacheBitRemaining < 15 and input then
 			local lShiftMask = _pow2[cacheBitRemaining]
 			local byte1, byte2, byte3, byte4 = string_byte(input, inputNextBytePos, inputNextBytePos+3)
 			-- This requires lua number to be at least double ()
 			cache = cache + (byte1+(byte2 or 0)*256+(byte3 or 0)*65536+(byte4 or 0)*16777216)*lShiftMask
 			inputNextBytePos = inputNextBytePos + 4
-			cacheBitRemaining = cacheBitRemaining + 32 - minLen
+			cacheBitRemaining = cacheBitRemaining + 32
 			if inputNextBytePos > inputSize then
 				cacheBitRemaining = cacheBitRemaining - (inputNextBytePos-inputSize-1)*8
 				inputNextBytePos = inputSize + 1
 				input = nil -- Help garbage collector
 			end
-			code = cache % rShiftMask
-			cache = (cache - code) / rShiftMask
 		end
+		-- TODO: ^ Check out of code
 
+		local rShiftMask = _pow2[minLen]
+		cacheBitRemaining = cacheBitRemaining - minLen
+		local code = cache % rShiftMask
+		cache = (cache - code) / rShiftMask
 		-- Reverse the bits
 		code = _resTable[minLen][code]
 
@@ -949,35 +942,11 @@ local function CreateReader(inputString)
 		local first = count*2 -- First code of length lenfirst = first + count
 		code = code * 2
 
-		--local index = 0
-		--local code = 0
-		--local first = 0
-		--local count
-
 		for len = minLen+1, 15 do
 			local bit
-			if 1 <= cacheBitRemaining then
-				bit = cache % 2
-				cache = (cache - bit) / 2
-				cacheBitRemaining = cacheBitRemaining - 1
-			elseif (inputSize-inputNextBytePos+1)*8+cacheBitRemaining < 1 then
-				error(("Out of input. Required: %d bytes. Have: %d bytes.")
-					:format(1, (inputSize-inputNextBytePos+1)*8+cacheBitRemaining))
-			else
-				local lShiftMask = _pow2[cacheBitRemaining]
-				local byte1, byte2, byte3, byte4 = string_byte(input, inputNextBytePos, inputNextBytePos+3)
-				-- This requires lua number to be at least double ()
-				cache = cache + (byte1+(byte2 or 0)*256+(byte3 or 0)*65536+(byte4 or 0)*16777216)*lShiftMask
-				inputNextBytePos = inputNextBytePos + 4
-				cacheBitRemaining = cacheBitRemaining + 32 - 1
-				if inputNextBytePos > inputSize then
-					cacheBitRemaining = cacheBitRemaining - (inputNextBytePos-inputSize-1)*8
-					inputNextBytePos = inputSize + 1
-					input = nil -- Help garbage collector
-				end
-				bit = cache % 2
-				cache = (cache - bit) / 2
-			end
+			bit = cache % 2
+			cache = (cache - bit) / 2
+			cacheBitRemaining = cacheBitRemaining - 1
 
 			code = code + ((bit==1) and (1 - code % 2) or 0) -- (code |= RadBits(1)) Get next bit
 			count = huffmanLenCount[len] or 0
@@ -988,10 +957,6 @@ local function CreateReader(inputString)
 			index = index + count
 			first = first + count
 			first = first * 2
-
-			--if len == minLen then
-				--_G.print(("len: %d code: %d, index: %d, first: %d, count:%d"):format(len, code, index, first, count))
-			--end
 			code = code * 2
 		end
 		return -10 -- Ran out of codes
@@ -1064,7 +1029,6 @@ local function Codes(litHuffmanLen, litHuffmanSym, distHuffmanLen, distHuffmanSy
 			bufferSize = bufferSize + 1
 			buffer[bufferSize] = _byteToChar[symbol]
 		elseif symbol > 256 then -- Length code
-			symbol = symbol -- TODO
 			local length = _lengthCodeToBaseLen[symbol-256]
 			if symbol >= 265 and symbol < 285 then
 				local extraBitsLen = _literalCodeToExtraBitsLen[symbol-264]
@@ -1217,18 +1181,19 @@ function LibDeflate:Decompress(str) -- TODO: Unfinished
 	result=result..table_concat(aheadBufferPointer[1])..table_concat(bufferPointer[1])
 	return result
 end
-
 --[[
 local profiler = require "profiler"
 local f = io.open("tests\\data\\smalltest.txt", "rb")
 local str =f:read("*all")
 f:close()
-local c = LibDeflate:Compress(str)
-_G.print(c:len())
+local c = LibDeflate:Compress(str, 4)
+_G.print("strLen:", c:len())
 profiler.start("profile.out")
+local d
 for i=1, 10 do
-	LibDeflate:Decompress(c)
+	d=LibDeflate:Decompress(c)
 end
+assert(d==str)
 profiler.stop()
 --]]
 return LibDeflate

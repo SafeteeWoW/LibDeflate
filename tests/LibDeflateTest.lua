@@ -213,10 +213,21 @@ TestMin1Strings = {}
 	function TestMin1Strings:testEmpty()
 		CheckStr("", "all")
 	end
-	function TestMin1Strings:testAllLiterals()
-		CheckStr("abcdefgh", "all")
+	function TestMin1Strings:testAllLiterals1()
 		CheckStr("ab", "all")
 	end
+	function TestMin1Strings:testAllLiterals2()
+		CheckStr("abcdefgh", "all")
+	end
+	function TestMin1Strings:testAllLiterals3()
+		local t = {}
+		for i=0, 255 do
+			t[#t+1] = string.char(i)
+		end
+		local str = table.concat(t)
+		CheckStr(str, "all")
+	end
+
 	function TestMin1Strings:testRepeat()
 		CheckStr("aaaaaaaaaaaaaaaaaa", "all")
 	end
