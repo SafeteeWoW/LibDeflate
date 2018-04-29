@@ -998,31 +998,18 @@ local function Codes(litHuffmanLen, litHuffmanSym, distHuffmanLen, distHuffmanSy
 	local output = ""
 	repeat
 		local symbol = Decode(litHuffmanLen, litHuffmanSym, litMinLen)
-		if symbol < 0 then
-			error("Negative code "..symbol)
-			return symbol -- Invalid symbol
-		elseif symbol >= 286 then
-			error("Code too big "..symbol)
-			return -10 -- Invalid fixed code
-		elseif symbol < 256 then -- Literal
+		if symbol < 256 then -- Literal
 			bufferSize = bufferSize + 1
-			buffer[bufferSize] = _byteToChar[symbol]
-		elseif symbol > 256 then -- Length code
+			buffer[bufferSize] = _byteToChar[symbol] -- TODO: error checkingwhen symbol < 0
+		elseif symbol > 256 then -- Length code -- TODO: error checking when symbol >= 286
 			local length = _lengthCodeToBaseLen[symbol-256]
-			if symbol >= 265 and symbol < 285 then
-				local extraBitsLen = _literalCodeToExtraBitsLen[symbol-264]
-				length = length + ReadBits(extraBitsLen)
-			end
-
+			length = (symbol >= 265 and symbol < 285) and (length + ReadBits(_literalCodeToExtraBitsLen[symbol-264])) or length
 			symbol = Decode(distHuffmanLen, distHuffmanSym, distMinLen)
 			if symbol < 0 then
-				error ("Invalid dist code: "..symbol)
+				error ("Invalid dist code: "..symbol) -- TODO
 			end
 			local dist = _distanceCodeToBaseDist[symbol]
-			local distExtraBits = _distanceCodeToExtraBitsLen[symbol]
-			if distExtraBits > 0 then
-				dist = dist + ReadBits(distExtraBits)
-			end
+			dist = (dist > 4) and (dist + ReadBits(_distanceCodeToExtraBitsLen[symbol])) or dist
 
 			local charBufferIndex = bufferSize-dist
 			for _=1, length do
@@ -1163,15 +1150,18 @@ local str =f:read("*all")
 f:close()
 local c = LibDeflate:Compress(str, 4)
 _G.print("strLen:", c:len())
+os.execute("rm -f profile.out")
 --profiler.start("profile.out")
 local time=os.clock()
 local d
 for i=1, 100 do
 	d=LibDeflate:Decompress(c)
 end
-_G.print("time: ", (os.clock()-time)*10)
-assert(d==str)
-
 --profiler.stop()
+_G.print("time: ", (os.clock()-time)*10)
+
+assert(d==str)
 --]]
+
+
 return LibDeflate
