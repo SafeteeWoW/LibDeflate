@@ -888,26 +888,16 @@ local function CreateReader(inputString)
 			code = cache % rShiftMask
 			cache = (cache - code) / rShiftMask
 			cacheBitRemaining = cacheBitRemaining - length
-		elseif (inputSize-inputNextBytePos+1)*8+cacheBitRemaining < length then
-			error(("Out of input. Required: %d bytes. Have: %d bytes.")
-				:format(length, (inputSize-inputNextBytePos+1)*8+cacheBitRemaining))
 		else
 			local lShiftMask = _pow2[cacheBitRemaining]
 			local byte1, byte2, byte3, byte4 = string_byte(input, inputNextBytePos, inputNextBytePos+3)
 			-- This requires lua number to be at least double ()
-			cache = cache + (byte1+(byte2 or 0)*256+(byte3 or 0)*65536+(byte4 or 0)*16777216)*lShiftMask
+			cache = cache + ((byte1 or 0)+(byte2 or 0)*256+(byte3 or 0)*65536+(byte4 or 0)*16777216)*lShiftMask
 			inputNextBytePos = inputNextBytePos + 4
 			cacheBitRemaining = cacheBitRemaining + 32 - length
-			if inputNextBytePos > inputSize then
-				cacheBitRemaining = cacheBitRemaining - (inputNextBytePos-inputSize-1)*8
-				inputNextBytePos = inputSize + 1
-				input = nil -- Help garbage collector
-			end
 			code = cache % rShiftMask
 			cache = (cache - code) / rShiftMask
-			return code
 		end
-
 		return code
 	end
 
@@ -916,14 +906,9 @@ local function CreateReader(inputString)
 			local lShiftMask = _pow2[cacheBitRemaining]
 			local byte1, byte2, byte3, byte4 = string_byte(input, inputNextBytePos, inputNextBytePos+3)
 			-- This requires lua number to be at least double ()
-			cache = cache + (byte1+(byte2 or 0)*256+(byte3 or 0)*65536+(byte4 or 0)*16777216)*lShiftMask
+			cache = cache + ((byte1 or 0)+(byte2 or 0)*256+(byte3 or 0)*65536+(byte4 or 0)*16777216)*lShiftMask
 			inputNextBytePos = inputNextBytePos + 4
 			cacheBitRemaining = cacheBitRemaining + 32
-			if inputNextBytePos > inputSize then
-				cacheBitRemaining = cacheBitRemaining - (inputNextBytePos-inputSize-1)*8
-				inputNextBytePos = inputSize + 1
-				input = nil -- Help garbage collector
-			end
 		end
 		-- TODO: ^ Check out of code
 
