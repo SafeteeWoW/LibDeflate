@@ -33,6 +33,7 @@ local table_concat = table.concat
 local table_sort = table.sort
 local string_char = string.char
 local string_byte = string.byte
+local string_gsub = string.gsub
 local pairs = pairs
 
 local function print() end
@@ -549,7 +550,7 @@ local _configuration_table = {
 	[9] = {true,	32,	 258,	258,4096},	 -- gzip -9 (maximum compression)
 }
 
-local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, blockStart, blockEnd, isLastBlock, str)
+local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, blockStart, blockEnd, isLastBlock)
 	if not level then
 		level = 3
 	end
@@ -870,18 +871,34 @@ end
 local function CreateReader(inputString)
 	assert(type(inputString)=="string")
 	local input = inputString
-	local inputSize = inputString:len()
+	local inputLen = input:len()
 	local inputNextBytePos = 1
 	local cacheBitRemaining = 0
 	local cache = 0
 
-	local function SkipToNextByteBoundary()
-		local prevBits = cacheBitRemaining
-		cacheBitRemaining = (cacheBitRemaining - cacheBitRemaining%8)
-		local rShiftMask = _pow2[prevBits-cacheBitRemaining]
-		cache = (cache-cache%rShiftMask)/rShiftMask
+	local function ReadBytes(length, buffer, bufferSize) -- Skip to next byte boundary
+		local newBitRemaining = (cacheBitRemaining - cacheBitRemaining%8)/8
+		local rShiftMask = _pow2[cacheBitRemaining - newBitRemaining]
+		cache = (cache - cache % rShiftMask) / rShiftMask
+		local byteFromCache = (cache/8 < length) and (cache/8) or length
+		for _=1, byteFromCache do
+			local byte = cache % 8
+			bufferSize = bufferSize + 1
+			buffer[bufferSize] = string_char(byte)
+			cache = (cache - byte) / 8
+		end
+		cacheBitRemaining = cacheBitRemaining - byteFromCache*8
+		length = length - byteFromCache
+		for i=inputNextBytePos, inputNextBytePos+length-1 do
+			bufferSize = bufferSize + 1
+			buffer[bufferSize] = string_gsub(input, i, i)
+		end
+		inputNextBytePos = inputNextBytePos + length
+		return bufferSize
 	end
 
+	-- To improve speed, this function does not check if the input has been exhausted.
+	-- Use ReaderBitsLeft() < 0 to check it.
 	local function ReadBits(length)
 		local rShiftMask = _pow2[length]
 		local code
@@ -889,7 +906,7 @@ local function CreateReader(inputString)
 			code = cache % rShiftMask
 			cache = (cache - code) / rShiftMask
 			cacheBitRemaining = cacheBitRemaining - length
-		else
+		else -- Whether input has been exhausted is not checked.
 			local lShiftMask = _pow2[cacheBitRemaining]
 			local byte1, byte2, byte3, byte4 = string_byte(input, inputNextBytePos, inputNextBytePos+3)
 			-- This requires lua number to be at least double ()
@@ -902,6 +919,8 @@ local function CreateReader(inputString)
 		return code
 	end
 
+	-- To improve speed, this function does not check if the input has been exhausted.
+	-- Use ReaderBitsLeft() < 0 to check it.
 	local function Decode(huffmanLenCount, huffmanSymbol, minLen)
 		if cacheBitRemaining < 15 and input then
 			local lShiftMask = _pow2[cacheBitRemaining]
@@ -911,7 +930,7 @@ local function CreateReader(inputString)
 			inputNextBytePos = inputNextBytePos + 4
 			cacheBitRemaining = cacheBitRemaining + 32
 		end
-		-- TODO: ^ Check out of code
+		-- Whether input has been exhausted is not checked.
 
 		local rShiftMask = _pow2[minLen]
 		cacheBitRemaining = cacheBitRemaining - minLen
@@ -945,10 +964,14 @@ local function CreateReader(inputString)
 			first = first + first
 			code = code + code
 		end
-		return -10 -- Ran out of codes
+		return -10 -- invalid literal/length or distance code in fixed or dynamic block (run out of code)
 	end
 
-	return ReadBits, SkipToNextByteBoundary, Decode
+	local function ReaderBitsLeft()
+		return (inputLen - inputNextBytePos + 1) * 8 + cacheBitRemaining
+	end
+
+	return ReadBits, ReadBytes, Decode, ReaderBitsLeft
 end
 
 local function ConstructInflateHuffman(huffmanLen, n, maxBitLength)
@@ -994,14 +1017,44 @@ local function ConstructInflateHuffman(huffmanLen, n, maxBitLength)
 	return left, huffmanLenCount, huffmanSymbol, minLen
 end
 
-local function Codes(litHuffmanLen, litHuffmanSym, distHuffmanLen, distHuffmanSym, buffer, bufferSize
-	, ReadBits, Decode, litMinLen, distMinLen)
-	local output = ""
+local _fixLitHuffmanLenCount
+local _fixLitHuffmanSym
+local _fixDistHuffmanLenCount
+local _fixDistHuffmanSym
+
+do
+	local litLen = {}
+	local status
+	for sym=0, 143 do
+		litLen[sym] = 8
+	end
+	for sym=144, 255 do
+		litLen[sym] = 9
+	end
+	for sym=256, 279 do
+        litLen[sym] = 7
+	end
+	for sym=280, 287 do
+		litLen[sym] = 8
+	end
+	status, _fixLitHuffmanLenCount, _fixLitHuffmanSym = ConstructInflateHuffman(litLen, 288, 9)
+	assert(status == 0)
+
+	local distLen = {}
+	for dist=0, 31 do
+		distLen[dist] = 5
+	end
+	status, _fixDistHuffmanLenCount, _fixDistHuffmanSym = ConstructInflateHuffman(distLen, 32, 5)
+	assert(status == 0)
+end
+
+local function Codes(state, litHuffmanLen, litHuffmanSym, litMinLen, distHuffmanLen, distHuffmanSym, distMinLen)
+	local buffer, bufferSize, ReadBits, Decode, ReaderBitsLeft, result =
+		state.buffer, state.bufferSize, state.ReadBits, state.Decode, state.ReaderBitsLeft, state.result
 	repeat
 		local symbol = Decode(litHuffmanLen, litHuffmanSym, litMinLen)
 		if symbol < 0 or symbol > 285 then
-			error("Invalid symbol:", symbol)
-			return -11 -- TODO
+			return -10 -- invalid literal/length or distance code in fixed or dynamic block
 		elseif symbol < 256 then -- Literal
 			bufferSize = bufferSize + 1
 			buffer[bufferSize] = _byteToChar[symbol]
@@ -1011,23 +1064,28 @@ local function Codes(litHuffmanLen, litHuffmanSym, distHuffmanLen, distHuffmanSy
 			length = (symbol >= 8) and (length + ReadBits(_literalCodeToExtraBitsLen[symbol])) or length
 			symbol = Decode(distHuffmanLen, distHuffmanSym, distMinLen)
 			if symbol < 0 or symbol > 29 then
-				error ("Invalid dist code: "..symbol) -- TODO
-				return -11
+				return -10 -- invalid literal/length or distance code in fixed or dynamic block
 			end
 			local dist = _distanceCodeToBaseDist[symbol]
 			dist = (dist > 4) and (dist + ReadBits(_distanceCodeToExtraBitsLen[symbol])) or dist
 
 			local charBufferIndex = bufferSize-dist
+			if charBufferIndex < 0 then
+				return -11 -- distance is too far back in fixed or dynamic block
+			end
 			for _=1, length do
 				charBufferIndex = charBufferIndex + 1
 				bufferSize = bufferSize + 1
 				buffer[bufferSize] = buffer[charBufferIndex]
-				-- TODO: error checking.
 			end
 		end
 
+		if ReaderBitsLeft() < 0 then
+			return 2 -- available inflate data did not terminate
+		end
+
 		if bufferSize >= 65536 then
-			output = output..table_concat(buffer, "", 1, 32768)
+			result = result..table_concat(buffer, "", 1, 32768)
 			for i=32769, bufferSize do
 				buffer[i-32768] = buffer[i]
 			end
@@ -1036,15 +1094,28 @@ local function Codes(litHuffmanLen, litHuffmanSym, distHuffmanLen, distHuffmanSy
 		end
 	until symbol == 256
 
-	return output, buffer, bufferSize
+	state.bufferSize = bufferSize
+	state.result = result
+
+	return 0
 end
 
-local function DecompressDynamicBlock(buffer, bufferSize, ReadBits, Decode)
+local function DecompressStoreBlock(state)
+
+end
+
+local function DecompressFixBlock(state)
+	return Codes(state, _fixLitHuffmanLenCount, _fixLitHuffmanSym, 7,
+		_fixDistHuffmanLenCount, _fixDistHuffmanSym, 5)
+end
+
+local function DecompressDynamicBlock(state)
+	local ReadBits, Decode = state.ReadBits, state.Decode
 	local nLen = ReadBits(5) + 257
 	local nDist = ReadBits(5) + 1
 	local nCode = ReadBits(4) + 4
 	if nLen > 286 or nDist > 30 then
-		return -3 -- Bad count
+		return -3 -- dynamic block code description: too many length or distance codes
 	end
 
 	local lengthLengths = {}
@@ -1055,7 +1126,7 @@ local function DecompressDynamicBlock(buffer, bufferSize, ReadBits, Decode)
 
 	local err, lenLenHuffmanLenCount, lenLenHuffmanSym, lenLenMinLen = ConstructInflateHuffman(lengthLengths, 19, 7)
 	if err ~= 0 then -- Require complete code set here
-		return -4
+		return -4 -- dynamic block code description: code lengths codes incomplete
 	end
 
 	local litHuffmanLen = {}
@@ -1081,7 +1152,7 @@ local function DecompressDynamicBlock(buffer, bufferSize, ReadBits, Decode)
 			len = 0
 			if symbol == 16 then
 				if index == 0 then
-					return -5 -- No last length
+					return -5 -- dynamic block code description: repeat lengths with no first length
 				end
 				if index-1 < nLen then
 					len = litHuffmanLen[index-1]
@@ -1095,7 +1166,7 @@ local function DecompressDynamicBlock(buffer, bufferSize, ReadBits, Decode)
 				symbol = 11 + ReadBits(7)
 			end
 			if index + symbol > nLen + nDist then
-				return -6 -- Too many lengths!
+				return -6 -- dynamic block code description: repeat more than specified lengths
 			end
 			while symbol > 0 do -- Repeat last or zero symbol times
 				symbol = symbol - 1
@@ -1110,43 +1181,61 @@ local function DecompressDynamicBlock(buffer, bufferSize, ReadBits, Decode)
 	end
 
 	if (litHuffmanLen[256] or 0) == 0 then
-		return -9 -- No end of block
+		return -9 -- dynamic block code description: missing end-of-block code
 	end
 
 	local litErr, litHuffmanLenCount, litHuffmanSym, litMinLen = ConstructInflateHuffman(litHuffmanLen, nLen, 15)
 	if (litErr ~=0 and (litErr < 0 or nLen ~= (litHuffmanLenCount[0] or 0)+(litHuffmanLenCount[1] or 0))) then
-		return -7 -- Incomplete code ok only for single length 1 code
+		return -7   -- dynamic block code description: invalid literal/length code lengths
+					-- Incomplete code ok only for single length 1 code
 	end
 
 	local distErr, distHuffmanLenCount, distHuffmanSym, distMinLen = ConstructInflateHuffman(distHuffmanLen, nDist, 15)
 	if (distErr ~=0 and (distErr < 0 or nDist ~= (distHuffmanLenCount[0] or 0)+(distHuffmanLenCount[1] or 0))) then
-		return -8 -- Incomplete code ok only for single length 1 code
+		return -8   -- dynamic block code description: invalid distance code lengths,
+					-- Incomplete code ok only for single length 1 code
 	end
 
 	-- Build buffman table for literal/length codes
-	return Codes(litHuffmanLenCount, litHuffmanSym, distHuffmanLenCount, distHuffmanSym, buffer, bufferSize
-		,ReadBits, Decode, litMinLen, distMinLen)
+	return Codes(state, litHuffmanLenCount, litHuffmanSym, litMinLen, distHuffmanLenCount, distHuffmanSym, distMinLen)
 end
 
 function LibDeflate:Decompress(str) -- TODO: Unfinished
 	-- WIP
 	assert(type(str) == "string")
-	local ReadBits, _, Decode = CreateReader(str)
+	local ReadBits, ReadBytes, Decode, ReaderBitsLeft = CreateReader(str)
+	local state =
+	{
+		ReadBits = ReadBits,
+		ReadBytes = ReadBytes,
+		Decode = Decode,
+		ReaderBitsLeft = ReaderBitsLeft,
+		bufferSize = 0,
+		buffer = {},
+		result = "",
+	}
 
 	local isLastBlock
-	local buffer = {}
-	local result = ""
-
-	local bufferSize = 0
 	while not isLastBlock do
-		local blockResult
 		isLastBlock = (ReadBits(1) == 1)
 		local blockType = ReadBits(2) -- TODO
-		blockResult, buffer, bufferSize = DecompressDynamicBlock(buffer, bufferSize, ReadBits, Decode)
-		result=result..blockResult
+		local status
+		if blockType == 0 then
+			status = DecompressStoreBlock(state)
+		elseif blockType == 1 then
+			status = DecompressFixBlock(state)
+		elseif blockType == 2 then
+			status = DecompressDynamicBlock(state)
+		else
+			return nil, -1 -- invalid block type (type == 3)
+		end
+		if status ~= 0 then
+			return nil, status
+		end
 	end
-	result=result..table_concat(buffer, "", 1, bufferSize)
-	return result
+
+	state.result = state.result..table_concat(state.buffer, "", 1, state.bufferSize)
+	return state.result, 0
 end
 
 --local profiler = require "profiler"
