@@ -92,7 +92,7 @@ else # -e $LUA_HOME_DIR
 
         echo "Downloading $LUA"
         if [ "$LUA" == "lua5.1.4" ]; then
-            curl http://www.lua.org/ftp/lua-5.1.5.tar.gz | tar xz
+            curl http://www.lua.org/ftp/lua-5.1.4.tar.gz | tar xz
             cd lua-5.1.4;
         elif [ "$LUA" == "lua5.1.5" ]; then
             curl http://www.lua.org/ftp/lua-5.1.5.tar.gz | tar xz
