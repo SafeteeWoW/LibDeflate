@@ -18,12 +18,13 @@
 
 local LibDeflate
 if LibStub then
-	local MAJOR,MINOR = "LibDeflate", -1
+	local MAJOR,MINOR = "LibDeflate-1.0", -1
 	LibDeflate = LibStub:NewLibrary(MAJOR, MINOR)
 	if not LibDeflate then
 		return LibStub:GetLibrary(MAJOR)
 	end
 else
+	-- TODO: Cleanup tables in the old version
 	LibDeflate = {}
 end
 
@@ -36,39 +37,86 @@ local string_byte = string.byte
 local string_sub = string.sub
 local pairs = pairs
 
-local function print() end
-
-local function PrintTable(t, start, stop)
-	local tmp = {}
-	for i=start, stop do
-		table.insert(tmp, tostring(t[i]))
-	end
-	_G.print(table_concat(tmp, " "))
-end
-
 ---------------------------------------
 --	Precalculated tables start.
 ---------------------------------------
-local _lengthCodeToBaseLen = { -- Size base for length codes 257..285
+
+--[[
+	key of the configuration table is the compression level, and its value stores the compression setting
+	See also https://github.com/madler/zlib/blob/master/doc/algorithm.txt,
+	And https://github.com/madler/zlib/blob/master/deflate.c for more infomration
+
+	The meaning of each field:
+	1. use_lazy_evaluation: true/false. Whether the program uses lazy evaluation.
+							See what is "lazy evaluation" in the link above.
+							lazy_evaluation improves ratio, but relatively slow.
+	2. good_prev_length: Only effective if lazy is set, Only use 1/4 of max_chain
+						 if prev length of lazy match is above this.
+	3. max_insert_length/max_lazy_match:
+			If not using lazy evaluation, Insert new strings in the hash table only if the match length is not
+			greater than this length.Only continue lazy evaluation.
+			If using lazy evaluation, only continue lazy evaluation if prev length is strictly smaller than this.
+	4. nice_length: Number. Don't continue to go down the hash chain if match length is above this.
+	5. max_chain: Number. The maximum number of hash chains we look.
+
+--]]
+local _configuration_table = {
+	[1] = {false,	nil,	4,	8,	 4},		-- gzip -1
+	[2] = {false,	nil,	5,	18, 8},		-- gzip -2
+	[3] = {false,	nil,	6,	 32,	32,},	-- gzip -3
+
+	[4] = {true,	4,		4,		16,	16},	-- gzip -4
+	[5] = {true,	8,		16,		32,	32},	-- gzip -5
+	[6] = {true,	8,		16,		128,128},	  -- gzip -6
+	[7] = {true,	8,		32,		128,256},	  -- gzip -7
+	[8] = {true,	32,	 128,	258,1024},	 -- gzip -8
+	[9] = {true,	32,	 258,	258,4096},	 -- gzip -9 (maximum compression)
+}
+
+local _pow2 = {}
+local _byteToChar = {}
+local _twoBytesToChar = {}
+local _reverseBitsTbl = {}
+-- _reverseBitsTbl[len][val] stores the bit reverse of the number of bit length "len" and value "val"
+
+local _lenToLiteralCode = {}
+local _lenToExtraBits = {}
+local _lenToExtraBitsLen = {}
+
+local _dist256ToCode = {} -- For distance 1..256
+local _dist256ToExtraBits = {} -- For distance 1..256
+local _dist256ToExtraBitsLen = {} -- For distance 1..256
+
+local _codeLengthHuffmanCodeOrder = {16, 17, 18,
+	0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15}
+local _literalCodeToBaseLen = { -- Size base for length codes 257..285
 	3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
-	35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
+	35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258}
 local _literalCodeToExtraBitsLen = { -- Extra bits for length codes 257..285
 	0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
-	3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
-local _distanceCodeToBaseDist = { -- Offset base for distance codes 0..29
+	3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0}
+local _distCodeToBaseDist = { -- Offset base for distance codes 0..29
 	[0] = 1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
 	257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145,
-	8193, 12289, 16385, 24577};
-local _distanceCodeToExtraBitsLen = { -- Extra bits for distance codes 0..29
+	8193, 12289, 16385, 24577}
+local _distCodeToExtraBitsLen = { -- Extra bits for distance codes 0..29
 	[0] = 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
 	7, 7, 8, 8, 9, 9, 10, 10, 11, 11,
-	12, 12, 13, 13};
+	12, 12, 13, 13}
 
-local _twoBytesToChar = {}
-local _byteToChar = {}
-local _pow2 = {}
+local _fixLitHuffmanLenCount
+local _fixLitHuffmanSym
+local _fixDistHuffmanLenCount
+local _fixDistHuffmanSym
+------------------------------------------------------------------------
+------------------------------------------------------------------------
+
 for i=0, 255 do
 	_byteToChar[i] = string_char(i)
+end
+
+for i=0,256*256-1 do
+	_twoBytesToChar[i] = string_char(i%256)..string_char((i-i%256)/256)
 end
 
 do
@@ -79,9 +127,20 @@ do
 	end
 end
 
-local _lengthToLiteralCode = {}
-local _lengthToExtraBits = {}
-local _lengthToExtraBitsLen = {}
+for i=1, 9 do
+	_reverseBitsTbl[i] = {}
+	for j=0, _pow2[i+1]-1 do
+		local res = 0
+		local code = j
+		for _=1, i do
+			res = res - res%2 + (((res%2==1) or (code % 2) == 1) and 1 or 0) -- res | (code%2)
+			code = (code-code%2)/2
+			res = res*2
+		end
+		_reverseBitsTbl[i][j] = (res-res%2)/2
+	end
+end
+
 do
 	local a = 18
 	local b = 16
@@ -89,11 +148,11 @@ do
 	local bitsLen = 1
 	for len=3, 258 do
 		if len <= 10 then
-			_lengthToLiteralCode[len] = len + 254
-			_lengthToExtraBitsLen[len] = 0
+			_lenToLiteralCode[len] = len + 254
+			_lenToExtraBitsLen[len] = 0
 		elseif len == 258 then
-			_lengthToLiteralCode[len] = 285
-			_lengthToExtraBitsLen[len] = 0
+			_lenToLiteralCode[len] = 285
+			_lenToExtraBitsLen[len] = 0
 		else
 			if len > a then
 				a = a + b
@@ -102,21 +161,19 @@ do
 				bitsLen = bitsLen + 1
 			end
 			local t = len-a-1+b/2
-			_lengthToLiteralCode[len] = (t-(t%(b/8)))/(b/8) + c
-			_lengthToExtraBitsLen[len] = bitsLen
-			_lengthToExtraBits[len] = t % (b/8)
+			_lenToLiteralCode[len] = (t-(t%(b/8)))/(b/8) + c
+			_lenToExtraBitsLen[len] = bitsLen
+			_lenToExtraBits[len] = t % (b/8)
 		end
 	end
 end
 
-local _distanceToCode = {} -- For distance 1..256
-local _distanceToExtraBits = {} -- For distance 1..256
-local _distanceToExtraBitsLen = {} -- For distance 1..256
+
 do
-	_distanceToCode[1] = 0
-	_distanceToCode[2] = 1
-	_distanceToExtraBitsLen[1] = 0
-	_distanceToExtraBitsLen[2] = 0
+	_dist256ToCode[1] = 0
+	_dist256ToCode[2] = 1
+	_dist256ToExtraBitsLen[1] = 0
+	_dist256ToExtraBitsLen[2] = 0
 
 	local a = 3
 	local b = 4
@@ -129,89 +186,68 @@ do
 			code = code + 2
 			bitsLen = bitsLen + 1
 		end
-		_distanceToCode[dist] = (dist <= a) and code or (code+1)
-		_distanceToExtraBitsLen[dist] = (bitsLen < 0) and 0 or bitsLen
+		_dist256ToCode[dist] = (dist <= a) and code or (code+1)
+		_dist256ToExtraBitsLen[dist] = (bitsLen < 0) and 0 or bitsLen
 		if b >= 8 then
-			_distanceToExtraBits[dist] = (dist-b/2-1) % (b/4)
+			_dist256ToExtraBits[dist] = (dist-b/2-1) % (b/4)
 		end
 	end
 end
 
-for i=0,256*256-1 do
-	_twoBytesToChar[i] = string_char(i%256)..string_char((i-i%256)/256)
-end
-
-local _resTable = {}
-for i=1, 9 do
-	_resTable[i] = {}
-	for j=0, _pow2[i+1]-1 do
-		local res = 0
-		local code = j
-		for _=1, i do
-			res = res - res%2 + (((res%2==1) or (code % 2) == 1) and 1 or 0) -- res | (code%2)
-			code = (code-code%2)/2
-			res = res*2
-		end
-		_resTable[i][j] = (res-res%2)/2
-	end
-end
---_G.print(("Static memory used: %.2f MB"):format(collectgarbage("count")/1024))
 ---------------------------------------
 --	Precalculated tables ends.
 ---------------------------------------
-
 local function CreateWriter(oneBytePerElement)
-	local _writeCompressedSize = 0
-	local _writeRemainder = 0
-	local _writeRemainderLength = 0
-	local _writeBuffer = {}
-	local _oneBytePerElement = oneBytePerElement
+	local bufferSize = 0
+	local cache = 0
+	local cacheBitRemaining = 0
+	local buffer = {}
 
-	local function WriteBits(code, length)
-		_writeRemainder = _writeRemainder + code * _pow2[_writeRemainderLength] -- Overflow?
-		_writeRemainderLength = length + _writeRemainderLength
-		if _writeRemainderLength >= 32 then
+	local function WriteBits(code, bitLength)
+		cache = cache + code * _pow2[cacheBitRemaining]
+		cacheBitRemaining = bitLength + cacheBitRemaining
+		if cacheBitRemaining >= 32 then
 			-- we have at least 4 bytes to store; bulk it
-			if _oneBytePerElement then
-				_writeBuffer[_writeCompressedSize+1] = _byteToChar[_writeRemainder % 256]
-				_writeBuffer[_writeCompressedSize+2] = _byteToChar[((_writeRemainder-_writeRemainder%256)/256 % 256)]
-				_writeBuffer[_writeCompressedSize+3] = _byteToChar[((_writeRemainder-_writeRemainder%65536)/65536 % 256)]
-				_writeBuffer[_writeCompressedSize+4] = _byteToChar[((_writeRemainder-_writeRemainder%16777216)/16777216 % 256)]
-				_writeCompressedSize = _writeCompressedSize + 4
+			if oneBytePerElement then
+				buffer[bufferSize+1] = _byteToChar[cache % 256]
+				buffer[bufferSize+2] = _byteToChar[((cache-cache%256)/256 % 256)]
+				buffer[bufferSize+3] = _byteToChar[((cache-cache%65536)/65536 % 256)]
+				buffer[bufferSize+4] = _byteToChar[((cache-cache%16777216)/16777216 % 256)]
+				bufferSize = bufferSize + 4
 			else
-				_writeBuffer[_writeCompressedSize+1] = _twoBytesToChar[_writeRemainder % 65536]
-				_writeBuffer[_writeCompressedSize+2] = _twoBytesToChar[((_writeRemainder-_writeRemainder%65536)/65536 % 65536)]
-				_writeCompressedSize = _writeCompressedSize + 2
+				buffer[bufferSize+1] = _twoBytesToChar[cache % 65536]
+				buffer[bufferSize+2] = _twoBytesToChar[((cache-cache%65536)/65536 % 65536)]
+				bufferSize = bufferSize + 2
 			end
-			local rShiftMask = _pow2[32 - _writeRemainderLength + length]
-			_writeRemainder = (code - code%rShiftMask)/rShiftMask
-			_writeRemainderLength = _writeRemainderLength - 32
+			local rShiftMask = _pow2[32 - cacheBitRemaining + bitLength]
+			cache = (code - code%rShiftMask)/rShiftMask
+			cacheBitRemaining = cacheBitRemaining - 32
 		end
 	end
 
-	local function Flush(lastUseWriter)
+	local function Flush(lastTimeToUseWriter)
 		local ret
-		if lastUseWriter then
-			if _writeRemainderLength > 0 then
-				for _=1, _writeRemainderLength, 8 do
-					_writeCompressedSize = _writeCompressedSize + 1
-					_writeBuffer[_writeCompressedSize] = string_char(_writeRemainder % 256)
-					_writeRemainder = (_writeRemainder-_writeRemainder%256)/256
+		if lastTimeToUseWriter then
+			if cacheBitRemaining > 0 then
+				for _=1, cacheBitRemaining, 8 do
+					bufferSize = bufferSize + 1
+					buffer[bufferSize] = string_char(cache % 256)
+					cache = (cache-cache%256)/256
 				end
-				_writeRemainder = 0
-				_writeRemainderLength = 0
+				cache = 0
+				cacheBitRemaining = 0
 			end
-			ret = table_concat(_writeBuffer)
-			_writeBuffer = nil
+			ret = table_concat(buffer)
+			buffer = nil
 		else
-			ret = table_concat(_writeBuffer)
-			_writeBuffer = {ret}
-			_writeCompressedSize = 1
+			ret = table_concat(buffer)
+			buffer = {ret}
+			bufferSize = 1
 		end
 		return ret
 	end
 
-	return WriteBits, Flush, _writeBuffer
+	return WriteBits, Flush
 end
 
 --- Push an element into a max heap
@@ -489,9 +525,6 @@ local function RunLengthEncodeHuffmanLens(lcodeLens, maxNonZeroLenlCode, dcodeLe
 	return rleCodes, rleExtraBits, rleCodesTblLen, rleCodesCount
 end
 
-local _codeLengthHuffmanCodeOrder = {16, 17, 18,
-	0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15}
-
 local function loadStrToTable(str, t, start, stop)
 	local i=start-1
 	while i <= stop do
@@ -517,38 +550,6 @@ local function loadStrToTable(str, t, start, stop)
 	end
 	return t
 end
-
---[[
-	key of the configuration table is the compression level, and its value stores the compression setting
-	See also https://github.com/madler/zlib/blob/master/doc/algorithm.txt,
-	And https://github.com/madler/zlib/blob/master/deflate.c for more infomration
-
-	The meaning of each field:
-	1. use_lazy_evaluation: true/false. Whether the program uses lazy evaluation.
-							See what is "lazy evaluation" in the link above.
-							lazy_evaluation improves ratio, but relatively slow.
-	2. good_prev_length: Only effective if lazy is set, Only use 1/4 of max_chain
-						 if prev length of lazy match is above this.
-	3. max_insert_length/max_lazy_match:
-			If not using lazy evaluation, Insert new strings in the hash table only if the match length is not
-			greater than this length.Only continue lazy evaluation.
-			If using lazy evaluation, only continue lazy evaluation if prev length is strictly smaller than this.
-	4. nice_length: Number. Don't continue to go down the hash chain if match length is above this.
-	5. max_chain: Number. The maximum number of hash chains we look.
-
---]]
-local _configuration_table = {
-	[1] = {false,	nil,	4,	8,	 4},		-- gzip -1
-	[2] = {false,	nil,	5,	18, 8},		-- gzip -2
-	[3] = {false,	nil,	6,	 32,	32,},	-- gzip -3
-
-	[4] = {true,	4,		4,		16,	16},	-- gzip -4
-	[5] = {true,	8,		16,		32,	32},	-- gzip -5
-	[6] = {true,	8,		16,		128,128},	  -- gzip -6
-	[7] = {true,	8,		32,		128,256},	  -- gzip -7
-	[8] = {true,	32,	 128,	258,1024},	 -- gzip -8
-	[9] = {true,	32,	 258,	258,4096},	 -- gzip -9 (maximum compression)
-}
 
 local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, blockStart, blockEnd, isLastBlock)
 	if not level then
@@ -641,13 +642,13 @@ local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, bloc
 		end
 		if ((not config_use_lazy or matchAvailable) and (prevLen > 3 or (prevLen == 3 and prevDist < 4096))
 		and curLen <= prevLen )then
-			local code = _lengthToLiteralCode[prevLen]
-			local lenExtraBitsLength = _lengthToExtraBitsLen[prevLen]
+			local code = _lenToLiteralCode[prevLen]
+			local lenExtraBitsLength = _lenToExtraBitsLen[prevLen]
 			local distCode, distExtraBitsLength, distExtraBits
 			if prevDist <= 256 then
-				distCode = _distanceToCode[prevDist]
-				distExtraBits = _distanceToExtraBits[prevDist]
-				distExtraBitsLength =  _distanceToExtraBitsLen[prevDist]
+				distCode = _dist256ToCode[prevDist]
+				distExtraBits = _dist256ToExtraBits[prevDist]
+				distExtraBitsLength =  _dist256ToExtraBitsLen[prevDist]
 			else
 				distCode = 16
 				distExtraBitsLength = 7
@@ -679,7 +680,7 @@ local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, bloc
 			dCodesCount[distCode] = (dCodesCount[distCode] or 0) + 1
 
 			if lenExtraBitsLength > 0 then
-				local lenExtraBits = _lengthToExtraBits[prevLen]
+				local lenExtraBits = _lenToExtraBits[prevLen]
 				lExtraBitTblSize = lExtraBitTblSize + 1
 				lExtraBits[lExtraBitTblSize] = lenExtraBits
 			end
@@ -869,7 +870,6 @@ end
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 local function CreateReader(inputString)
-	assert(type(inputString)=="string")
 	local input = inputString
 	local inputLen = input:len()
 	local inputNextBytePos = 1
@@ -947,7 +947,7 @@ local function CreateReader(inputString)
 		local code = cache % rShiftMask
 		cache = (cache - code) / rShiftMask
 		-- Reverse the bits
-		code = _resTable[minLen][code]
+		code = _reverseBitsTbl[minLen][code]
 
 		local count = huffmanLenCount[minLen]-- Number of codes of length len
 		if code < count then
@@ -963,7 +963,7 @@ local function CreateReader(inputString)
 			cache = (cache - bit) / 2
 			cacheBitRemaining = cacheBitRemaining - 1
 
-			code = (bit==1) and (code + 1 - code % 2) or code -- (code |= RadBits(1)) Get next bit
+			code = (bit==1) and (code + 1 - code % 2) or code -- (code |= ReadBits(1)) Get next bit
 			count = huffmanLenCount[len] or 0
 			local diff = code - first
 			if diff < count then
@@ -1027,11 +1027,6 @@ local function ConstructInflateHuffman(huffmanLen, n, maxBitLength)
 	return left, huffmanLenCount, huffmanSymbol, minLen
 end
 
-local _fixLitHuffmanLenCount
-local _fixLitHuffmanSym
-local _fixDistHuffmanLenCount
-local _fixDistHuffmanSym
-
 do
 	local litLen = {}
 	local status
@@ -1058,7 +1053,8 @@ do
 	assert(status == 0)
 end
 
-local function Codes(state, litHuffmanLen, litHuffmanSym, litMinLen, distHuffmanLen, distHuffmanSym, distMinLen)
+local function DecodeUntilEndOfBlock(state, litHuffmanLen, litHuffmanSym, litMinLen
+	, distHuffmanLen, distHuffmanSym, distMinLen)
 	local buffer, bufferSize, ReadBits, Decode, ReaderBitsLeft, result =
 		state.buffer, state.bufferSize, state.ReadBits, state.Decode, state.ReaderBitsLeft, state.result
 	repeat
@@ -1070,14 +1066,14 @@ local function Codes(state, litHuffmanLen, litHuffmanSym, litMinLen, distHuffman
 			buffer[bufferSize] = _byteToChar[symbol]
 		elseif symbol > 256 then -- Length code
 			symbol = symbol - 256
-			local length = _lengthCodeToBaseLen[symbol]
+			local length = _literalCodeToBaseLen[symbol]
 			length = (symbol >= 8) and (length + ReadBits(_literalCodeToExtraBitsLen[symbol])) or length
 			symbol = Decode(distHuffmanLen, distHuffmanSym, distMinLen)
 			if symbol < 0 or symbol > 29 then
 				return -10 -- invalid literal/length or distance code in fixed or dynamic block
 			end
-			local dist = _distanceCodeToBaseDist[symbol]
-			dist = (dist > 4) and (dist + ReadBits(_distanceCodeToExtraBitsLen[symbol])) or dist
+			local dist = _distCodeToBaseDist[symbol]
+			dist = (dist > 4) and (dist + ReadBits(_distCodeToExtraBitsLen[symbol])) or dist
 
 			local charBufferIndex = bufferSize-dist
 			if charBufferIndex < 0 then
@@ -1157,7 +1153,7 @@ local function DecompressStoreBlock(state)
 end
 
 local function DecompressFixBlock(state)
-	return Codes(state, _fixLitHuffmanLenCount, _fixLitHuffmanSym, 7,
+	return DecodeUntilEndOfBlock(state, _fixLitHuffmanLenCount, _fixLitHuffmanSym, 7,
 		_fixDistHuffmanLenCount, _fixDistHuffmanSym, 5)
 end
 
@@ -1249,7 +1245,8 @@ local function DecompressDynamicBlock(state)
 	end
 
 	-- Build buffman table for literal/length codes
-	return Codes(state, litHuffmanLenCount, litHuffmanSym, litMinLen, distHuffmanLenCount, distHuffmanSym, distMinLen)
+	return DecodeUntilEndOfBlock(state, litHuffmanLenCount, litHuffmanSym, litMinLen
+		, distHuffmanLenCount, distHuffmanSym, distMinLen)
 end
 
 function LibDeflate:Decompress(str) -- TODO: Unfinished
@@ -1294,26 +1291,5 @@ function LibDeflate:Decompress(str) -- TODO: Unfinished
 	state.result = state.result..table_concat(state.buffer, "", 1, state.bufferSize)
 	return state.result, 0
 end
-
---local profiler = require "profiler"
---[[
-local f = io.open("tests\\data\\smalltest.txt", "rb")
-local str =f:read("*all")
-f:close()
-local c = LibDeflate:Compress(str, 4)
-_G.print("strLen:", c:len())
-os.execute("rm -f profile.out")
---profiler.start("profile.out")
-local time=os.clock()
-local d
-for i=1, 100 do
-	d=LibDeflate:Decompress(c)
-end
---profiler.stop()
-_G.print("time: ", (os.clock()-time)*10)
-
-assert(d==str)
---]]
-
 
 return LibDeflate

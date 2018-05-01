@@ -50,7 +50,7 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 	do
 		minRunTime = minRunTime or 0
 		if levels == "all" then
-			levels = {1,2,3,4,5,6,7,8,9}
+			levels = {1,2,3,4,5,6,7,8}
 		else
 			levels = levels or {1}
 		end
@@ -183,7 +183,7 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 		,(inputFileName or str):sub(1, 40), str:len()))
 	local unique_compress = {}
 	local uniques_compress_count = 0
-	for i=0, 9 do
+	for i=0, 8 do
 		level = "-"..i
 		for j=1, #strategies do
 			strategy = strategies[j]
