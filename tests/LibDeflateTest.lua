@@ -312,8 +312,8 @@ local function CheckDecompressIncludingError(compressed, decompressed, start, st
 			if decompressed_return ~= 0 then
 				-- decompressed_return is the number of unprocessed bytes in the data.
 				-- Some byte not processed, compare with puff and zdeflate
-				lu.assertEquals(tostring(decompressed_return), stderr_puff, "My decompress unprocessed bytes not match puff")
-				lu.assertEquals(tostring(decompressed_return), stderr_zdeflate,
+				lu.assertEquals(("%d"):format(decompressed_return), stderr_puff, "My decompress unprocessed bytes not match puff")
+				lu.assertEquals(("%d"):format(decompressed_return), stderr_zdeflate,
 				 "My decompress unprocessed bytes not match zdeflate")
 			end
 		end
