@@ -167,11 +167,13 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 
 	local totalMemoryDifference = totalMemoryBefore - totalMemoryAfter
 
-	if totalMemoryDifference > 16 then
+	if totalMemoryDifference > 0 then
 		print(("Actual Memory Leak in the test: %d"):format(totalMemoryDifference))
-		if not jit then -- Lua JIT has some problems to garbage collect stuffs, so don't consider as failure.
-			lu.assertTrue(false, ("Actual Memory Leak in the test: %d"):format(totalMemoryDifference))
-				return 2
+		if not jit and totalMemoryDifference >  16 then
+			-- Lua JIT has some problems to garbage collect stuffs, so don't consider as failure.
+			lu.assertTrue(false, ("Fail the test because too many actual Memory Leak in the test: %d")
+				:format(totalMemoryDifference))
+			return 2
 		end
 	end
 
