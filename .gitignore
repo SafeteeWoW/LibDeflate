@@ -9,4 +9,12 @@
 install
 luacov*
 profile.out
+*.stderr
+tmp
+*.o
+*.obj
+*.exe
+*.out
+*.tmp
+tmpFile
 

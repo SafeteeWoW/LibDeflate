@@ -1,66 +1,6 @@
 -- Commandline tests
 local Lib = require("LibDeflate")
 local args = rawget(_G, "arg")
-if args and #args >= 1 and type(args[0]) == "string" then
-	if #args >= 2 and args[1] == "-o" then
-	-- For testing purpose, check if the file can be opened by lua
-		local input = args[2]
-		local inputFile = io.open(input, "rb")
-		if not inputFile then
-			os.exit(1)
-		end
-		inputFile.close()
-		os.exit(0)
-	elseif #args >= 3 and args[1] == "-c" then
-	-- For testing purpose, check the if a file can be correctly compressed and decompressed to origin
-		local input = args[2]
-		local output = args[3]
-		collectgarbage("stop")
-		local inputFile = io.open(input, "rb")
-		if not inputFile then
-			print(input, "Input file does not exit")
-			os.exit(1)
-		end
-		local inputFileContent = inputFile:read("*all")
-		inputFile:close()
-		local compressed = Lib:Compress(inputFileContent)
-		local outputFile = io.open(output, "wb")
-		if not outputFile then
-			print(input, "cannot open output File")
-			os.exit(2)
-		end
-		outputFile:write(compressed)
-		outputFile:close()
-
-		local decompressed = Lib:Decompress(compressed)
-
-		if decompressed ~= inputFileContent then
-			print(input, "My decompress does not match input")
-			os.exit(3)
-		end
-		local decompressedFileName = output..".decompressed"
-		local ret = os.execute("puff -w "..output.. "> "..decompressedFileName)
-		if ret ~= 0 then
-			print(input, "puff cannot decompress")
-			os.exit(4)
-		end
-
-		local testFile = io.open(decompressedFileName, "rb")
-		if not testFile then
-			print(input, "testFile not found")
-			os.exit(5)
-		end
-		local testFileContent = testFile:read("*all")
-		testFile:close()
-
-		if testFileContent ~= inputFileContent then
-			print(input, "testFileContent does not match input")
-			os.exit(5)
-		end
-		os.exit(0)
-	end
-end
-
 -- UnitTests
 local lu = require("luaunit")
 
@@ -79,7 +19,30 @@ local function FullMemoryCollect()
 	collectgarbage("collect")
 end
 
-local function CheckStr(str, levels, minRunTime, inputFileName)
+local function RunProgram(program, inputFileName, stdoutFileName)
+	local stderrFileName = stdoutFileName..".stderr"
+	os.execute("rm -f "..stdoutFileName)
+	os.execute("rm -f "..stderrFileName)
+	local status, _, ret = os.execute(program.." "..inputFileName.. "> "..stdoutFileName.." 2> "..stderrFileName)
+	local returnedStatus = type(status) == "number" and status or ret or -255
+	local stdout = ""
+	local stderr = ""
+	local file
+	file = io.open(stdoutFileName, "rb")
+	if file then
+		stdout = file:read("*all")
+		file:close()
+	end
+	file = io.open(stderrFileName, "rb")
+	if file then
+		stderr = file:read("*all")
+		file:close()
+	end
+	return returnedStatus, stdout, stderr
+end
+
+
+local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 
 	FullMemoryCollect()
 	local totalMemoryBefore = math.floor(collectgarbage("count")*1024)
@@ -92,14 +55,7 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 			levels = levels or {1}
 		end
 
-		local compressedFileName
-		if inputFileName then
-			compressedFileName = inputFileName..".deflate"
-		else
-			compressedFileName = "tests/data/str.deflate"
-		end
-
-
+		local compressedFileName = outputFileName or "tests/data/tmp.deflate"
 
 		for _, level in ipairs(levels) do
 			-- Check memory usage and leaking
@@ -137,26 +93,38 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 			outputFile:close()
 
 			local decompressedFileName = compressedFileName..".decompressed"
-			os.execute("rm -f "..decompressedFileName)
 
-			-- For lua5.1, "status" stores the returned number of the program. For 5.2/5.3, "ret" stores it.
-			local status, _, ret = os.execute("puff -w "..compressedFileName.. "> "..decompressedFileName)
-			local returnedStatus = type(status)== "number" and status or ret or -255
-			lu.assertEquals(returnedStatus, 0, "puff decompression failed with code "..returnedStatus)
+			local returnedStatus_puff, stdout_puff = RunProgram("puff -w ", compressedFileName, decompressedFileName)
+			lu.assertEquals(returnedStatus_puff, 0, "puff decompression failed with code "..returnedStatus_puff)
 
-			local testFile = io.open(decompressedFileName, "rb")
-			lu.assertNotNil(testFile, "Decompressed file "..decompressedFileName.." does not exist")
-			local testFileContent = testFile:read("*all")
-			testFile:close()
+			local returnedStatus_zdeflate, stdout_zdeflate = RunProgram("zdeflate -d <", compressedFileName
+				, decompressedFileName)
+			lu.assertEquals(returnedStatus_zdeflate, 0, "zdeflate decompression failed with code "..returnedStatus_zdeflate)
 
-			if str ~= testFileContent then
-				lu.assertEquals(str:len(), testFileContent:len(), ("level: %d, string size does not match actual size: %d"
-					..", after compress and decompress: %d")
-						:format(level, str:len(), testFileContent:len()))
+			if str ~= stdout_puff then
+				lu.assertEquals(str:len(), stdout_puff:len(), ("level: %d, string size does not match actual size: %d"
+					..", after Lib compress and puff decompress: %d")
+						:format(level, str:len(), stdout:len()))
 				for i=1, str:len() do
-					lu.assertEquals(string_byte(str, i, i), string_byte(testFileContent, i, i), ("Level: %d, First diff at: %d")
+					lu.assertEquals(string_byte(str, i, i), string_byte(stdout_puff, i, i), ("Level: %d, First diff at: %d")
 						:format(level, i))
 				end
+				return 1
+			else
+				print("Compress then puff decompress OK")
+			end
+
+			if str ~= stdout_zdeflate then
+				lu.assertEquals(str:len(), stdout_zdeflate:len(), ("level: %d, string size does not match actual size: %d"
+					..", after Lib compress and zdeflate decompress: %d")
+						:format(level, str:len(), stdout:len()))
+				for i=1, str:len() do
+					lu.assertEquals(string_byte(str, i, i), string_byte(stdout_zdeflate, i, i), ("Level: %d, First diff at: %d")
+						:format(level, i))
+				end
+				return 1
+			else
+				print("Compress then zDeflate decompress OK")
 			end
 
 			local dStartTime = os.clock()
@@ -172,9 +140,10 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 
 			lu.assertEquals(decompressed, str, "My decompression does not match origin string")
 			if decompressed ~= str then
-				print("My decompress FAILED")
+				print("Compress then my decompress FAILED")
+				return 1
 			else
-				print("My decompress OK")
+				print("Compress then my decompress OK")
 			end
 
 			print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, Compress Time: %.3fms, Decompress Time: %.3fms, "..
@@ -198,15 +167,113 @@ local function CheckStr(str, levels, minRunTime, inputFileName)
 	end
 	if not jit then -- Lua JIT has some problems to garbage collect stuffs, so don't consider as failure.
 		lu.assertTrue((totalMemoryDifference<=0), ("Actual Memory Leak in the test: %d"):format(totalMemoryDifference))
+		if totalMemoryDifference > 0 then
+			return 2
+		end
 	end
+
+	-- Use all avaiable strategies of zdeflate to compress the data, and see if LibDeflate can decompress it.
+	local level, strategy
+	local strategies = {"--filter", "--huffman", "--rle", "--fix", "--default"}
+	local tmpFileName = "tmp.tmp"
+	local tmpFile = io.open(tmpFileName, "wb")
+	tmpFile:write(str)
+	tmpFile:close()
+	print((">> %s %s, Size: %s"):format((inputFileName and "File:" or "Str:")
+		,(inputFileName or str):sub(1, 40), str:len()))
+	local unique_compress = {}
+	local uniques_compress_count = 0
+	for i=0, 9 do
+		level = "-"..i
+		for j=1, #strategies do
+			strategy = strategies[j]
+			local status, stdout, stderr = RunProgram("zdeflate "..level.." "..strategy.." < ", tmpFileName, tmpFileName..".out")
+			lu.assertEquals(status, 0, ("zdeflate cant compress the file? stderr: %s level: %s, strategy: %s")
+				:format(stderr, level, strategy))
+			if status ~= 0 then
+				return 3
+			end
+			if not unique_compress[stdout] then
+				unique_compress[stdout] = true
+				uniques_compress_count = uniques_compress_count + 1
+				local decomp = Lib:Decompress(stdout)
+				if str ~= decomp then
+					print(("My decompress fail to decompress at zdeflate level: %s, strategy: %s")
+						:format(stderr, level, strategy))
+					lu.assertTrue(false, ("My decompress fail to decompress at zdeflate level: %s, strategy: %s")
+						:format(stderr, level, strategy))
+					return 4
+				end
+			end
+		end
+	end
+	print(("Full decompress coverage test ok. unique compresses: %d"):format(uniques_compress_count))
+	print("-------------------------------------")
+
+	return 0
 end
 
-local function CheckFile(inputFileName, levels, minRunTime)
+local function CheckDecompressIncludingError(compressed, decompressed)
+	local d, status = Lib:Decompress(compressed)
+	if d ~= decompressed then
+		lu.assertTrue(false, ("My decompressed does not match expected result."..
+			"expected: %s, actual: %s, Returned status of decompress: %d"):format(decompressed, d, status))
+	else
+		-- Check my decompress result with "puff"
+		local inputFileName = "tmpFile"
+		local inputFile = io.open(inputFileName, "wb")
+		inputFile:setvbuf("full")
+		inputFile:write(compressed)
+		inputFile:flush()
+		inputFile:close()
+		local returnedStatus_puff, stdout_puff = RunProgram("puff -w", inputFileName, inputFileName..".decompressed")
+		local returnedStatus_zdeflate, stdout_zdeflate = RunProgram("zdeflate -d <", inputFileName
+			, inputFileName..".decompressed")
+		if status ~= 0 then
+			if returnedStatus_puff ~= 0 and returnedStatus_zdeflate ~= 0 then
+				print((">>>> %q cannot be decompress as expected"):format(compressed:sub(1, 15)))
+			elseif returnedStatus_puff ~= 0 and returnedStatus_zdeflate == 0 then
+				lu.assertTrue(false, "Puff error but not zdeflate?")
+			elseif returnedStatus_puff == 0 and returnedStatus_zdeflate ~= 0 then
+				lu.assertTrue(false, "zDeflate error but not puff?")
+			else
+				lu.assertTrue(false, "My decompressed returns error, but not puff and zdeflate.")
+			end
+
+		else
+			if d == stdout_puff and d == stdout_zdeflate then
+				print((">>>> %q is decompressed successfully"):format(compressed:sub(1, 15)))
+			else
+				lu.assertTrue(false, "My decompress result does not match puff or zdeflate.")
+			end
+		end
+	end
+
+end
+
+local function CheckFile(inputFileName, levels, minRunTime, outputFileName)
 	local inputFile = io.open(inputFileName, "rb")
 	lu.assertNotNil(inputFile, "Input file "..inputFileName.." does not exist")
 	local inputFileContent = inputFile:read("*all")
 	inputFile:close()
-	CheckStr(inputFileContent, levels, minRunTime, inputFileName)
+	return CheckStr(inputFileContent, levels, minRunTime, inputFileName, outputFileName or inputFileName..".deflate")
+end
+
+-- Commandline
+if args and #args >= 1 and type(args[0]) == "string" then
+	if #args >= 2 and args[1] == "-o" then
+	-- For testing purpose, check if the file can be opened by lua
+		local input = args[2]
+		local inputFile = io.open(input, "rb")
+		if not inputFile then
+			os.exit(1)
+		end
+		inputFile.close()
+		os.exit(0)
+	elseif #args >= 3 and args[1] == "-c" then
+	-- For testing purpose, check the if a file can be correctly compressed and decompressed to origin
+		os.exit(CheckFile(args[2], "all", 0, args[3]))
+	end
 end
 
 TestMin1Strings = {}
@@ -245,7 +312,7 @@ TestMin2MyData = {}
 	end
 
 	function TestMin2MyData:TestSmallTest()
-		CheckFile("tests/data/smalltest.txt", "all")
+		CheckFile("tests/data/smalltest.txt", {4}, 4)
 	end
 
 	function TestMin2MyData:TestReconnectData()
@@ -455,6 +522,53 @@ Test6ThirdPartyBig = {}
 Test7WoWData = {}
 	function Test7WoWData:TestWarlockWeakAuras()
 		CheckFile("tests/data/warlockWeakAuras.txt", {1,2,3,4,5,6,7,8,9})
+	end
+
+TestMin8Decompress = {}
+	-- Test from puff
+	function TestMin8Decompress:TestStoreEmpty()
+		CheckDecompressIncludingError("\001\000\000\255\255", "")
+	end
+	function TestMin8Decompress:TestStore1()
+		CheckDecompressIncludingError("\001\001\000\254\255\010", "\010")
+	end
+	function TestMin8Decompress:TestStore2()
+		local t = {}
+		for i=1, 65535 do
+			t[i] = "a"
+		end
+		local str = table.concat(t)
+		CheckDecompressIncludingError("\001\255\255\000\000"..str, str)
+	end
+	function TestMin8Decompress:TestStore3()
+		local t = {}
+		for i=1, 65535 do
+			t[i] = "a"
+		end
+		local str = table.concat(t)
+		CheckDecompressIncludingError("\000\255\255\000\000"..str.."\001\255\255\000\000"..str, str..str)
+	end
+	function TestMin8Decompress:TestStore4()
+		-- 0101 00fe ff31
+		CheckDecompressIncludingError("\001\001\000\254\255\049", "1")
+	end
+	function TestMin8Decompress:TestFix1()
+		CheckDecompressIncludingError("\003\000", "")
+	end
+	function TestMin8Decompress:TestFix2()
+		CheckDecompressIncludingError("\051\004\000", "1")
+	end
+	function TestMin8Decompress:TestFixThenStore1()
+		local t = {}
+		for i=1, 65535 do
+			t[i] = "a"
+		end
+		local str = table.concat(t)
+		CheckDecompressIncludingError("\050\004\000\255\255\000\000"..str.."\001\255\255\000\000"..str, "1"..str..str)
+	end
+	function TestMin8Decompress:TestError1()
+		-- Additonal byte
+		CheckDecompressIncludingError("\001\001\000\254\255\010\000", nil)
 	end
 
 local runner = lu.LuaUnit.new()

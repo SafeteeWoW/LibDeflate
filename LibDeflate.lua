@@ -33,7 +33,7 @@ local table_concat = table.concat
 local table_sort = table.sort
 local string_char = string.char
 local string_byte = string.byte
-local string_gsub = string.gsub
+local string_sub = string.sub
 local pairs = pairs
 
 local function print() end
@@ -876,23 +876,33 @@ local function CreateReader(inputString)
 	local cacheBitRemaining = 0
 	local cache = 0
 
-	local function ReadBytes(length, buffer, bufferSize) -- Skip to next byte boundary
-		local newBitRemaining = (cacheBitRemaining - cacheBitRemaining%8)/8
-		local rShiftMask = _pow2[cacheBitRemaining - newBitRemaining]
+	local function SkipToByteBoundary()
+		local skippedBits = cacheBitRemaining%8
+		local rShiftMask = _pow2[skippedBits]
+		cacheBitRemaining = cacheBitRemaining - skippedBits
 		cache = (cache - cache % rShiftMask) / rShiftMask
-		local byteFromCache = (cache/8 < length) and (cache/8) or length
+	end
+
+	local function ReadBytes(length, buffer, bufferSize) -- Assume on the byte boundary
+		assert(cacheBitRemaining % 8 == 0)
+
+		local byteFromCache = (cacheBitRemaining/8 < length) and (cacheBitRemaining/8) or length
 		for _=1, byteFromCache do
-			local byte = cache % 8
+			local byte = cache % 256
 			bufferSize = bufferSize + 1
 			buffer[bufferSize] = string_char(byte)
-			cache = (cache - byte) / 8
+			cache = (cache - byte) / 256
 		end
 		cacheBitRemaining = cacheBitRemaining - byteFromCache*8
 		length = length - byteFromCache
+		if (inputLen - inputNextBytePos + 1) * 8 + cacheBitRemaining < 0 then
+			return -1 -- out of input
+		end
 		for i=inputNextBytePos, inputNextBytePos+length-1 do
 			bufferSize = bufferSize + 1
-			buffer[bufferSize] = string_gsub(input, i, i)
+			buffer[bufferSize] = string_sub(input, i, i)
 		end
+
 		inputNextBytePos = inputNextBytePos + length
 		return bufferSize
 	end
@@ -971,7 +981,7 @@ local function CreateReader(inputString)
 		return (inputLen - inputNextBytePos + 1) * 8 + cacheBitRemaining
 	end
 
-	return ReadBits, ReadBytes, Decode, ReaderBitsLeft
+	return ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary
 end
 
 local function ConstructInflateHuffman(huffmanLen, n, maxBitLength)
@@ -1101,7 +1111,49 @@ local function Codes(state, litHuffmanLen, litHuffmanSym, litMinLen, distHuffman
 end
 
 local function DecompressStoreBlock(state)
+	local buffer, bufferSize, ReadBits, ReadBytes, ReaderBitsLeft, SkipToByteBoundary, result =
+		state.buffer, state.bufferSize, state.ReadBits, state.ReadBytes, state.ReaderBitsLeft,
+		state.SkipToByteBoundary, state.result
 
+	SkipToByteBoundary()
+	local len = ReadBits(16)
+	if ReaderBitsLeft() < 0 then
+		return 2 -- available inflate data did not terminate
+	end
+	local lenComp = ReadBits(16)
+	if ReaderBitsLeft() < 0 then
+		return 2 -- available inflate data did not terminate
+	end
+
+	-- Check if len and lenComp are one's complement
+	local tmpLen = len
+	local tmpLenComp = lenComp
+	for _=1, 16 do
+		local bit1 = len % 2
+		local bit2 = lenComp % 2
+		if not (bit1 + bit2 == 1) then
+			return -2 -- stored block length did not match one's complement
+		end
+		tmpLen = (tmpLen - bit1) / 2
+		tmpLenComp = (tmpLenComp - bit2) / 2
+	end
+
+	-- Note that ReadBytes will skip to the next byte boundary first.
+	bufferSize = ReadBytes(len, buffer, bufferSize)
+	if bufferSize < 0 then
+		return 2 -- available inflate data did not terminate
+	end
+	if bufferSize >= 65536 then
+		result = result..table_concat(buffer, "", 1, 32768)
+		for i=32769, bufferSize do
+			buffer[i-32768] = buffer[i]
+		end
+		bufferSize = bufferSize - 32768
+		buffer[bufferSize+1] = nil
+	end
+	state.result = result
+	state.bufferSize = bufferSize
+	return 0
 end
 
 local function DecompressFixBlock(state)
@@ -1203,13 +1255,14 @@ end
 function LibDeflate:Decompress(str) -- TODO: Unfinished
 	-- WIP
 	assert(type(str) == "string")
-	local ReadBits, ReadBytes, Decode, ReaderBitsLeft = CreateReader(str)
+	local ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary = CreateReader(str)
 	local state =
 	{
 		ReadBits = ReadBits,
 		ReadBytes = ReadBytes,
 		Decode = Decode,
 		ReaderBitsLeft = ReaderBitsLeft,
+		SkipToByteBoundary = SkipToByteBoundary,
 		bufferSize = 0,
 		buffer = {},
 		result = "",
@@ -1218,7 +1271,7 @@ function LibDeflate:Decompress(str) -- TODO: Unfinished
 	local isLastBlock
 	while not isLastBlock do
 		isLastBlock = (ReadBits(1) == 1)
-		local blockType = ReadBits(2) -- TODO
+		local blockType = ReadBits(2)
 		local status
 		if blockType == 0 then
 			status = DecompressStoreBlock(state)
@@ -1232,6 +1285,10 @@ function LibDeflate:Decompress(str) -- TODO: Unfinished
 		if status ~= 0 then
 			return nil, status
 		end
+	end
+
+	if ReaderBitsLeft() >= 8 then -- TODO: This should be checked in the most outer exported function.
+		return nil, 3 -- Extra left over bits after the last block.
 	end
 
 	state.result = state.result..table_concat(state.buffer, "", 1, state.bufferSize)
