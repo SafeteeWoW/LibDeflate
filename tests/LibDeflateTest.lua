@@ -258,9 +258,9 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName, 
 				local decomp = Lib:Decompress(stdout)
 				if origin ~= decomp then
 					print(("My decompress fail to decompress at zdeflate level: %s, strategy: %s")
-						:format(stderr, level, strategy))
+						:format(level, strategy))
 					lu.assertTrue(false, ("My decompress fail to decompress at zdeflate level: %s, strategy: %s")
-						:format(stderr, level, strategy))
+						:format(level, strategy))
 					return 4
 				end
 			end
