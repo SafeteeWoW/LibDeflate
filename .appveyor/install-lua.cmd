@@ -71,7 +71,7 @@ if NOT EXIST "lua524\lua524.exe" (
     echo Using cached version of Lua v5.2.4
 )
 @echo on
-set LUA=lua524\lua524.exe
+set LUA=lua524\lua52.exe
 @echo off
 goto :AFTERLUA
 
@@ -88,7 +88,7 @@ if NOT EXIST "lua533\lua533.exe" (
     echo Using cached version of Lua v5.3.3
 )
 @echo on
-set LUA=lua533\lua533.exe
+set LUA=lua533\lua53.exe
 @echo off
 goto :AFTERLUA
 
