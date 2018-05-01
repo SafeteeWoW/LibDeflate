@@ -200,8 +200,9 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName, 
 				-- decompressed_return is the number of unprocessed bytes in the data.
 				-- Actually shouldn't happen in this test.
 				-- Some byte not processed, compare with puff and zdeflate
-				lu.assertEquals(tostring(decompressed_return), stderr_puff, "My decompress unprocessed bytes not match puff")
-				lu.assertEquals(tostring(decompressed_return), stderr_zdeflate
+				lu.assertEquals(("%d"):format(decompressed_return), stderr_puff
+					, "My decompress unprocessed bytes not match puff")
+				lu.assertEquals(("%d"):format(decompressed_return), stderr_zdeflate
 					, "My decompress unprocessed bytes not match zdeflate")
 			end
 
