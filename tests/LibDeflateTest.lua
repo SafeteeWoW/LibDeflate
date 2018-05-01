@@ -18,6 +18,17 @@ local string_byte = string.byte
 math.randomseed(os.time())
 -- Repeatedly collect memory garbarge until memory usage no longer changes
 
+local function GetFileData(fileName)
+	local f = io.open(fileName, "rb")
+	if f then
+		local str = f:read("*all")
+		f:close()
+		return str
+	else
+		print("Cant open"..fileName)
+	end
+end
+
 local function GetFileSize(fileName)
 	local f = io.open(fileName, "rb")
 	if f then
@@ -589,7 +600,7 @@ Test6ThirdPartyBig = {}
 
 Test7WoWData = {}
 	function Test7WoWData:TestWarlockWeakAuras()
-		CheckFile("tests/data/warlockWeakAuras.txt", {1,2,3,4,5,6,7,8,9})
+		CheckFile("tests/data/warlockWeakAuras.txt", "all")
 	end
 
 TestMin8Decompress = {}
@@ -659,13 +670,8 @@ TestMin9Internals = {}
 			end
 			local start
 			local stop
-			if strLen ~= 0 then
-				start = math.random(1, strLen)
-				stop = math.random(1, strLen)
-			else
-				start = 1
-				stop = 0
-			end
+			start = math.random(1, strLen)
+			stop = math.random(1, strLen)
 			if start > stop then
 				tmp = start
 				start = stop
@@ -714,6 +720,43 @@ TestMin9Internals = {}
 				lu.assertEquals(false, "My decompress does not match origin.")
 			end
 		end
+	end
+
+	function TestMin9Internals:TestAdler32()
+		lu.assertEquals(1, Lib:Adler32(""))
+		lu.assertEquals(Lib:Adler32("1"), 0x00320032)
+		lu.assertEquals(Lib:Adler32("12"), 0x00960064)
+		lu.assertEquals(Lib:Adler32("123"), 0x012D0097)
+		lu.assertEquals(Lib:Adler32("1234"), 0x01F800CB)
+		lu.assertEquals(Lib:Adler32("12345"), 0x02F80100)
+		lu.assertEquals(Lib:Adler32("123456"), 0x042E0136)
+		lu.assertEquals(Lib:Adler32("1234567"), 0x059B016D)
+		lu.assertEquals(Lib:Adler32("12345678"), 0x074001A5)
+		lu.assertEquals(Lib:Adler32("123456789"), 0x091E01DE)
+		lu.assertEquals(Lib:Adler32("1234567890"), 0x0B2C020E)
+		lu.assertEquals(Lib:Adler32("1234567890a"), 0x0D9B026F)
+		lu.assertEquals(Lib:Adler32("1234567890ab"), 0x106C02D1)
+		lu.assertEquals(Lib:Adler32("1234567890abc"), 0x13A00334)
+		lu.assertEquals(Lib:Adler32("1234567890abcd"), 0x17380398)
+		lu.assertEquals(Lib:Adler32("1234567890abcde"), 0x1B3503FD)
+		lu.assertEquals(Lib:Adler32("1234567890abcdef"), 0x1F980463)
+		lu.assertEquals(Lib:Adler32("1234567890abcefg"), 0x1F9E0466)
+		lu.assertEquals(Lib:Adler32("1234567890abcefgh"), 0x246C04CE)
+		lu.assertEquals(Lib:Adler32("1234567890abcefghi"), 0x29A30537)
+		lu.assertEquals(Lib:Adler32("1234567890abcefghij"), 0x2F4405A1)
+		lu.assertEquals(Lib:Adler32("1234567890abcefghijk"), 0x3550060C)
+		lu.assertEquals(Lib:Adler32("1234567890abcefghijkl"), 0x3BC80678)
+		lu.assertEquals(Lib:Adler32("1234567890abcefghijklm"), 0x42AD06E5)
+		lu.assertEquals(Lib:Adler32("1234567890abcefghijklmn"), 0x4A000753)
+		lu.assertEquals(Lib:Adler32("1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0x8C40150C)
+		local adler32Test = GetFileData("tests/data/adler32Test.txt")
+		lu.assertEquals(Lib:Adler32(adler32Test), 0x5D9BAF5D)
+		lu.assertEquals(Lib:Adler32(adler32Test, 2), 0x9077AEF9)
+		lu.assertEquals(Lib:Adler32(adler32Test, 2, adler32Test:len()-1), 0xE16FAEC4)
+		lu.assertEquals(Lib:Adler32(adler32Test, nil, adler32Test:len()-1), 0xAE2FAF28)
+		lu.assertEquals(Lib:Adler32(adler32Test, 2, 1), 1)
+		local adler32Test2 = GetFileData("tests/data/adler32Test2.txt")
+		lu.assertEquals(Lib:Adler32(adler32Test2), 0xD6A07E29)
 	end
 local runner = lu.LuaUnit.new()
 os.exit( runner:runSuite())

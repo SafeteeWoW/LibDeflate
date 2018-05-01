@@ -36,6 +36,7 @@ local string_char = string.char
 local string_byte = string.byte
 local string_sub = string.sub
 local pairs = pairs
+local type = type
 
 ---------------------------------------
 --	Precalculated tables start.
@@ -526,6 +527,9 @@ local function RunLengthEncodeHuffmanLens(lcodeLens, maxNonZeroLenlCode, dcodeLe
 end
 
 local function loadStrToTable(str, t, start, stop)
+	start = (start < 1) and 1 or start
+	stop = (stop > str:len()) and str:len() or stop
+	if start > stop or start > str:len() or stop <= 0 then return end
 	local i=start-1
 	while i <= stop - 16 do
 		local x1, x2, x3, x4, x5, x6, x7, x8,
@@ -1312,6 +1316,35 @@ function LibDeflate:Decompress(str, start, stop)
 	return state.result, byteLeft
 end
 
+function LibDeflate:Adler32(str, start, stop)
+	assert(type(str) == "string")
+	assert(type(start)=="nil" or type(start) == "number")
+	assert(type(stop)=="nil" or type(stop) == "number")
+	start = start or 1
+	stop = stop or str:len()
+	start = (start < 1) and 1 or start
+	stop = (stop > str:len()) and str:len() or stop
+	if start > stop or start > str:len() or stop <= 0 then return 1 end
+
+	local i=start-1
+	local a = 1
+	local b = 0
+	while i <= stop - 16 do
+		local x1, x2, x3, x4, x5, x6, x7, x8,
+			x9, x10, x11, x12, x13, x14, x15, x16 = string_byte(str, i+1, i+16)
+		b = (b+16*a+16*x1+15*x2+14*x3+13*x4+12*x5+11*x6+10*x7+9*x8+8*x9+7*x10+6*x11+5*x12+4*x13+3*x14+2*x15+x16)%65521
+		a = (a+x1+x2+x3+x4+x5+x6+x7+x8+x9+x10+x11+x12+x13+x14+x15+x16)%65521
+		i =  i + 16
+	end
+	i = i + 1
+	while (i <= stop) do
+		local x = string_byte(str, i, i)
+		a = (a + x) % 65521
+		b = (b + a) % 65521
+		i = i + 1
+	end
+	return b*65536+a
+end
 -- For test. Don't use the functions in this table for real application.
 -- Stuffs in this table is subject to change.
 LibDeflate.internals = {
