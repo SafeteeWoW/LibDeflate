@@ -1284,12 +1284,11 @@ function LibDeflate:Decompress(str) -- TODO: Unfinished
 		end
 	end
 
-	if ReaderBitsLeft() >= 8 then -- TODO: This should be checked in the most outer exported function.
-		return nil, 3 -- Extra left over bits after the last block.
-	end
+	local bitsLeft = ReaderBitsLeft()
+	local byteLeft = (bitsLeft - bitsLeft % 8) / 8
 
 	state.result = state.result..table_concat(state.buffer, "", 1, state.bufferSize)
-	return state.result, 0
+	return state.result, byteLeft
 end
 
 return LibDeflate

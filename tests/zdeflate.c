@@ -146,8 +146,12 @@ int inf(FILE *source, FILE *dest, int isZlib)
     /* clean up and return */
     (void)inflateEnd(&strm);
     if (ret == Z_STREAM_END) {
-        if (!(feof(source) && strm.avail_in == 0))
-            return EXTRA_BYTE_AFTER_STREAM_ERROR;
+        int fPos = ftell(source);
+        fseek(source, 0, SEEK_END);
+        int unprocessed = ftell(source)-fPos+strm.avail_in;
+        if (unprocessed > 0) {
+            fprintf(stderr, "%d", unprocessed);
+        }
         return Z_OK;
     }
     else
@@ -189,6 +193,7 @@ int main(int argc, char **argv)
     /* avoid end-of-line conversions */
     SET_BINARY_MODE(stdin);
     SET_BINARY_MODE(stdout);
+    SET_BINARY_MODE(stderr);
 
     int level = Z_DEFAULT_COMPRESSION;
     int strategy = Z_DEFAULT_STRATEGY;

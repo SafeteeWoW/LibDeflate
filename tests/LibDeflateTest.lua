@@ -99,10 +99,11 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 
 			local decompressedFileName = compressedFileName..".decompressed"
 
-			local returnedStatus_puff, stdout_puff = RunProgram("puff -w ", compressedFileName, decompressedFileName)
+			local returnedStatus_puff, stdout_puff, stderr_puff = RunProgram("puff -w "
+				, compressedFileName, decompressedFileName)
 			lu.assertEquals(returnedStatus_puff, 0, "puff decompression failed with code "..returnedStatus_puff)
 
-			local returnedStatus_zdeflate, stdout_zdeflate = RunProgram("zdeflate -d <", compressedFileName
+			local returnedStatus_zdeflate, stdout_zdeflate, stderr_zdeflate = RunProgram("zdeflate -d <", compressedFileName
 				, decompressedFileName)
 			lu.assertEquals(returnedStatus_zdeflate, 0, "zdeflate decompression failed with code "..returnedStatus_zdeflate)
 
@@ -135,9 +136,10 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 			local dStartTime = os.clock()
 			local dRepeated = 0
 			local decompressed
+			local decompressed_return
 			local dElapsed = -1
 			while dElapsed < minRunTime/3 do
-				decompressed = Lib:Decompress(compressed)
+				decompressed, decompressed_return = Lib:Decompress(compressed)
 				dRepeated = dRepeated + 1
 				dElapsed = os.clock() - dStartTime
 			end
@@ -149,6 +151,14 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 				return 1
 			else
 				print("Compress then my decompress OK")
+			end
+			if decompressed_return ~= 0 then
+				-- decompressed_return is the number of unprocessed bytes in the data.
+				-- Actually shouldn't happen in this test.
+				-- Some byte not processed, compare with puff and zdeflate
+				lu.assertEquals(tostring(decompressed_return), stderr_puff, "My decompress unprocessed bytes not match puff")
+				lu.assertEquals(tostring(decompressed_return), stderr_zdeflate
+					, "My decompress unprocessed bytes not match zdeflate")
 			end
 
 			print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, Compress Time: %.3fms, Decompress Time: %.3fms, "..
@@ -219,10 +229,10 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 end
 
 local function CheckDecompressIncludingError(compressed, decompressed)
-	local d, status = Lib:Decompress(compressed)
+	local d, decompressed_return = Lib:Decompress(compressed)
 	if d ~= decompressed then
 		lu.assertTrue(false, ("My decompressed does not match expected result."..
-			"expected: %s, actual: %s, Returned status of decompress: %d"):format(decompressed, d, status))
+			"expected: %s, actual: %s, Returned status of decompress: %d"):format(decompressed, d, decompressed_return))
 	else
 		-- Check my decompress result with "puff"
 		local inputFileName = "tmpFile"
@@ -231,10 +241,11 @@ local function CheckDecompressIncludingError(compressed, decompressed)
 		inputFile:write(compressed)
 		inputFile:flush()
 		inputFile:close()
-		local returnedStatus_puff, stdout_puff = RunProgram("puff -w", inputFileName, inputFileName..".decompressed")
-		local returnedStatus_zdeflate, stdout_zdeflate = RunProgram("zdeflate -d <", inputFileName
+		local returnedStatus_puff, stdout_puff, stderr_puff = RunProgram("puff -w", inputFileName
 			, inputFileName..".decompressed")
-		if status ~= 0 then
+		local returnedStatus_zdeflate, stdout_zdeflate, stderr_zdeflate = RunProgram("zdeflate -d <", inputFileName
+			, inputFileName..".decompressed")
+		if not d then
 			if returnedStatus_puff ~= 0 and returnedStatus_zdeflate ~= 0 then
 				print((">>>> %q cannot be decompress as expected"):format(compressed:sub(1, 15)))
 			elseif returnedStatus_puff ~= 0 and returnedStatus_zdeflate == 0 then
@@ -250,6 +261,13 @@ local function CheckDecompressIncludingError(compressed, decompressed)
 				print((">>>> %q is decompressed successfully"):format(compressed:sub(1, 15)))
 			else
 				lu.assertTrue(false, "My decompress result does not match puff or zdeflate.")
+			end
+			if decompressed_return ~= 0 then
+				-- decompressed_return is the number of unprocessed bytes in the data.
+				-- Some byte not processed, compare with puff and zdeflate
+				lu.assertEquals(tostring(decompressed_return), stderr_puff, "My decompress unprocessed bytes not match puff")
+				lu.assertEquals(tostring(decompressed_return), stderr_zdeflate,
+				 "My decompress unprocessed bytes not match zdeflate")
 			end
 		end
 	end
@@ -571,9 +589,9 @@ TestMin8Decompress = {}
 		local str = table.concat(t)
 		CheckDecompressIncludingError("\050\004\000\255\255\000\000"..str.."\001\255\255\000\000"..str, "1"..str..str)
 	end
-	function TestMin8Decompress:TestError1()
-		-- Additonal byte
-		CheckDecompressIncludingError("\001\001\000\254\255\010\000", nil)
+	function TestMin8Decompress:TestIncomplete()
+		-- Additonal 1 byte after the end of compression data
+		CheckDecompressIncludingError("\001\001\000\254\255\010\000", "\010")
 	end
 
 local runner = lu.LuaUnit.new()

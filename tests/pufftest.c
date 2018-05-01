@@ -87,6 +87,10 @@ local void *load(const char *name, size_t *len)
 
 int main(int argc, char **argv)
 {
+    SET_BINARY_MODE(stdin);
+    SET_BINARY_MODE(stdout);
+    SET_BINARY_MODE(stderr);
+
     int ret, put = 0, fail = 0;
     unsigned skip = 0;
     char *arg, *name = NULL;
@@ -139,12 +143,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "puff() failed with return code %d\n", ret);
     else {
         if (sourcelen < len) {
-            fprintf(stderr, "puff() failed because"
-            "%lu compressed bytes unused\n", len - sourcelen);
-            // LibDeflate: Modified from original puff.
-            return 1;
+            // LibDeflate: output unprocessed bytes
+            fprintf(stderr, "%lu", len - sourcelen);
         }
-        fprintf(stderr, "puff() succeeded uncompressing %lu bytes\n", destlen);
+        //fprintf(stderr, "puff() succeeded uncompressing %lu bytes\n", destlen);
     }
 
     /* if requested, inflate again and write decompressd data to stdout */
@@ -158,7 +160,6 @@ int main(int argc, char **argv)
             return 4;
         }
         puff(dest, &destlen, source + skip, &sourcelen);
-        SET_BINARY_MODE(stdout);
         fwrite(dest, 1, destlen, stdout);
         free(dest);
     }
