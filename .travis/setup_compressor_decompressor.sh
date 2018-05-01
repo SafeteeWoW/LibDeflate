@@ -1,8 +1,7 @@
 mkdir -p ${HOME}/install
-if [ ! -e ${HOME}/install/zlib-1.2.11/contrib/puff/puff ]
-then
-	cd ${HOME}/install && curl --location http://www.zlib.net/zlib-1.2.11.tar.gz | tar xz
-	cd ${HOME}/install/zlib-1.2.11/contrib/puff/ && make
-fi
-export PATH=${PATH}:${HOME}/install/zlib-1.2.11/contrib/puff
-cd ${TRAVIS_BUILD_DIR}
+cd ${HOME}/install && curl --location http://www.zlib.net/zlib-1.2.11.tar.gz | tar xz
+cd ${HOME}/install/zlib-1.2.11/ && ./configure && make -j4
+export ZLIB_PATH=${HOME}/install/zlib-1.2.11
+cd ${TRAVIS_BUILD_DIR}/tests
+make -f Makefile_Unix
+export PATH=${PATH}:${TRAVIS_BUILD_DIR}/tests

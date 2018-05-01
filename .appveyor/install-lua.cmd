@@ -2,16 +2,18 @@ REM This is a batch file to help with setting up the desired Lua environment.
 REM It is intended to be run as "install" step from within AppVeyor.
 
 REM version numbers and file names for binaries from http://sf.net/p/luabinaries/
-set VER_51=5.1.5
-set VER_52=5.2.4
-set VER_53=5.3.3
-set ZIP_51=lua-%VER_51%_Win32_bin.zip
-set ZIP_52=lua-%VER_52%_Win32_bin.zip
-set ZIP_53=lua-%VER_53%_Win32_bin.zip
+set VER_514=5.1.4
+set VER_515=5.1.5
+set VER_524=5.2.4
+set VER_533=5.3.3
+set ZIP_514=lua-%VER_514%_Win32_bin.zip
+set ZIP_515=lua-%VER_515%_Win32_bin.zip
+set ZIP_524=lua-%VER_524%_Win32_bin.zip
+set ZIP_533=lua-%VER_533%_Win32_bin.zip
 
 :cinst
 @echo off
-if NOT "%LUAENV%"=="cinst" goto lua51
+if NOT "%LUAENV%"=="cinst" goto lua514
 echo Chocolatey install of Lua ...
 if NOT EXIST "C:\Program Files (x86)\Lua\5.1\lua.exe" (
     @echo on
@@ -24,53 +26,69 @@ set LUA="C:\Program Files (x86)\Lua\5.1\lua.exe"
 @echo off
 goto :AFTERLUA
 
-:lua51
+:lua514
 @echo off
-if NOT "%LUAENV%"=="lua51" goto lua52
-echo Setting up Lua 5.1 ...
-if NOT EXIST "lua51\lua5.1.exe" (
+if NOT "%LUAENV%"=="lua514" goto lua515
+echo Setting up Lua 5.1.4 ...
+if NOT EXIST "lua514\lua5.1.exe" (
     @echo on
-    echo Fetching Lua v5.1 from internet
-    curl -fLsS -o %ZIP_51% http://sourceforge.net/projects/luabinaries/files/%VER_51%/Tools%%20Executables/%ZIP_51%/download
-    unzip -d lua51 %ZIP_51%
+    echo Fetching Lua v5.1.4 from internet
+    curl -fLsS -o %ZIP_514% http://sourceforge.net/projects/luabinaries/files/%VER_514%/Tools%%20Executables/%ZIP_514%/download
+    unzip -d lua514 %ZIP_514%
 ) else (
-    echo Using cached version of Lua v5.1
+    echo Using cached version of Lua v5.1.4
 )
-set LUA=lua51\lua5.1.exe
+set LUA=lua514\lua5.1.exe
 @echo off
 goto :AFTERLUA
 
-:lua52
+:lua515
 @echo off
-if NOT "%LUAENV%"=="lua52" goto lua53
-echo Setting up Lua 5.2 ...
-if NOT EXIST "lua52\lua52.exe" (
+if NOT "%LUAENV%"=="lua515" goto lua524
+echo Setting up Lua 5.1.5 ...
+if NOT EXIST "lua515\lua5.1.exe" (
     @echo on
-    echo Fetching Lua v5.2 from internet
-    curl -fLsS -o %ZIP_52% http://sourceforge.net/projects/luabinaries/files/%VER_52%/Tools%%20Executables/%ZIP_52%/download
-    unzip -d lua52 %ZIP_52%
+    echo Fetching Lua v5.1.5 from internet
+    curl -fLsS -o %ZIP_515% http://sourceforge.net/projects/luabinaries/files/%VER_515%/Tools%%20Executables/%ZIP_515%/download
+    unzip -d lua515 %ZIP_515%
 ) else (
-    echo Using cached version of Lua v5.2
+    echo Using cached version of Lua v5.1.5
 )
-@echo on
-set LUA=lua52\lua52.exe
+set LUA=lua515\lua5.1.exe
 @echo off
 goto :AFTERLUA
 
-:lua53
+:lua524
 @echo off
-if NOT "%LUAENV%"=="lua53" goto luajit
-echo Setting up Lua 5.3 ...
-if NOT EXIST "lua53\lua53.exe" (
+if NOT "%LUAENV%"=="lua524" goto lua533
+echo Setting up Lua 5.2.4 ...
+if NOT EXIST "lua524\lua524.exe" (
     @echo on
-    echo Fetching Lua v5.3 from internet
-    curl -fLsS -o %ZIP_53% http://sourceforge.net/projects/luabinaries/files/%VER_53%/Tools%%20Executables/%ZIP_53%/download
-    unzip -d lua53 %ZIP_53%
+    echo Fetching Lua v5.2.4 from internet
+    curl -fLsS -o %ZIP_524% http://sourceforge.net/projects/luabinaries/files/%VER_524%/Tools%%20Executables/%ZIP_524%/download
+    unzip -d lua524 %ZIP_524%
 ) else (
-    echo Using cached version of Lua v5.3
+    echo Using cached version of Lua v5.2.4
 )
 @echo on
-set LUA=lua53\lua53.exe
+set LUA=lua524\lua524.exe
+@echo off
+goto :AFTERLUA
+
+:lua533
+@echo off
+if NOT "%LUAENV%"=="lua533" goto luajit
+echo Setting up Lua 5.3.3 ...
+if NOT EXIST "lua533\lua533.exe" (
+    @echo on
+    echo Fetching Lua v5.3.3 from internet
+    curl -fLsS -o %ZIP_533% http://sourceforge.net/projects/luabinaries/files/%VER_533%/Tools%%20Executables/%ZIP_533%/download
+    unzip -d lua533 %ZIP_533%
+) else (
+    echo Using cached version of Lua v5.3.3
+)
+@echo on
+set LUA=lua533\lua533.exe
 @echo off
 goto :AFTERLUA
 

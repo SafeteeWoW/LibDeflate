@@ -17,4 +17,6 @@ tmp
 *.out
 *.tmp
 tmpFile
+puff
+zdeflate
 

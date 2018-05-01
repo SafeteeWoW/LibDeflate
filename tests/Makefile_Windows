@@ -20,4 +20,4 @@ test: ../LibDeflate.lua LibDeflateTest.lua
 	cd .. && lua tests\LibDeflateTest.lua
 
 clean:
-	del /F /Q puff puff.obj pufftest.obj zdeflate.obj zdeflate
+	del /F /Q puff.exe puff.obj pufftest.obj zdeflate.obj zdeflate.exe
