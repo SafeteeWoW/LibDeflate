@@ -4,5 +4,5 @@ cd ${HOME}/install/zlib-1.2.11/ && ./configure && make -j4
 export ZLIB_PATH=${HOME}/install/zlib-1.2.11
 cd ${TRAVIS_BUILD_DIR}/tests
 make -f Makefile_Unix
-export PATH=${PATH}:${TRAVIS_BUILD_DIR}/tests
+export PATH=:${TRAVIS_BUILD_DIR}/tests:${PATH}
 cd ${TRAVIS_BUILD_DIR}

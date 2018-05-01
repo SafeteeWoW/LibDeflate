@@ -14,7 +14,7 @@ puff: puff.c puff.h pufftest.c
 	$(CC) -O2 puff.c pufftest.c -o puff
 
 zdeflate: zdeflate.c
-	$(CC) -O2 zdeflate.c -I $$ZLIB_PATH -L $$ZLIB_PATH -lz
+	$(CC) -O2 zdeflate.c -I $$ZLIB_PATH -L $$ZLIB_PATH -lz -o zdeflate
 
 test: ../LibDeflate.lua LibDeflateTest.lua
 	cd .. && lua tests\LibDeflateTest.lua

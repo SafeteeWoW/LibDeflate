@@ -67,6 +67,7 @@ else # -e $LUA_HOME_DIR
     echo ">> Compiling lua into $LUA_HOME_DIR"
 
     mkdir -p "$LUA_HOME_DIR"
+    cd $LUA_HOME_DIR
 
     if [ "$LUAJIT" == "yes" ]; then
 
