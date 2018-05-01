@@ -10,13 +10,18 @@ math.randomseed(os.time())
 local function FullMemoryCollect()
 	local memoryUsed = collectgarbage("count")
 	local lastMemoryUsed
+	local stable_count = 0
 	repeat
 		lastMemoryUsed = memoryUsed
 		collectgarbage("collect")
 		memoryUsed = collectgarbage("count")
-	until memoryUsed >= lastMemoryUsed
-	collectgarbage("collect")
-	collectgarbage("collect")
+
+		if memoryUsed >= lastMemoryUsed then
+			stable_count = stable_count + 1
+		else
+			stable_count = 0
+		end
+	until stable_count == 15 -- Stop full memory collect until memory usage does not change for 15 times.
 end
 
 local function RunProgram(program, inputFileName, stdoutFileName)
@@ -162,13 +167,11 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 
 	local totalMemoryDifference = totalMemoryBefore - totalMemoryAfter
 
-	if totalMemoryDifference > 0 then
+	if totalMemoryDifference > 16 then
 		print(("Actual Memory Leak in the test: %d"):format(totalMemoryDifference))
-	end
-	if not jit then -- Lua JIT has some problems to garbage collect stuffs, so don't consider as failure.
-		lu.assertTrue((totalMemoryDifference<=0), ("Actual Memory Leak in the test: %d"):format(totalMemoryDifference))
-		if totalMemoryDifference > 0 then
-			return 2
+		if not jit then -- Lua JIT has some problems to garbage collect stuffs, so don't consider as failure.
+			lu.assertTrue(false, ("Actual Memory Leak in the test: %d"):format(totalMemoryDifference))
+				return 2
 		end
 	end
 
