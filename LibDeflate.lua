@@ -527,7 +527,7 @@ end
 
 local function loadStrToTable(str, t, start, stop)
 	local i=start-1
-	while i <= stop do
+	while i <= stop - 16 do
 		local x1, x2, x3, x4, x5, x6, x7, x8,
 			x9, x10, x11, x12, x13, x14, x15, x16 = string_byte(str, i+1, i+16)
 		t[i+1]=x1
@@ -547,6 +547,11 @@ local function loadStrToTable(str, t, start, stop)
 		t[i+15]=x15
 		t[i+16]=x16
 		i = i + 16
+	end
+	i = i + 1
+	while (i <= stop) do
+		t[i] = string_byte(str, i, i)
+		i = i + 1
 	end
 	return t
 end
@@ -800,8 +805,21 @@ local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, bloc
 	end
 end
 
-function LibDeflate:Compress(str, level)
-	local strLen = str:len()
+function LibDeflate:Compress(str, level, start, stop)
+	assert(type(str)=="string")
+	assert(type(level)=="nil" or (type(level)=="number" and level >= 1 and level <= 8))
+	assert(type(start)=="nil" or (type(start)=="number"))
+	assert(type(stop)=="nil" or (type(stop)=="number"))
+
+	start = start or 1
+	start = (start < 1) and 1 or start
+	stop = stop or str:len()
+	stop = (stop > str:len()) and str:len() or stop
+	if start > stop then
+		start = 1
+		stop = 0
+	end
+
 	local strTable = {}
 	local hashTables = {}
 	-- The maximum size of the first dynamic block is 64KB
@@ -816,23 +834,24 @@ function LibDeflate:Compress(str, level)
 
 	while not isLastBlock do
 		if not blockStart then
-			blockStart = 1
-			blockEnd = INITIAL_BLOCK_SIZE
+			blockStart = start
+			blockEnd = start + INITIAL_BLOCK_SIZE
 		else
 			blockStart = blockEnd + 1
 			blockEnd = blockEnd + ADDITIONAL_BLOCK_SIZE
 		end
 
-		if blockEnd >= strLen then
-			blockEnd = strLen
+		if blockEnd >= stop then
+			blockEnd = stop
 			isLastBlock = true
 		else
 			isLastBlock = false
 		end
 
-		loadStrToTable(str, strTable, blockStart, blockEnd+3) -- +3 is needed
+		loadStrToTable(str, strTable, blockStart, (blockEnd+3 > stop) and stop or (blockEnd+3))
+		-- +3 is needed for dynamic block
 
-		CompressDynamicBlock(level, WriteBits, strTable, hashTables, blockStart, blockEnd, isLastBlock, str)
+		CompressDynamicBlock(level, WriteBits, strTable, hashTables, blockStart, blockEnd, isLastBlock)
 
 		result = Flush(isLastBlock)
 
@@ -1292,5 +1311,11 @@ function LibDeflate:Decompress(str, start, stop)
 	state.result = state.result..table_concat(state.buffer, "", 1, state.bufferSize)
 	return state.result, byteLeft
 end
+
+-- For test. Don't use the functions in this table for real application.
+-- Stuffs in this table is subject to change.
+LibDeflate.internals = {
+	loadStrToTable = loadStrToTable,
+}
 
 return LibDeflate

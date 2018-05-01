@@ -4,9 +4,42 @@ local args = rawget(_G, "arg")
 -- UnitTests
 local lu = require("luaunit")
 
+local math = math
+local string = string
+local table = table
+local collectgarbage = collectgarbage
+local os = os
+local type = type
+local io = io
+local ipairs = ipairs
+local print = print
+local tostring = tostring
 local string_byte = string.byte
 math.randomseed(os.time())
 -- Repeatedly collect memory garbarge until memory usage no longer changes
+
+local function GetFileSize(fileName)
+	local f = io.open(fileName, "rb")
+	if f then
+		local str = f:read("*all")
+		return str:len()
+	else
+		print("Cant open"..fileName)
+	end
+end
+
+local function GetRandomString(strLen)
+	local randoms = {}
+	for _=1, 7 do
+		randoms[#randoms+1] = string.char(math.random(1, 255))
+	end
+	local tmp = {}
+	for _=1, strLen do
+		tmp[#tmp+1] = randoms[math.random(1, 7)]
+	end
+	return table.concat(tmp)
+end
+
 local function FullMemoryCollect()
 	local memoryUsed = collectgarbage("count")
 	local lastMemoryUsed
@@ -47,9 +80,9 @@ local function RunProgram(program, inputFileName, stdoutFileName)
 end
 
 
-local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
-
+local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName, start, stop)
 	FullMemoryCollect()
+	local origin = str:sub(start or 1, stop or str:len())
 	local totalMemoryBefore = math.floor(collectgarbage("count")*1024)
 
 	do
@@ -65,7 +98,7 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 		for _, level in ipairs(levels) do
 			-- Check memory usage and leaking
 			print((">> %s %s, Level: %d, Size: %s"):format((inputFileName and "File:" or "Str:")
-				,(inputFileName or str):sub(1, 40), level, str:len()))
+				,(inputFileName or origin):sub(1, 40), level, origin:len()))
 			local memoryBefore
 			local memoryRunning
 			local memoryAfter
@@ -73,7 +106,7 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 			FullMemoryCollect()
 			memoryBefore =  math.floor(collectgarbage("count")*1024)
 			FullMemoryCollect()
-			Lib:Compress(str, level)
+			Lib:Compress(str, level, start, stop)
 			memoryRunning = math.floor(collectgarbage("count")*1024)
 			FullMemoryCollect()
 			memoryAfter = math.floor(collectgarbage("count")*1024)
@@ -87,7 +120,7 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 			local elapsed = -1
 			local repeated = 0
 			while elapsed < minRunTime do
-				compressed = Lib:Compress(str, level)
+				compressed = Lib:Compress(str, level, start, stop)
 				elapsed = (os.clock()-startTime)
 				repeated = repeated + 1
 			end
@@ -107,12 +140,12 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 				, decompressedFileName)
 			lu.assertEquals(returnedStatus_zdeflate, 0, "zdeflate decompression failed with code "..returnedStatus_zdeflate)
 
-			if str ~= stdout_puff then
-				lu.assertEquals(str:len(), stdout_puff:len(), ("level: %d, string size does not match actual size: %d"
+			if origin ~= stdout_puff then
+				lu.assertEquals(origin:len(), stdout_puff:len(), ("level: %d, string size does not match actual size: %d"
 					..", after Lib compress and puff decompress: %d")
-						:format(level, str:len(), stdout:len()))
-				for i=1, str:len() do
-					lu.assertEquals(string_byte(str, i, i), string_byte(stdout_puff, i, i), ("Level: %d, First diff at: %d")
+						:format(level, origin:len(), stdout_puff:len()))
+				for i=1, origin:len() do
+					lu.assertEquals(string_byte(origin, i, i), string_byte(stdout_puff, i, i), ("Level: %d, First diff at: %d")
 						:format(level, i))
 				end
 				return 1
@@ -120,12 +153,12 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 				print("Compress then puff decompress OK")
 			end
 
-			if str ~= stdout_zdeflate then
+			if origin ~= stdout_zdeflate then
 				lu.assertEquals(str:len(), stdout_zdeflate:len(), ("level: %d, string size does not match actual size: %d"
 					..", after Lib compress and zdeflate decompress: %d")
-						:format(level, str:len(), stdout:len()))
-				for i=1, str:len() do
-					lu.assertEquals(string_byte(str, i, i), string_byte(stdout_zdeflate, i, i), ("Level: %d, First diff at: %d")
+						:format(level, origin:len(), stdout_zdeflate:len()))
+				for i=1, origin:len() do
+					lu.assertEquals(string_byte(origin, i, i), string_byte(stdout_zdeflate, i, i), ("Level: %d, First diff at: %d")
 						:format(level, i))
 				end
 				return 1
@@ -145,9 +178,9 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 			end
 			dElapsed = dElapsed/dRepeated
 
-			lu.assertEquals(decompressed, str, "My decompression does not match origin string")
-			if decompressed ~= str then
+			if decompressed ~= origin then
 				print("Compress then my decompress FAILED")
+				lu.assertEquals(false, "My decompression does not match origin string")
 				return 1
 			else
 				print("Compress then my decompress OK")
@@ -165,9 +198,9 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 				"Speed: %.2f KB/s, Decompress Speed: %.2f KB/s, Memory: %d bytes"..
 				", Memory/input: %.3f, Possible Memory Leaked: %d bytes"
 				..", Run repeated by: %d times"):
-				format(level, str:len(), compressed:len(), str:len()/compressed:len()
-					, elapsed*1000, dElapsed*1000, str:len()/elapsed/1000, str:len()/dElapsed/1000
-					, memoryUsed, memoryUsed/str:len(), memoryLeaked, repeated))
+				format(level, origin:len(), compressed:len(), origin:len()/compressed:len()
+					, elapsed*1000, dElapsed*1000, origin:len()/elapsed/1000, origin:len()/dElapsed/1000
+					, memoryUsed, memoryUsed/origin:len(), memoryLeaked, repeated))
 			print("-------------------------------------")
 		end
 	end
@@ -192,10 +225,10 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 	local strategies = {"--filter", "--huffman", "--rle", "--fix", "--default"}
 	local tmpFileName = "tmp.tmp"
 	local tmpFile = io.open(tmpFileName, "wb")
-	tmpFile:write(str)
+	tmpFile:write(origin)
 	tmpFile:close()
 	print((">> %s %s, Size: %s"):format((inputFileName and "File:" or "Str:")
-		,(inputFileName or str):sub(1, 40), str:len()))
+		,(inputFileName or origin):sub(1, 40), origin:len()))
 	local unique_compress = {}
 	local uniques_compress_count = 0
 	for i=0, 8 do
@@ -212,7 +245,7 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 				unique_compress[stdout] = true
 				uniques_compress_count = uniques_compress_count + 1
 				local decomp = Lib:Decompress(stdout)
-				if str ~= decomp then
+				if origin ~= decomp then
 					print(("My decompress fail to decompress at zdeflate level: %s, strategy: %s")
 						:format(stderr, level, strategy))
 					lu.assertTrue(false, ("My decompress fail to decompress at zdeflate level: %s, strategy: %s")
@@ -276,12 +309,13 @@ local function CheckDecompressIncludingError(compressed, decompressed, start, st
 
 end
 
-local function CheckFile(inputFileName, levels, minRunTime, outputFileName)
+local function CheckFile(inputFileName, levels, minRunTime, start, stop)
 	local inputFile = io.open(inputFileName, "rb")
 	lu.assertNotNil(inputFile, "Input file "..inputFileName.." does not exist")
 	local inputFileContent = inputFile:read("*all")
 	inputFile:close()
-	return CheckStr(inputFileContent, levels, minRunTime, inputFileName, outputFileName or inputFileName..".deflate")
+	return CheckStr(inputFileContent, levels, minRunTime, inputFileName, inputFileName..".deflate",
+		start, stop)
 end
 
 -- Commandline
@@ -323,6 +357,11 @@ TestMin1Strings = {}
 	function TestMin1Strings:testRepeat()
 		CheckStr("aaaaaaaaaaaaaaaaaa", "all")
 	end
+
+	function TestMin1Strings:testRepeatInTheMiddle()
+		CheckStr("aaaaaaaaaaaaaaaaaa", "all", nil, nil, nil, 2, 8)
+	end
+
 	function TestMin1Strings:testLongRepeat()
 		local repeated = {}
 		for i=1, 100000 do
@@ -337,7 +376,11 @@ TestMin2MyData = {}
 	end
 
 	function TestMin2MyData:TestSmallTest()
-		CheckFile("tests/data/smalltest.txt", {4}, 4)
+		CheckFile("tests/data/smalltest.txt", "all")
+	end
+
+	function TestMin2MyData:TestSmallTestInTheMiddle()
+		CheckFile("tests/data/smalltest.txt", "all", nil, 10, GetFileSize("tests/data/smalltest.txt")-10)
 	end
 
 	function TestMin2MyData:TestReconnectData()
@@ -600,5 +643,77 @@ TestMin8Decompress = {}
 		CheckDecompressIncludingError("\001\001\001\000\254\255\010\001", "\010", 2, 7)
 	end
 
+TestMin9Internals = {}
+	-- Test from puff
+	function TestMin9Internals:TestLoadString()
+		local loadStrToTable = Lib.internals.loadStrToTable
+		local tmp
+		for _=1, 1000 do
+			local t = {}
+			local strLen = math.random(0, 1000)
+			local str = GetRandomString(strLen)
+			local uncorruped_data = {}
+			for i=1, strLen do
+				uncorruped_data[i] = math.random(1, 12345)
+				t[i] = uncorruped_data[i]
+			end
+			local start
+			local stop
+			if strLen ~= 0 then
+				start = math.random(1, strLen)
+				stop = math.random(1, strLen)
+			else
+				start = 1
+				stop = 0
+			end
+			if start > stop then
+				tmp = start
+				start = stop
+				stop = tmp
+			end
+			loadStrToTable(str, t, start, stop)
+			for i=1, strLen do
+				if i < start or i > stop then
+					lu.assertEquals(t[i], uncorruped_data[i], "loadStr corrupts unintended location")
+				else
+					lu.assertEquals(t[i], string_byte(str, i, i), ("loadStr gives wrong data!, start=%d, stop=%d, i=%d")
+						:format(start, stop, i))
+				end
+			end
+		end
+	end
+
+	function TestMin9Internals:TestSimpleRandom()
+		lu.assertEquals("", Lib:Decompress(Lib:Compress("")), "My decompress does not match origin.")
+		for _=1, 3000 do
+			local tmp
+			local strLen = math.random(0, 1000)
+			local str = GetRandomString(strLen)
+			local start = (math.random() < 0.5) and (math.random(0, strLen)) or nil
+			local stop = (math.random() < 0.5) and (math.random(0, strLen)) or nil
+			if start and stop and start > stop then
+				tmp = start
+				start = stop
+				stop = tmp
+			end
+			local level = (math.random() < 0.5) and (math.random(1, 8)) or nil
+
+			local expected = str:sub(start or 1, stop or str:len())
+			local _, actual = pcall(function() return Lib:Decompress(Lib:Compress(str, level, start, stop)) end)
+			if expected ~= actual then
+				local strDumpFile = io.open("fail_random.txt", "wb")
+				if (strDumpFile) then
+					strDumpFile:write(str)
+					print(("Failed test has been dumped to fail_random.txt, with level=%s, start=%s, stop=%s"):
+						format(tostring(level), tostring(start), tostring(stop)))
+					strDumpFile:close()
+					if type(actual) == "string" then
+						print(("Error msg is:\n"), actual:sub(1, 100))
+					end
+				end
+				lu.assertEquals(false, "My decompress does not match origin.")
+			end
+		end
+	end
 local runner = lu.LuaUnit.new()
 os.exit( runner:runSuite())
