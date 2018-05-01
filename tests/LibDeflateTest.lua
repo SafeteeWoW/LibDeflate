@@ -670,8 +670,13 @@ TestMin9Internals = {}
 			end
 			local start
 			local stop
-			start = math.random(1, strLen)
-			stop = math.random(1, strLen)
+			if strLen >= 1 then
+				start = math.random(1, strLen)
+				stop = math.random(1, strLen)
+			else
+				start = 1
+				stop = 0
+			end
 			if start > stop then
 				tmp = start
 				start = stop
