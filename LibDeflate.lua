@@ -869,10 +869,9 @@ end
 
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
-local function CreateReader(inputString)
+local function CreateReader(inputString, start, stop)
 	local input = inputString
-	local inputLen = input:len()
-	local inputNextBytePos = 1
+	local inputNextBytePos = start
 	local cacheBitRemaining = 0
 	local cache = 0
 
@@ -895,7 +894,7 @@ local function CreateReader(inputString)
 		end
 		cacheBitRemaining = cacheBitRemaining - byteFromCache*8
 		length = length - byteFromCache
-		if (inputLen - inputNextBytePos + 1) * 8 + cacheBitRemaining < 0 then
+		if (stop - inputNextBytePos + 1) * 8 + cacheBitRemaining < 0 then
 			return -1 -- out of input
 		end
 		for i=inputNextBytePos, inputNextBytePos+length-1 do
@@ -978,7 +977,7 @@ local function CreateReader(inputString)
 	end
 
 	local function ReaderBitsLeft()
-		return (inputLen - inputNextBytePos + 1) * 8 + cacheBitRemaining
+		return (stop - inputNextBytePos + 1) * 8 + cacheBitRemaining
 	end
 
 	return ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary
@@ -1249,10 +1248,13 @@ local function DecompressDynamicBlock(state)
 		, distHuffmanLenCount, distHuffmanSym, distMinLen)
 end
 
-function LibDeflate:Decompress(str) -- TODO: Unfinished
+function LibDeflate:Decompress(str, start, stop)
 	-- WIP
 	assert(type(str) == "string")
-	local ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary = CreateReader(str)
+
+	start = start or 1
+	stop = stop or str:len()
+	local ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary = CreateReader(str, start, stop)
 	local state =
 	{
 		ReadBits = ReadBits,

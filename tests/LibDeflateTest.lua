@@ -228,8 +228,10 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName)
 	return 0
 end
 
-local function CheckDecompressIncludingError(compressed, decompressed)
-	local d, decompressed_return = Lib:Decompress(compressed)
+local function CheckDecompressIncludingError(compressed, decompressed, start, stop)
+	start = start or 1
+	stop = stop or compressed:len()
+	local d, decompressed_return = Lib:Decompress(compressed, start, stop)
 	if d ~= decompressed then
 		lu.assertTrue(false, ("My decompressed does not match expected result."..
 			"expected: %s, actual: %s, Returned status of decompress: %d"):format(decompressed, d, decompressed_return))
@@ -238,7 +240,7 @@ local function CheckDecompressIncludingError(compressed, decompressed)
 		local inputFileName = "tmpFile"
 		local inputFile = io.open(inputFileName, "wb")
 		inputFile:setvbuf("full")
-		inputFile:write(compressed)
+		inputFile:write(compressed:sub(start, stop))
 		inputFile:flush()
 		inputFile:close()
 		local returnedStatus_puff, stdout_puff, stderr_puff = RunProgram("puff -w", inputFileName
@@ -592,6 +594,10 @@ TestMin8Decompress = {}
 	function TestMin8Decompress:TestIncomplete()
 		-- Additonal 1 byte after the end of compression data
 		CheckDecompressIncludingError("\001\001\000\254\255\010\000", "\010")
+	end
+	function TestMin8Decompress:TestInTheMiddle()
+		-- Additonal 1 byte before and 1 byte after.
+		CheckDecompressIncludingError("\001\001\001\000\254\255\010\001", "\010", 2, 7)
 	end
 
 local runner = lu.LuaUnit.new()
