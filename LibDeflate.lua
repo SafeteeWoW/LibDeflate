@@ -76,7 +76,6 @@ local _configuration_table = {
 
 local _pow2 = {}
 local _byteToChar = {}
-local _twoBytesToChar = {}
 local _reverseBitsTbl = {}
 -- _reverseBitsTbl[len][val] stores the bit reverse of the number of bit length "len" and value "val"
 
@@ -114,10 +113,6 @@ local _fixDistHuffmanSym
 
 for i=0, 255 do
 	_byteToChar[i] = string_char(i)
-end
-
-for i=0,256*256-1 do
-	_twoBytesToChar[i] = string_char(i%256)..string_char((i-i%256)/256)
 end
 
 do
@@ -198,7 +193,7 @@ end
 ---------------------------------------
 --	Precalculated tables ends.
 ---------------------------------------
-local function CreateWriter(oneBytePerElement)
+local function CreateWriter()
 	local bufferSize = 0
 	local cache = 0
 	local cacheBitRemaining = 0
@@ -209,17 +204,11 @@ local function CreateWriter(oneBytePerElement)
 		cacheBitRemaining = bitLength + cacheBitRemaining
 		if cacheBitRemaining >= 32 then
 			-- we have at least 4 bytes to store; bulk it
-			if oneBytePerElement then
-				buffer[bufferSize+1] = _byteToChar[cache % 256]
-				buffer[bufferSize+2] = _byteToChar[((cache-cache%256)/256 % 256)]
-				buffer[bufferSize+3] = _byteToChar[((cache-cache%65536)/65536 % 256)]
-				buffer[bufferSize+4] = _byteToChar[((cache-cache%16777216)/16777216 % 256)]
-				bufferSize = bufferSize + 4
-			else
-				buffer[bufferSize+1] = _twoBytesToChar[cache % 65536]
-				buffer[bufferSize+2] = _twoBytesToChar[((cache-cache%65536)/65536 % 65536)]
-				bufferSize = bufferSize + 2
-			end
+			buffer[bufferSize+1] = _byteToChar[cache % 256]
+			buffer[bufferSize+2] = _byteToChar[((cache-cache%256)/256 % 256)]
+			buffer[bufferSize+3] = _byteToChar[((cache-cache%65536)/65536 % 256)]
+			buffer[bufferSize+4] = _byteToChar[((cache-cache%16777216)/16777216 % 256)]
+			bufferSize = bufferSize + 4
 			local rShiftMask = _pow2[32 - cacheBitRemaining + bitLength]
 			cache = (code - code%rShiftMask)/rShiftMask
 			cacheBitRemaining = cacheBitRemaining - 32
