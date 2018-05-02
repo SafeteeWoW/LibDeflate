@@ -224,6 +224,7 @@ local function CreateWriter()
 	local function Flush(lastTimeToUseWriter)
 		local ret
 		if lastTimeToUseWriter then
+			local paddingBit = (8-cacheBitRemaining%8)%8
 			if cacheBitRemaining > 0 then
 				for _=1, cacheBitRemaining, 8 do
 					bufferSize = bufferSize + 1
@@ -235,12 +236,13 @@ local function CreateWriter()
 			end
 			ret = table_concat(buffer)
 			buffer = nil
+			return ret, ret:len()*8-paddingBit
 		else
 			ret = table_concat(buffer)
 			buffer = {ret}
 			bufferSize = 1
+			return ret, ret:len()*8+cacheBitRemaining
 		end
-		return ret
 	end
 
 	return WriteBits, Flush
@@ -941,7 +943,7 @@ function LibDeflate:Compress(str, level, start, stop)
 	local blockStart
 	local blockEnd
 	local WriteBits, Flush = CreateWriter()
-	local result
+	local result, bitsWritten
 
 	local totalBitSize = 0
 	while not isLastBlock do
@@ -985,9 +987,9 @@ function LibDeflate:Compress(str, level, start, stop)
 			-- print("Choose Fix block because it is smaller! "..(dynamicBlockBitSize-fixBlockBitSize))
 		end
 
-		result = Flush(isLastBlock)
-		assert(result:len()*8-totalBitSize < 8, ("sth wrong in the bitSize calculation, %d %d")
-			:format(result:len()*8, totalBitSize))
+		result, bitsWritten = Flush(isLastBlock)
+		assert(bitsWritten == totalBitSize , ("sth wrong in the bitSize calculation, %d %d")
+			:format(bitsWritten, totalBitSize))
 
 		-- Memory clean up, so memory consumption does not always grow linearly, even if input string is > 64K.
 		if not isLastBlock then
