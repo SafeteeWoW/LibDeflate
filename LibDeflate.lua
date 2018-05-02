@@ -549,9 +549,10 @@ local function loadStrToTable(str, t, start, stop)
 	return t
 end
 
-local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, blockStart, blockEnd, isLastBlock)
+
+local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockEnd)
 	if not level then
-		level = 3
+		level = 5
 	end
 
 	local config = _configuration_table[level]
@@ -712,13 +713,15 @@ local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, bloc
 		end
 	end
 
-	-- Allow these to be garbaged collected earlier
-	hashTables = nil -- luacheck: ignore 311
-	strTable = nil -- luacheck: ignore 311
-
 	lCodeTblSize = lCodeTblSize + 1
 	lCodes[lCodeTblSize] = 256
 	lCodesCount[256] = (lCodesCount[256] or 0) + 1
+
+	return lCodes, lExtraBits, lCodesCount, dCodes, dExtraBits, dCodesCount
+end
+
+local function CompressBlockDynamicHuffman(WriteBits, isLastBlock,
+		lCodes, lExtraBits, lCodesCount, dCodes, dExtraBits, dCodesCount)
 	local lCodeLens, lCodeCodes, maxNonZeroLenlCode = GetHuffmanBitLengthAndCode(lCodesCount, 15, 285)
 	local dCodeLens, dCodeCodes, maxNonZeroLendCode = GetHuffmanBitLengthAndCode(dCodesCount, 15, 29)
 
@@ -769,7 +772,7 @@ local function CompressDynamicBlock(level, WriteBits, strTable, hashTables, bloc
 	local lengthCodeWithExtraCount = 0
 	local distCodeWithExtraCount = 0
 
-	for i=1, lCodeTblSize do
+	for i=1, #lCodes do
 		local code = lCodes[i]
 		local huffmanCode = lCodeCodes[code]
 		local huffmanLength = lCodeLens[code]
@@ -844,7 +847,11 @@ function LibDeflate:Compress(str, level, start, stop)
 		loadStrToTable(str, strTable, blockStart, (blockEnd+3 > stop) and stop or (blockEnd+3))
 		-- +3 is needed for dynamic block
 
-		CompressDynamicBlock(level, WriteBits, strTable, hashTables, blockStart, blockEnd, isLastBlock)
+		local lCodes, lExtraBits, lCodesCount, dCodes, dExtraBits, dCodesCount =
+			CompressBlockLZ77(level, strTable, hashTables, blockStart, blockEnd)
+
+		CompressBlockDynamicHuffman(WriteBits, isLastBlock,
+				lCodes, lExtraBits, lCodesCount, dCodes, dExtraBits, dCodesCount)
 
 		result = Flush(isLastBlock)
 
