@@ -15,7 +15,7 @@ local ipairs = ipairs
 local print = print
 local tostring = tostring
 local string_byte = string.byte
-math.randomseed(os.time())
+math.randomseed(0)
 -- Repeatedly collect memory garbarge until memory usage no longer changes
 
 local function GetFileData(fileName)
@@ -696,7 +696,8 @@ TestMin9Internals = {}
 	end
 
 	function TestMin9Internals:TestSimpleRandom()
-		lu.assertEquals("", Lib:Decompress(Lib:Compress("")), "My decompress does not match origin.")
+		local compressedEmpty = Lib:Compress("")
+		lu.assertEquals(Lib:Decompress(compressedEmpty), "", "My decompress does not match origin for empty string.")
 		for _=1, 3000 do
 			local tmp
 			local strLen = math.random(0, 1000)
@@ -711,7 +712,8 @@ TestMin9Internals = {}
 			local level = (math.random() < 0.5) and (math.random(1, 8)) or nil
 
 			local expected = str:sub(start or 1, stop or str:len())
-			local _, actual = pcall(function() return Lib:Decompress(Lib:Compress(str, level, start, stop)) end)
+			local compressed = Lib:Compress(str, level, start, stop)
+			local _, actual = pcall(function() return Lib:Decompress(compressed) end)
 			if expected ~= actual then
 				local strDumpFile = io.open("fail_random.txt", "wb")
 				if (strDumpFile) then

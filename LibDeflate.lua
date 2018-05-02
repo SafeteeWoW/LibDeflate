@@ -104,10 +104,16 @@ local _distCodeToExtraBitsLen = { -- Extra bits for distance codes 0..29
 	7, 7, 8, 8, 9, 9, 10, 10, 11, 11,
 	12, 12, 13, 13}
 
-local _fixLitHuffmanLenCount
+local _fixLitHuffmanLen
+local _fixDistHuffmanLen
+
+local _fixLitHuffmanCode
 local _fixLitHuffmanSym
-local _fixDistHuffmanLenCount
+local _fixLitHuffmanLenCount
+
+local _fixDistHuffmanCode
 local _fixDistHuffmanSym
+local _fixDistHuffmanLenCount
 ------------------------------------------------------------------------
 ------------------------------------------------------------------------
 
@@ -302,6 +308,33 @@ local function MinHeapPop(heap, heapSize)
 	return top
 end
 
+local function GetHuffmanCodeFromBitLength(bitLengthCount, symbolBitLength, maxSymbol, maxBitLength)
+	local code = 0
+	local nextCode = {}
+	local symbolCode = {}
+	for bitLength = 1, maxBitLength do
+		code = (code+(bitLengthCount[bitLength-1] or 0))*2
+		nextCode[bitLength] = code
+	end
+	for symbol = 0, maxSymbol do
+		local len = symbolBitLength[symbol]
+		if len then
+			code = nextCode[len]
+			nextCode[len] = code + 1
+
+			-- Reverse the bits of "code"
+			local res = 0
+			for _=1, len do
+				res = res - res%2 + (((res%2==1) or (code % 2) == 1) and 1 or 0) -- res | (code%2)
+				code = (code-code%2)/2
+				res = res*2
+			end
+			symbolCode[symbol] = (res-res%2)/2 -- Bit reverse of the variable "code"
+		end
+	end
+	return symbolCode
+end
+
 local function SortByFirstThenSecond(a, b)
 	return a[1] < b[1] or
 		(a[1] == b[1] and a[2] < b[2])
@@ -309,7 +342,7 @@ local function SortByFirstThenSecond(a, b)
 end
 
 --@treturn {table, table} symbol length table and symbol code table
-local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol, WriteBits)
+local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol)
 	local heapSize
 	local maxNonZeroLenSym = -1
 	local leafs = {}
@@ -421,32 +454,9 @@ local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol, Wri
 			end
 		end
 
-		-- From RFC1951. Calculate huffman code from code bit length.
-		local code = 0
-		local nextCode = {}
-		for bitLength = 1, maxBitLength do
-			code = (code+(bitLengthCount[bitLength-1] or 0))*2
-			nextCode[bitLength] = code
-		end
-		for symbol = 0, maxSymbol do
-			local len = symbolBitLength[symbol]
-			if len then
-				code = nextCode[len]
-				nextCode[len] = code + 1
-
-				-- Reverse the bits of "code"
-				local res = 0
-				for _=1, len do
-					res = res - res%2 + (((res%2==1) or (code % 2) == 1) and 1 or 0) -- res | (code%2)
-					code = (code-code%2)/2
-					res = res*2
-				end
-				symbolCode[symbol] = (res-res%2)/2 -- Bit reverse of the variable "code"
-			end
-		end
+		symbolCode = GetHuffmanCodeFromBitLength(bitLengthCount, symbolBitLength, maxSymbol, maxBitLength)
 		return symbolBitLength, symbolCode, maxNonZeroLenSym
 	end
-
 end
 
 local function RunLengthEncodeHuffmanLens(lcodeLens, maxNonZeroLenlCode, dcodeLens, maxNonZeroLendCode)
@@ -548,7 +558,6 @@ local function loadStrToTable(str, t, start, stop)
 	end
 	return t
 end
-
 
 local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockEnd)
 	if not level then
@@ -720,12 +729,11 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 	return lCodes, lExtraBits, lCodesCount, dCodes, dExtraBits, dCodesCount
 end
 
-local function CompressBlockDynamicHuffman(WriteBits, isLastBlock,
-		lCodes, lExtraBits, lCodesCount, dCodes, dExtraBits, dCodesCount)
+local function GetBlockDynamicHuffmanHeader(lCodesCount, dCodesCount)
 	local lCodeLens, lCodeCodes, maxNonZeroLenlCode = GetHuffmanBitLengthAndCode(lCodesCount, 15, 285)
 	local dCodeLens, dCodeCodes, maxNonZeroLendCode = GetHuffmanBitLengthAndCode(dCodesCount, 15, 29)
 
-	local rleCodes, rleExtraBits, rleCodesTblLen, rleCodesCount =
+	local rleCodes, rleExtraBits, _, rleCodesCount =
 		RunLengthEncodeHuffmanLens(lCodeLens, maxNonZeroLenlCode, dCodeLens, maxNonZeroLendCode)
 
 	local codeLensCodeLens, codeLensCodeCodes = GetHuffmanBitLengthAndCode(rleCodesCount, 7, 18)
@@ -744,6 +752,53 @@ local function CompressBlockDynamicHuffman(WriteBits, isLastBlock,
 	local HDIST = maxNonZeroLendCode + 1 - 1 -- # of Distance codes - 1 (1 - 32)
 	if HDIST < 0 then HDIST = 0 end
 
+	return HLIT, HDIST, HCLEN, codeLensCodeLens, codeLensCodeCodes, rleCodes, rleExtraBits
+		, lCodeLens, lCodeCodes, dCodeLens, dCodeCodes
+end
+
+local function GetBlockDynamicHuffmanSize(
+		lCodes, dCodes, HCLEN, codeLensCodeLens, rleCodes, lCodeLens, dCodeLens)
+
+	local blockBitSize = 17 -- 1+2+5+5+4
+	blockBitSize = blockBitSize + (HCLEN+4)*3
+
+	for i=1, #rleCodes do
+		local code = rleCodes[i]
+		blockBitSize = blockBitSize + codeLensCodeLens[code]
+		if code >= 16 then
+			blockBitSize = blockBitSize + ((code == 16) and 2 or (code == 17 and 3 or 7))
+		end
+	end
+
+	local lengthCodeCount = 0
+
+	for i=1, #lCodes do
+		local code = lCodes[i]
+		local huffmanLength = lCodeLens[code]
+		blockBitSize = blockBitSize + huffmanLength
+		if code > 256 then -- Length code
+			lengthCodeCount = lengthCodeCount + 1
+			if code > 264 and code < 285 then -- Length code with extra bits
+				local extraBitsLength = _literalCodeToExtraBitsLen[code-256]
+				blockBitSize = blockBitSize + extraBitsLength
+			end
+			local distCode = dCodes[lengthCodeCount]
+			local distHuffmanLength = dCodeLens[distCode]
+			blockBitSize = blockBitSize + distHuffmanLength
+
+			if distCode > 3 then -- dist code with extra bits
+				local distExtraBitsLength = (distCode-distCode%2)/2 - 1
+				blockBitSize = blockBitSize + distExtraBitsLength
+			end
+		end
+	end
+	return blockBitSize
+end
+
+local function CompressBlockDynamicHuffman(WriteBits, isLastBlock,
+		lCodes, lExtraBits, dCodes, dExtraBits, HLIT, HDIST, HCLEN,
+		codeLensCodeLens, codeLensCodeCodes, rleCodes, rleExtraBits, lCodeLens, lCodeCodes, dCodeLens, dCodeCodes)
+
 	WriteBits(isLastBlock and 1 or 0, 1) -- Last block marker
 	WriteBits(2, 2) -- Dynamic Huffman Code
 
@@ -758,7 +813,7 @@ local function CompressBlockDynamicHuffman(WriteBits, isLastBlock,
 	end
 
 	local rleExtraBitsIndex = 1
-	for i=1, rleCodesTblLen do
+	for i=1, #rleCodes do
 		local code = rleCodes[i]
 		WriteBits(codeLensCodeCodes[code], codeLensCodeLens[code])
 		if code >= 16 then
@@ -801,6 +856,66 @@ local function CompressBlockDynamicHuffman(WriteBits, isLastBlock,
 	end
 end
 
+local function GetBlockFixHuffmanSize(lCodes, dCodes)
+	local blockBitSize = 3
+	local lengthCodeCount = 0
+	for i=1, #lCodes do
+		local code = lCodes[i]
+		local huffmanLength = _fixLitHuffmanLen[code]
+		blockBitSize = blockBitSize + huffmanLength
+		if code > 256 then -- Length code
+			lengthCodeCount = lengthCodeCount + 1
+			if code > 264 and code < 285 then -- Length code with extra bits
+				local extraBitsLength = _literalCodeToExtraBitsLen[code-256]
+				blockBitSize = blockBitSize + extraBitsLength
+			end
+			local distCode = dCodes[lengthCodeCount]
+			blockBitSize = blockBitSize + 5
+
+			if distCode > 3 then -- dist code with extra bits
+				local distExtraBitsLength = (distCode-distCode%2)/2 - 1
+				blockBitSize = blockBitSize + distExtraBitsLength
+			end
+		end
+	end
+	return blockBitSize
+end
+
+local function CompressBlockFixHuffman(WriteBits, isLastBlock,
+		lCodes, lExtraBits, dCodes, dExtraBits)
+	WriteBits(isLastBlock and 1 or 0, 1) -- Is last block?
+	WriteBits(1, 2) -- fix Huffman Code
+	local lengthCodeCount = 0
+	local lengthCodeWithExtraCount = 0
+	local distCodeWithExtraCount = 0
+	for i=1, #lCodes do
+		local code = lCodes[i]
+		local huffmanCode = _fixLitHuffmanCode[code]
+		local huffmanLength = _fixLitHuffmanLen[code]
+		WriteBits(huffmanCode, huffmanLength)
+		if code > 256 then -- Length code
+			lengthCodeCount = lengthCodeCount + 1
+			if code > 264 and code < 285 then -- Length code with extra bits
+				lengthCodeWithExtraCount = lengthCodeWithExtraCount + 1
+				local extraBits = lExtraBits[lengthCodeWithExtraCount]
+				local extraBitsLength = _literalCodeToExtraBitsLen[code-256]
+				WriteBits(extraBits, extraBitsLength)
+			end
+			-- Write distance code
+			local distCode = dCodes[lengthCodeCount]
+			local distHuffmanCode = _fixDistHuffmanCode[distCode]
+			WriteBits(distHuffmanCode, 5)
+
+			if distCode > 3 then -- dist code with extra bits
+				distCodeWithExtraCount = distCodeWithExtraCount + 1
+				local distExtraBits = dExtraBits[distCodeWithExtraCount]
+				local distExtraBitsLength = (distCode-distCode%2)/2 - 1
+				WriteBits(distExtraBits, distExtraBitsLength)
+			end
+		end
+	end
+end
+
 function LibDeflate:Compress(str, level, start, stop)
 	assert(type(str)=="string")
 	assert(type(level)=="nil" or (type(level)=="number" and level >= 1 and level <= 8))
@@ -828,6 +943,7 @@ function LibDeflate:Compress(str, level, start, stop)
 	local WriteBits, Flush = CreateWriter()
 	local result
 
+	local totalBitSize = 0
 	while not isLastBlock do
 		if not blockStart then
 			blockStart = start
@@ -850,10 +966,28 @@ function LibDeflate:Compress(str, level, start, stop)
 		local lCodes, lExtraBits, lCodesCount, dCodes, dExtraBits, dCodesCount =
 			CompressBlockLZ77(level, strTable, hashTables, blockStart, blockEnd)
 
-		CompressBlockDynamicHuffman(WriteBits, isLastBlock,
-				lCodes, lExtraBits, lCodesCount, dCodes, dExtraBits, dCodesCount)
+		local HLIT, HDIST, HCLEN, codeLensCodeLens, codeLensCodeCodes, rleCodes, rleExtraBits
+			, lCodeLens, lCodeCodes, dCodeLens, dCodeCodes =
+			GetBlockDynamicHuffmanHeader(lCodesCount, dCodesCount)
+		local dynamicBlockBitSize = GetBlockDynamicHuffmanSize(
+				lCodes, dCodes, HCLEN, codeLensCodeLens, rleCodes, lCodeLens, dCodeLens)
+		local fixBlockBitSize = GetBlockFixHuffmanSize(lCodes, dCodes)
+
+		if dynamicBlockBitSize < fixBlockBitSize then
+			CompressBlockDynamicHuffman(WriteBits, isLastBlock,
+					lCodes, lExtraBits, dCodes, dExtraBits, HLIT, HDIST, HCLEN,
+					codeLensCodeLens, codeLensCodeCodes, rleCodes, rleExtraBits, lCodeLens, lCodeCodes, dCodeLens, dCodeCodes)
+			totalBitSize = totalBitSize + dynamicBlockBitSize
+		else
+			CompressBlockFixHuffman(WriteBits, isLastBlock,
+					lCodes, lExtraBits, dCodes, dExtraBits)
+			totalBitSize = totalBitSize + fixBlockBitSize
+			-- print("Choose Fix block because it is smaller! "..(dynamicBlockBitSize-fixBlockBitSize))
+		end
 
 		result = Flush(isLastBlock)
+		assert(result:len()*8-totalBitSize < 8, ("sth wrong in the bitSize calculation, %d %d")
+			:format(result:len()*8, totalBitSize))
 
 		-- Memory clean up, so memory consumption does not always grow linearly, even if input string is > 64K.
 		if not isLastBlock then
@@ -883,7 +1017,8 @@ function LibDeflate:Compress(str, level, start, stop)
 		end
 	end
 
-	return result
+
+	return result, totalBitSize
 end
 
 ------------------------------------------------------------------------------
@@ -1043,32 +1178,6 @@ local function ConstructInflateHuffman(huffmanLen, n, maxBitLength)
 
 	-- Return zero for complete set, positive for incomplete set.
 	return left, huffmanLenCount, huffmanSymbol, minLen
-end
-
-do
-	local litLen = {}
-	local status
-	for sym=0, 143 do
-		litLen[sym] = 8
-	end
-	for sym=144, 255 do
-		litLen[sym] = 9
-	end
-	for sym=256, 279 do
-        litLen[sym] = 7
-	end
-	for sym=280, 287 do
-		litLen[sym] = 8
-	end
-	status, _fixLitHuffmanLenCount, _fixLitHuffmanSym = ConstructInflateHuffman(litLen, 288, 9)
-	assert(status == 0)
-
-	local distLen = {}
-	for dist=0, 31 do
-		distLen[dist] = 5
-	end
-	status, _fixDistHuffmanLenCount, _fixDistHuffmanSym = ConstructInflateHuffman(distLen, 32, 5)
-	assert(status == 0)
 end
 
 local function DecodeUntilEndOfBlock(state, litHuffmanLen, litHuffmanSym, litMinLen
@@ -1341,6 +1450,37 @@ function LibDeflate:Adler32(str, start, stop)
 	end
 	return b*65536+a
 end
+
+-- Fix huffman code
+do
+	_fixLitHuffmanLen = {}
+	for sym=0, 143 do
+		_fixLitHuffmanLen[sym] = 8
+	end
+	for sym=144, 255 do
+		_fixLitHuffmanLen[sym] = 9
+	end
+	for sym=256, 279 do
+	    _fixLitHuffmanLen[sym] = 7
+	end
+	for sym=280, 287 do
+		_fixLitHuffmanLen[sym] = 8
+	end
+
+	_fixDistHuffmanLen = {}
+	for dist=0, 31 do
+		_fixDistHuffmanLen[dist] = 5
+	end
+	local status
+	status, _fixLitHuffmanLenCount, _fixLitHuffmanSym = ConstructInflateHuffman(_fixLitHuffmanLen, 288, 9)
+	assert(status == 0)
+	status, _fixDistHuffmanLenCount, _fixDistHuffmanSym = ConstructInflateHuffman(_fixDistHuffmanLen, 32, 5)
+	assert(status == 0)
+
+	_fixLitHuffmanCode = GetHuffmanCodeFromBitLength(_fixLitHuffmanLenCount, _fixLitHuffmanLen, 287, 9)
+	_fixDistHuffmanCode = GetHuffmanCodeFromBitLength(_fixDistHuffmanLenCount, _fixDistHuffmanLen, 31, 5)
+end
+
 -- For test. Don't use the functions in this table for real application.
 -- Stuffs in this table is subject to change.
 LibDeflate.internals = {
