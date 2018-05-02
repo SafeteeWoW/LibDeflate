@@ -245,7 +245,19 @@ local function CreateWriter()
 		end
 	end
 
-	return WriteBits, Flush
+	local function WriteString(str, start, stop)
+		assert(cacheBitRemaining%8==0)
+		for _=1, cacheBitRemaining, 8 do
+			bufferSize = bufferSize + 1
+			buffer[bufferSize] = string_char(cache % 256)
+			cache = (cache-cache%256)/256
+		end
+		cacheBitRemaining = 0
+		bufferSize = bufferSize + 1
+		buffer[bufferSize] = str:sub(start, stop)
+	end
+
+	return WriteBits, Flush, WriteString
 end
 
 --- Push an element into a max heap
@@ -918,6 +930,36 @@ local function CompressBlockFixHuffman(WriteBits, isLastBlock,
 	end
 end
 
+local function GetBlockStoreSize(blockStart, blockEnd, totalBitSize)
+	assert(blockEnd-blockStart+1 <= 65535)
+	local blockBitSize = 3
+	totalBitSize = totalBitSize + 3
+	local paddingBitLen = (8-totalBitSize%8)%8
+	blockBitSize = blockBitSize + paddingBitLen
+	blockBitSize = blockBitSize + 32
+	blockBitSize = blockBitSize + (blockEnd - blockStart + 1) * 8
+	return blockBitSize
+end
+
+local function CompressBlockStore(WriteBits, WriteString, isLastBlock, str, blockStart, blockEnd, totalBitSize)
+	assert(blockEnd-blockStart+1 <= 65535)
+	WriteBits(isLastBlock and 1 or 0, 1) -- Is last block?
+	WriteBits(0, 2) -- store block
+	totalBitSize = totalBitSize + 3
+	local paddingBitLen = (8-totalBitSize%8)%8
+	if paddingBitLen > 0 then
+		WriteBits(_pow2[paddingBitLen]-1, paddingBitLen)
+	end
+	local size = blockEnd - blockStart + 1
+	WriteBits(size, 16)
+
+	-- Write size's one's complement
+	local comp = (255 - size % 256) + (255 - (size-size%256)/256)*256
+	WriteBits(comp, 16)
+
+	WriteString(str, blockStart, blockEnd)
+end
+
 function LibDeflate:Compress(str, level, start, stop)
 	assert(type(str)=="string")
 	assert(type(level)=="nil" or (type(level)=="number" and level >= 1 and level <= 8))
@@ -935,21 +977,21 @@ function LibDeflate:Compress(str, level, start, stop)
 
 	local strTable = {}
 	local hashTables = {}
-	-- The maximum size of the first dynamic block is 64KB
-	local INITIAL_BLOCK_SIZE = 64*1024
+	-- The maximum size of the first dynamic block is 64KB-1
+	local INITIAL_BLOCK_SIZE = 64*1024 - 1
 	-- The maximum size of the additional block is 32KB
 	local ADDITIONAL_BLOCK_SIZE = 32*1024
 	local isLastBlock = nil
 	local blockStart
 	local blockEnd
-	local WriteBits, Flush = CreateWriter()
+	local WriteBits, Flush, WriteString = CreateWriter()
 	local result, bitsWritten
 
 	local totalBitSize = 0
 	while not isLastBlock do
 		if not blockStart then
 			blockStart = start
-			blockEnd = start + INITIAL_BLOCK_SIZE
+			blockEnd = start + INITIAL_BLOCK_SIZE - 1
 		else
 			blockStart = blockEnd + 1
 			blockEnd = blockEnd + ADDITIONAL_BLOCK_SIZE
@@ -961,6 +1003,8 @@ function LibDeflate:Compress(str, level, start, stop)
 		else
 			isLastBlock = false
 		end
+
+		assert(blockEnd-blockStart+1 <= 65535) -- TODO: comment
 
 		loadStrToTable(str, strTable, blockStart, (blockEnd+3 > stop) and stop or (blockEnd+3))
 		-- +3 is needed for dynamic block
@@ -974,16 +1018,24 @@ function LibDeflate:Compress(str, level, start, stop)
 		local dynamicBlockBitSize = GetBlockDynamicHuffmanSize(
 				lCodes, dCodes, HCLEN, codeLensCodeLens, rleCodes, lCodeLens, dCodeLens)
 		local fixBlockBitSize = GetBlockFixHuffmanSize(lCodes, dCodes)
+		local storeBlockBitSize = GetBlockStoreSize(blockStart, blockEnd, totalBitSize)
 
-		if dynamicBlockBitSize < fixBlockBitSize then
+		local minBitSize = dynamicBlockBitSize
+		minBitSize = (fixBlockBitSize < minBitSize) and fixBlockBitSize or minBitSize
+		minBitSize = (storeBlockBitSize < minBitSize) and storeBlockBitSize or minBitSize
+
+		if storeBlockBitSize == minBitSize then
+			CompressBlockStore(WriteBits, WriteString, isLastBlock, str, blockStart, blockEnd, totalBitSize)
+			totalBitSize = totalBitSize + storeBlockBitSize
+		elseif fixBlockBitSize ==  minBitSize then
+			CompressBlockFixHuffman(WriteBits, isLastBlock,
+					lCodes, lExtraBits, dCodes, dExtraBits)
+			totalBitSize = totalBitSize + fixBlockBitSize
+		elseif dynamicBlockBitSize == minBitSize then
 			CompressBlockDynamicHuffman(WriteBits, isLastBlock,
 					lCodes, lExtraBits, dCodes, dExtraBits, HLIT, HDIST, HCLEN,
 					codeLensCodeLens, codeLensCodeCodes, rleCodes, rleExtraBits, lCodeLens, lCodeCodes, dCodeLens, dCodeCodes)
 			totalBitSize = totalBitSize + dynamicBlockBitSize
-		else
-			CompressBlockFixHuffman(WriteBits, isLastBlock,
-					lCodes, lExtraBits, dCodes, dExtraBits)
-			totalBitSize = totalBitSize + fixBlockBitSize
 			-- print("Choose Fix block because it is smaller! "..(dynamicBlockBitSize-fixBlockBitSize))
 		end
 
@@ -1235,6 +1287,7 @@ local function DecodeUntilEndOfBlock(state, litHuffmanLen, litHuffmanSym, litMin
 	return 0
 end
 
+-- TODO: Actually test store block
 local function DecompressStoreBlock(state)
 	local buffer, bufferSize, ReadBits, ReadBytes, ReaderBitsLeft, SkipToByteBoundary, result =
 		state.buffer, state.bufferSize, state.ReadBits, state.ReadBytes, state.ReaderBitsLeft,
@@ -1250,17 +1303,11 @@ local function DecompressStoreBlock(state)
 		return 2 -- available inflate data did not terminate
 	end
 
-	-- Check if len and lenComp are one's complement
-	local tmpLen = len
-	local tmpLenComp = lenComp
-	for _=1, 16 do
-		local bit1 = len % 2
-		local bit2 = lenComp % 2
-		if not (bit1 + bit2 == 1) then
-			return -2 -- stored block length did not match one's complement
-		end
-		tmpLen = (tmpLen - bit1) / 2
-		tmpLenComp = (tmpLenComp - bit2) / 2
+	if len % 256 + lenComp % 256 ~= 255 then
+		return -2 -- Not one's complement
+	end
+	if (len-len % 256)/256 + (lenComp-lenComp % 256)/256 ~= 255 then
+		return -2 -- Not one's complement
 	end
 
 	-- Note that ReadBytes will skip to the next byte boundary first.

@@ -632,6 +632,21 @@ TestMin8Decompress = {}
 		-- 0101 00fe ff31
 		CheckDecompressIncludingError("\001\001\000\254\255\049", "1")
 	end
+	function TestMin8Decompress:TestStore5()
+		local size = 0x5555
+		local str = GetRandomString(size)
+		CheckDecompressIncludingError("\001\085\085\170\170"..str, str)
+	end
+
+	function TestMin8Decompress:TestStoreRandom()
+		for i = 1, 20 do
+			local size = math.random(1, 65535)
+			local str = GetRandomString(size)
+			CheckDecompressIncludingError("\001"..string.char(size%256)
+				..string.char((size-size%256)/256)
+				..string.char(255-size%256)..string.char(255-(size-size%256)/256)..str, str)
+		end
+	end
 	function TestMin8Decompress:TestFix1()
 		CheckDecompressIncludingError("\003\000", "")
 	end
