@@ -221,9 +221,9 @@ local function CreateWriter()
 		end
 	end
 
-	local function Flush(lastTimeToUseWriter)
+	local function Flush(fullFlush)
 		local ret
-		if lastTimeToUseWriter then
+		if fullFlush then
 			local paddingBit = (8-cacheBitRemaining%8)%8
 			if cacheBitRemaining > 0 then
 				for _=1, cacheBitRemaining, 8 do
@@ -235,7 +235,8 @@ local function CreateWriter()
 				cacheBitRemaining = 0
 			end
 			ret = table_concat(buffer)
-			buffer = nil
+			buffer = {ret}
+			bufferSize = 1
 			return ret, ret:len()*8-paddingBit
 		else
 			ret = table_concat(buffer)
@@ -960,21 +961,7 @@ local function CompressBlockStore(WriteBits, WriteString, isLastBlock, str, bloc
 	WriteString(str, blockStart, blockEnd)
 end
 
-function LibDeflate:Compress(str, level, start, stop)
-	assert(type(str)=="string")
-	assert(type(level)=="nil" or (type(level)=="number" and level >= 1 and level <= 8))
-	assert(type(start)=="nil" or (type(start)=="number"))
-	assert(type(stop)=="nil" or (type(stop)=="number"))
-
-	start = start or 1
-	start = (start < 1) and 1 or start
-	stop = stop or str:len()
-	stop = (stop > str:len()) and str:len() or stop
-	if start > stop then
-		start = 1
-		stop = 0
-	end
-
+local function Deflate(WriteBits, Flush, WriteString, str, level, start, stop)
 	local strTable = {}
 	local hashTables = {}
 	-- The maximum size of the first dynamic block is 64KB-1
@@ -984,10 +971,9 @@ function LibDeflate:Compress(str, level, start, stop)
 	local isLastBlock = nil
 	local blockStart
 	local blockEnd
-	local WriteBits, Flush, WriteString = CreateWriter()
 	local result, bitsWritten
+	local totalBitSize = select(2, Flush())
 
-	local totalBitSize = 0
 	while not isLastBlock do
 		if not blockStart then
 			blockStart = start
@@ -1039,7 +1025,7 @@ function LibDeflate:Compress(str, level, start, stop)
 			-- print("Choose Fix block because it is smaller! "..(dynamicBlockBitSize-fixBlockBitSize))
 		end
 
-		result, bitsWritten = Flush(isLastBlock)
+		result, bitsWritten = Flush()
 		assert(bitsWritten == totalBitSize , ("sth wrong in the bitSize calculation, %d %d")
 			:format(bitsWritten, totalBitSize))
 
@@ -1070,9 +1056,83 @@ function LibDeflate:Compress(str, level, start, stop)
 			end
 		end
 	end
+end
 
+function LibDeflate:CompressDeflate(str, level, start, stop)
+	assert(type(str)=="string")
+	assert(type(level)=="nil" or (type(level)=="number" and level >= 1 and level <= 8))
+	assert(type(start)=="nil" or (type(start)=="number"))
+	assert(type(stop)=="nil" or (type(stop)=="number"))
+
+	start = start or 1
+	start = (start < 1) and 1 or start
+	stop = stop or str:len()
+	stop = (stop > str:len()) and str:len() or stop
+	if start > stop then
+		start = 1
+		stop = 0
+	end
+
+	local WriteBits, Flush, WriteString = CreateWriter()
+
+	Deflate(WriteBits, Flush, WriteString, str, level, start, stop)
+	local result, totalBitSize = Flush(true)
+	return result, totalBitSize
+end
+
+function LibDeflate:CompressZlib(str, level, start, stop)
+	assert(type(str)=="string")
+	assert(type(level)=="nil" or (type(level)=="number" and level >= 1 and level <= 8))
+	assert(type(start)=="nil" or (type(start)=="number"))
+	assert(type(stop)=="nil" or (type(stop)=="number"))
+
+	start = start or 1
+	start = (start < 1) and 1 or start
+	stop = stop or str:len()
+	stop = (stop > str:len()) and str:len() or stop
+	if start > stop then
+		start = 1
+		stop = 0
+	end
+
+	local WriteBits, Flush, WriteString = CreateWriter()
+
+	local CM = 8 -- Compression method
+	local CINFO = 7 --Window Size = 32K
+	local CMF = CINFO*16+CM
+	WriteBits(CMF, 8)
+
+	local FDIST = 0 -- No dictionary
+	local FLEVEL = 2 -- Default compression
+	local FLG = FLEVEL*64+FDIST*32
+	local FCHECK = (31-(CMF*256+FLG)%31)
+	-- The FCHECK value must be such that CMF and FLG, when viewed as a 16-bit unsigned integer stored
+	-- in MSB order (CMF*256 + FLG), is a multiple of 31.
+	FLG = FLG + FCHECK
+	assert((CMF*256+FLG)%31 == 0)
+	WriteBits(FLG, 8)
+
+	Deflate(WriteBits, Flush, WriteString, str, level, start, stop)
+	Flush(true)
+
+	local adler = self:Adler32(str, start, stop)
+
+	-- Most significant byte first
+	local byte0 = ((adler-adler%16777216)/16777216)%256
+	local byte1 = ((adler-adler%65536)/65536)%256
+	local byte2 = ((adler-adler%256)/256)%256
+	local byte3 = adler%256
+	WriteBits(byte0, 8)
+	WriteBits(byte1, 8)
+	WriteBits(byte2, 8)
+	WriteBits(byte3, 8)
+	local result, totalBitSize = Flush(true)
 
 	return result, totalBitSize
+end
+
+function LibDeflate:Compress(str, level, start, stop)
+	return self:CompressDeflate(str, level, start, stop)
 end
 
 ------------------------------------------------------------------------------

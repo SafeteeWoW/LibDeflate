@@ -206,6 +206,18 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName, 
 					, "My decompress unprocessed bytes not match zdeflate")
 			end
 
+			local result, zlibBitSize = Lib:CompressZlib(str, level, start, stop)
+			lu.assertEquals(zlibBitSize/8, result:len())
+
+			outputFile = io.open(compressedFileName, "wb")
+			lu.assertNotNil(outputFile, "Fail to write to "..compressedFileName)
+			outputFile:write(result)
+			outputFile:close()
+
+			returnedStatus_zdeflate, stdout_zdeflate, stderr_zdeflate = RunProgram("zdeflate --zlib -d <", compressedFileName
+				, decompressedFileName)
+			lu.assertEquals(returnedStatus_zdeflate, 0, "zdeflate fails to decompress zlib: "..stderr_zdeflate)
+
 			print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, Compress Time: %.3fms, Decompress Time: %.3fms, "..
 				"Speed: %.2f KB/s, Decompress Speed: %.2f KB/s, Memory: %d bytes"..
 				", Memory/input: %.3f, Possible Memory Leaked: %d bytes"
