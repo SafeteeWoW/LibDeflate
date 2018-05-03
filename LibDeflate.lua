@@ -1485,24 +1485,8 @@ local function DecompressDynamicBlock(state)
 		, distHuffmanLenCount, distHuffmanSym, distMinLen)
 end
 
-function LibDeflate:Decompress(str, start, stop)
-	-- WIP
-	assert(type(str) == "string")
-
-	start = start or 1
-	stop = stop or str:len()
-	local ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary = CreateReader(str, start, stop)
-	local state =
-	{
-		ReadBits = ReadBits,
-		ReadBytes = ReadBytes,
-		Decode = Decode,
-		ReaderBitsLeft = ReaderBitsLeft,
-		SkipToByteBoundary = SkipToByteBoundary,
-		bufferSize = 0,
-		buffer = {},
-		result = "",
-	}
+local function Inflate(state)
+	local ReadBits = state.ReadBits
 
 	local isLastBlock
 	while not isLastBlock do
@@ -1523,11 +1507,109 @@ function LibDeflate:Decompress(str, start, stop)
 		end
 	end
 
+	state.result = state.result..table_concat(state.buffer, "", 1, state.bufferSize)
+	return state.result
+end
+
+function LibDeflate:DecompressDeflate(str, start, stop)
+	-- WIP
+	assert(type(str) == "string")
+
+	start = start or 1
+	stop = stop or str:len()
+	local ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary = CreateReader(str, start, stop)
+	local state =
+	{
+		ReadBits = ReadBits,
+		ReadBytes = ReadBytes,
+		Decode = Decode,
+		ReaderBitsLeft = ReaderBitsLeft,
+		SkipToByteBoundary = SkipToByteBoundary,
+		bufferSize = 0,
+		buffer = {},
+		result = "",
+	}
+
+	local result, status = Inflate(state)
+	if not result then
+		return nil, status
+	end
+
 	local bitsLeft = ReaderBitsLeft()
 	local byteLeft = (bitsLeft - bitsLeft % 8) / 8
-
-	state.result = state.result..table_concat(state.buffer, "", 1, state.bufferSize)
 	return state.result, byteLeft
+end
+
+function LibDeflate:DecompressZlib(str, start, stop)
+	-- WIP
+	assert(type(str) == "string")
+
+	start = start or 1
+	stop = stop or str:len()
+	local ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary = CreateReader(str, start, stop)
+	local state =
+	{
+		ReadBits = ReadBits,
+		ReadBytes = ReadBytes,
+		Decode = Decode,
+		ReaderBitsLeft = ReaderBitsLeft,
+		SkipToByteBoundary = SkipToByteBoundary,
+		bufferSize = 0,
+		buffer = {},
+		result = "",
+	}
+
+	local CMF = ReadBits(8)
+	if ReaderBitsLeft() < 0 then
+		return nil, 2 -- available inflate data did not terminate
+	end
+	local CM = CMF % 16
+	local CINFO = (CMF - CM) / 16
+	if CM ~= 8 then
+		return nil, -12 -- TODO invalid compression method
+	end
+	if CINFO > 7 then
+		return nil, -13 -- TODO invalid window size
+	end
+
+	local FLG = ReadBits(8)
+	if ReaderBitsLeft() < 0 then
+		return nil, 2 -- available inflate data did not terminate
+	end
+	if (CMF*256+FLG)%31 ~= 0 then
+		return nil, -14 -- TODO invalid header checksum
+	end
+
+	local FDIST = (FLG-FLG%32)/32 -- TODO
+	local FLEVEL = (FLG-FLG%64)/64 -- TODO
+
+	local result, status = Inflate(state)
+	if not result then
+		return nil, status
+	end
+	SkipToByteBoundary()
+
+	local adler_byte0 = ReadBits(8)
+	local adler_byte1 = ReadBits(8)
+	local adler_byte2 = ReadBits(8)
+	local adler_byte3 = ReadBits(8)
+	if ReaderBitsLeft() < 0 then
+		return nil, 2 -- available inflate data did not terminate
+	end
+
+	local adler32_expected = adler_byte0*16777216+adler_byte1*65536+adler_byte2*256+adler_byte3
+	local adler32_actual = self:Adler32(result)
+	if adler32_expected ~= adler32_actual then
+		return nil, -15 -- TODO Adler32 checksum does not match
+	end
+
+	local bitsLeft = ReaderBitsLeft()
+	local byteLeft = (bitsLeft - bitsLeft % 8) / 8
+	return state.result, byteLeft
+end
+
+function LibDeflate:Decompress(str, start, stop)
+	return self:DecompressDeflate(str, start, stop)
 end
 
 function LibDeflate:Adler32(str, start, stop)

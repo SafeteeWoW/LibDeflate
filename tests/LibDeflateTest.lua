@@ -206,23 +206,44 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName, 
 					, "My decompress unprocessed bytes not match zdeflate")
 			end
 
-			local result, zlibBitSize = Lib:CompressZlib(str, level, start, stop)
-			lu.assertEquals(zlibBitSize/8, result:len())
+			local zlib_compressed, zlibBitSize = Lib:CompressZlib(str, level, start, stop)
+			lu.assertEquals(zlibBitSize/8, zlib_compressed:len())
 
 			outputFile = io.open(compressedFileName, "wb")
 			lu.assertNotNil(outputFile, "Fail to write to "..compressedFileName)
-			outputFile:write(result)
+			outputFile:write(zlib_compressed)
 			outputFile:close()
 
 			returnedStatus_zdeflate, stdout_zdeflate, stderr_zdeflate = RunProgram("zdeflate --zlib -d <", compressedFileName
 				, decompressedFileName)
 			lu.assertEquals(returnedStatus_zdeflate, 0, "zdeflate fails to decompress zlib: "..stderr_zdeflate)
+			if origin ~= stdout_zdeflate then
+				lu.assertEquals(str:len(), stdout_zdeflate:len(), ("level: %d, string size does not match actual size: %d"
+					..", after Lib compress and zdeflate decompress: %d")
+						:format(level, origin:len(), stdout_zdeflate:len()))
+				for i=1, origin:len() do
+					lu.assertEquals(string_byte(origin, i, i), string_byte(stdout_zdeflate, i, i), ("Level: %d, First diff at: %d")
+						:format(level, i))
+				end
+				return 1
+			else
+				print("Compress then zDeflate decompress OK")
+			end
 
-			print(("Level: %d, Before: %d, After: %d, Ratio:%.2f, Compress Time: %.3fms, Decompress Time: %.3fms, "..
+			local zlib_decompressed = Lib:DecompressZlib(zlib_compressed)
+			if zlib_decompressed ~= origin then
+				print("Zlib Compress then my decompress FAILED", zlib_decompressed:len())
+				lu.assertEquals(false, "My decompression does not match origin string")
+				return 1
+			else
+				print("Zlib Compress then my decompress OK")
+			end
+
+			print(("Level: %d, Before: %d, After: %d (Zlib:%d), Ratio:%.2f, Compress Time: %.3fms, Decompress Time: %.3fms, "..
 				"Speed: %.2f KB/s, Decompress Speed: %.2f KB/s, Memory: %d bytes"..
 				", Memory/input: %.3f, Possible Memory Leaked: %d bytes"
 				..", Run repeated by: %d times"):
-				format(level, origin:len(), compressed:len(), origin:len()/compressed:len()
+				format(level, origin:len(), compressed:len(), zlib_compressed:len(), origin:len()/compressed:len()
 					, elapsed*1000, dElapsed*1000, origin:len()/elapsed/1000, origin:len()/dElapsed/1000
 					, memoryUsed, memoryUsed/origin:len(), memoryLeaked, repeated))
 			print("-------------------------------------")
