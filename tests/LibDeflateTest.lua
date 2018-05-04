@@ -1,5 +1,5 @@
 -- Commandline tests
-local Lib = require("LibDeflate")
+local LibDeflate = require("LibDeflate")
 local args = rawget(_G, "arg")
 -- UnitTests
 local lu = require("luaunit")
@@ -15,28 +15,32 @@ local ipairs = ipairs
 local print = print
 local tostring = tostring
 local string_byte = string.byte
-math.randomseed(0)
--- Repeatedly collect memory garbarge until memory usage no longer changes
+local unpack = unpack
+math.randomseed(0) -- I don't like true random tests that I cant 100% reproduce.
+
+local function OpenFile(fileName, mode)
+	local f = io.open(fileName, mode)
+	lu.assertNotNil(f, ("Cannot open the file: %s, with mode: %s"):format(fileName, mode))
+	return f
+end
 
 local function GetFileData(fileName)
-	local f = io.open(fileName, "rb")
-	if f then
-		local str = f:read("*all")
-		f:close()
-		return str
-	else
-		print("Cant open"..fileName)
-	end
+	local f = OpenFile(fileName, "rb")
+	local str = f:read("*all")
+	f:close()
+	return str
 end
 
 local function GetFileSize(fileName)
-	local f = io.open(fileName, "rb")
-	if f then
-		local str = f:read("*all")
-		return str:len()
-	else
-		print("Cant open"..fileName)
-	end
+	return GetFileData(fileName):len()
+end
+
+local function WriteToFile(fileName, data)
+	local f = io.open(fileName, "wb")
+	lu.assertNotNil(f, ("Cannot open the file: %s, with mode: %s"):format(fileName, "wb"))
+	f:write(data)
+	f:flush()
+	f:close()
 end
 
 local function GetRandomString(strLen)
@@ -51,6 +55,7 @@ local function GetRandomString(strLen)
 	return table.concat(tmp)
 end
 
+-- Repeatedly collect memory garbarge until memory usage no longer changes
 local function FullMemoryCollect()
 	local memoryUsed = collectgarbage("count")
 	local lastMemoryUsed
@@ -65,189 +70,207 @@ local function FullMemoryCollect()
 		else
 			stable_count = 0
 		end
-	until stable_count == 15 -- Stop full memory collect until memory usage does not change for 15 times.
+	until stable_count == 10 -- Stop full memory collect until memory usage does not decrease for 10 times.
 end
 
 local function RunProgram(program, inputFileName, stdoutFileName)
 	local stderrFileName = stdoutFileName..".stderr"
-	os.execute("rm -f "..stdoutFileName)
-	os.execute("rm -f "..stderrFileName)
 	local status, _, ret = os.execute(program.." "..inputFileName.. "> "..stdoutFileName.." 2> "..stderrFileName)
-	local returnedStatus = type(status) == "number" and status or ret or -255
-	local stdout = ""
-	local stderr = ""
-	local file
-	file = io.open(stdoutFileName, "rb")
-	if file then
-		stdout = file:read("*all")
-		file:close()
-	end
-	file = io.open(stderrFileName, "rb")
-	if file then
-		stderr = file:read("*all")
-		file:close()
-	end
+	local returnedStatus = type(status) == "number" and status or ret or -255 -- lua 5.1 and 5.3 compatibilty
+	local stdout = GetFileData(stdoutFileName)
+	local stderr = GetFileData(stderrFileName)
 	return returnedStatus, stdout, stderr
 end
 
+local function AssertLongStringEqual(actual, expected, msg)
+	if actual ~= expected then
+		lu.assertNotNil(actual, ("%s actual is nil"):format(msg or ""))
+		lu.assertNotNil(expected, ("%s expected is nil"):format(msg or ""))
+		local diffIndex = -1
+		for i=1, expected:len() do
+			if string_byte(actual, i, i) ~= string_byte(expected, i, i) then
+				diffIndex = i
+			end
+		end
+		local actualMsg = string.format("%s actualLen: %d, expectedLen:%d, first difference at: %d,"
+			.." actualByte: %s, expectByte: %s", msg or "", actual:len(), expected:len(), diffIndex,
+			tostring(string.byte(actual, diffIndex, diffIndex)), tostring(string.byte(expected, diffIndex, diffIndex)))
+		lu.assertTrue(false, actualMsg)
+	end
+end
 
-local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName, start, stop)
+local function MemCheckAndBenchmarkFunc(func, ...)
+	local memoryBefore
+	local memoryRunning
+	local memoryAfter
+	local startTime
+	local elapsedTime
+	local ret
 	FullMemoryCollect()
-	local origin = str:sub(start or 1, stop or str:len())
+	memoryBefore =  math.floor(collectgarbage("count")*1024)
+	FullMemoryCollect()
+	startTime = os.clock()
+	elapsedTime = -1
+	local repeatCount = 0
+	while elapsedTime < 0.015 do
+		ret = {func(...)}
+		elapsedTime = os.clock() - startTime
+		repeatCount = repeatCount + 1
+	end
+	memoryRunning = math.floor(collectgarbage("count")*1024)
+	FullMemoryCollect()
+	memoryAfter = math.floor(collectgarbage("count")*1024)
+	local memoryUsed = memoryRunning - memoryBefore
+	local memoryLeaked = memoryAfter - memoryBefore
+
+	return memoryLeaked, memoryUsed, elapsedTime*1000/repeatCount, unpack(ret)
+end
+
+-- TODO: allow negative start or stop?
+local function CheckCompressAndDecompress(stringOrFileName, isFile, levels, start, stop)
+	local origin
+	if isFile then
+		origin = GetFileData(stringOrFileName)
+		origin = origin:sub(start or 1, stop or origin:len())
+	else
+		origin = stringOrFileName:sub(start or 1, stop or stringOrFileName:len())
+	end
+
+	FullMemoryCollect()
 	local totalMemoryBefore = math.floor(collectgarbage("count")*1024)
 
 	do
-		minRunTime = minRunTime or 0
 		if levels == "all" then
 			levels = {1,2,3,4,5,6,7,8}
 		else
 			levels = levels or {1}
 		end
 
-		local compressedFileName = outputFileName or "tests/data/tmp.deflate"
+		local compressFileName
+		if isFile then
+			compressFileName = stringOrFileName..".compress"
+		else
+			compressFileName = "string.compress"
+		end
+
+		local decompressFileName = compressFileName..".decompress"
+
+		local zlibCompressFileName = compressFileName..".zlib"
+		local zlibDecompressFileName = zlibCompressFileName..".decompress"
 
 		for _, level in ipairs(levels) do
-			-- Check memory usage and leaking
-			print((">> %s %s, Level: %d, Size: %s"):format((inputFileName and "File:" or "Str:")
-				,(inputFileName or origin):sub(1, 40), level, origin:len()))
-			local memoryBefore
-			local memoryRunning
-			local memoryAfter
-			collectgarbage("stop")
-			FullMemoryCollect()
-			memoryBefore =  math.floor(collectgarbage("count")*1024)
-			FullMemoryCollect()
-			Lib:Compress(str, level, start, stop)
-			memoryRunning = math.floor(collectgarbage("count")*1024)
-			FullMemoryCollect()
-			memoryAfter = math.floor(collectgarbage("count")*1024)
-			collectgarbage("restart")
-			local memoryUsed = memoryRunning - memoryBefore
-			local memoryLeaked = memoryAfter - memoryBefore
+			-- Compress by raw deflate
+			local compressMemoryLeaked, compressMemoryUsed, compressTime,
+				compressData, compressBitSize = MemCheckAndBenchmarkFunc(LibDeflate.Compress, LibDeflate
+				, origin, level, start, stop)
+			lu.assertEquals(math.ceil(compressBitSize/8), compressData:len(),
+				"Unexpected compress bit size")
+			WriteToFile(compressFileName, compressData)
 
-			local compressed = ""
-
-			local startTime = os.clock()
-			local elapsed = -1
-			local repeated = 0
-			while elapsed < minRunTime do
-				compressed = Lib:Compress(str, level, start, stop)
-				elapsed = (os.clock()-startTime)
-				repeated = repeated + 1
-			end
-			elapsed = elapsed/repeated
-			local outputFile = io.open(compressedFileName, "wb")
-			lu.assertNotNil(outputFile, "Fail to write to "..compressedFileName)
-			outputFile:write(compressed)
-			outputFile:close()
-
-			local decompressedFileName = compressedFileName..".decompressed"
-
+			-- Try decompress by puff
 			local returnedStatus_puff, stdout_puff, stderr_puff = RunProgram("puff -w "
-				, compressedFileName, decompressedFileName)
+				, compressFileName, decompressFileName)
 			lu.assertEquals(returnedStatus_puff, 0, "puff decompression failed with code "..returnedStatus_puff)
+			AssertLongStringEqual(stdout_puff, origin, "puff decompress result does not match origin string.")
 
-			local returnedStatus_zdeflate, stdout_zdeflate, stderr_zdeflate = RunProgram("zdeflate -d <", compressedFileName
-				, decompressedFileName)
-			lu.assertEquals(returnedStatus_zdeflate, 0, "zdeflate decompression failed with code "..returnedStatus_zdeflate)
+			-- Try decompress by zdeflate
+			local returnedStatus_zdeflate, stdout_zdeflate, stderr_zdeflate = RunProgram("zdeflate -d <", compressFileName
+				, decompressFileName)
+			lu.assertEquals(returnedStatus_zdeflate, 0, "zdeflate decompression failed with msg "
+				..stderr_zdeflate)
+			AssertLongStringEqual(stdout_zdeflate, origin, "zdeflate decompress result does not match origin string.")
 
-			if origin ~= stdout_puff then
-				lu.assertEquals(origin:len(), stdout_puff:len(), ("level: %d, string size does not match actual size: %d"
-					..", after Lib compress and puff decompress: %d")
-						:format(level, origin:len(), stdout_puff:len()))
-				for i=1, origin:len() do
-					lu.assertEquals(string_byte(origin, i, i), string_byte(stdout_puff, i, i), ("Level: %d, First diff at: %d")
-						:format(level, i))
-				end
-				return 1
-			else
-				print("Compress then puff decompress OK")
-			end
+			-- Try decompress by LibDeflate
+			local decompressMemoryLeaked, decompressMemoryUsed, decompressTime,
+				decompressData, decompressUnprocessByte = MemCheckAndBenchmarkFunc(LibDeflate.Decompress, LibDeflate
+				, compressData)
+			lu.assertEquals(decompressUnprocessByte, 0, "Unprocessed bytes after LibDeflate decompression "
+					..tostring(decompressUnprocessByte))
+			AssertLongStringEqual(decompressData, origin, "LibDeflate decompress result does not match origin string.")
 
-			if origin ~= stdout_zdeflate then
-				lu.assertEquals(str:len(), stdout_zdeflate:len(), ("level: %d, string size does not match actual size: %d"
-					..", after Lib compress and zdeflate decompress: %d")
-						:format(level, origin:len(), stdout_zdeflate:len()))
-				for i=1, origin:len() do
-					lu.assertEquals(string_byte(origin, i, i), string_byte(stdout_zdeflate, i, i), ("Level: %d, First diff at: %d")
-						:format(level, i))
-				end
-				return 1
-			else
-				print("Compress then zDeflate decompress OK")
-			end
+			-- Compress with Zlib header instead of raw Deflate
+			local zlibCompressMemoryLeaked, zlibCompressMemoryUsed, zlibCompressTime,
+				zlibCompressData, zlibCompressBitSize = MemCheckAndBenchmarkFunc(LibDeflate.CompressZlib, LibDeflate
+				, origin, level, start, stop)
+			lu.assertEquals(zlibCompressBitSize/8, zlibCompressData:len(), "Unexpected zlib bit size")
 
-			local dStartTime = os.clock()
-			local dRepeated = 0
-			local decompressed
-			local decompressed_return
-			local dElapsed = -1
-			while dElapsed < minRunTime/3 do
-				decompressed, decompressed_return = Lib:Decompress(compressed)
-				dRepeated = dRepeated + 1
-				dElapsed = os.clock() - dStartTime
-			end
-			dElapsed = dElapsed/dRepeated
 
-			if decompressed ~= origin then
-				print("Compress then my decompress FAILED")
-				lu.assertEquals(false, "My decompression does not match origin string")
-				return 1
-			else
-				print("Compress then my decompress OK")
-			end
-			if decompressed_return ~= 0 then
-				-- decompressed_return is the number of unprocessed bytes in the data.
-				-- Actually shouldn't happen in this test.
-				-- Some byte not processed, compare with puff and zdeflate
-				lu.assertEquals(("%d"):format(decompressed_return), stderr_puff
-					, "My decompress unprocessed bytes not match puff")
-				lu.assertEquals(("%d"):format(decompressed_return), stderr_zdeflate
-					, "My decompress unprocessed bytes not match zdeflate")
-			end
+			WriteToFile(zlibCompressFileName, zlibCompressData)
 
-			local zlib_compressed, zlibBitSize = Lib:CompressZlib(str, level, start, stop)
-			lu.assertEquals(zlibBitSize/8, zlib_compressed:len())
+			local zlibReturnedStatus_zdeflate, zlibStdout_zdeflate, zlibStderr_zdeflate =
+				RunProgram("zdeflate --zlib -d <", zlibCompressFileName, zlibDecompressFileName)
+			lu.assertEquals(zlibReturnedStatus_zdeflate, 0, "zdeflate fails to decompress zlib with msg "
+				..tostring(zlibStderr_zdeflate))
+			AssertLongStringEqual(zlibStdout_zdeflate, origin,
+				"zDeflate decompress result does not match origin zlib string.")
 
-			outputFile = io.open(compressedFileName, "wb")
-			lu.assertNotNil(outputFile, "Fail to write to "..compressedFileName)
-			outputFile:write(zlib_compressed)
-			outputFile:close()
+			local zlibDecompressMemoryLeaked, zlibDecompressMemoryUsed, zlibDecompressTime,
+				zlibDecompressData, zlibDecompressUnprocessByte = MemCheckAndBenchmarkFunc(LibDeflate.DecompressZlib, LibDeflate
+				, zlibCompressData)
+			lu.assertEquals(zlibDecompressUnprocessByte, 0, "Unprocessed bytes after LibDeflate zlib decompression "
+					..tostring(zlibDecompressUnprocessByte))
+			AssertLongStringEqual(zlibDecompressData, origin
+				, "LibDeflate zlib decompress result does not match origin string.")
 
-			returnedStatus_zdeflate, stdout_zdeflate, stderr_zdeflate = RunProgram("zdeflate --zlib -d <", compressedFileName
-				, decompressedFileName)
-			lu.assertEquals(returnedStatus_zdeflate, 0, "zdeflate fails to decompress zlib: "..stderr_zdeflate)
-			if origin ~= stdout_zdeflate then
-				lu.assertEquals(str:len(), stdout_zdeflate:len(), ("level: %d, string size does not match actual size: %d"
-					..", after Lib compress and zdeflate decompress: %d")
-						:format(level, origin:len(), stdout_zdeflate:len()))
-				for i=1, origin:len() do
-					lu.assertEquals(string_byte(origin, i, i), string_byte(stdout_zdeflate, i, i), ("Level: %d, First diff at: %d")
-						:format(level, i))
-				end
-				return 1
-			else
-				print("Compress then zDeflate decompress OK")
-			end
-
-			local zlib_decompressed = Lib:DecompressZlib(zlib_compressed)
-			if zlib_decompressed ~= origin then
-				print("Zlib Compress then my decompress FAILED", zlib_decompressed:len())
-				lu.assertEquals(false, "My decompression does not match origin string")
-				return 1
-			else
-				print("Zlib Compress then my decompress OK")
-			end
-
-			print(("Level: %d, Before: %d, After: %d (Zlib:%d), Ratio:%.2f, Compress Time: %.3fms, Decompress Time: %.3fms, "..
-				"Speed: %.2f KB/s, Decompress Speed: %.2f KB/s, Memory: %d bytes"..
-				", Memory/input: %.3f, Possible Memory Leaked: %d bytes"
-				..", Run repeated by: %d times"):
-				format(level, origin:len(), compressed:len(), zlib_compressed:len(), origin:len()/compressed:len()
-					, elapsed*1000, dElapsed*1000, origin:len()/elapsed/1000, origin:len()/dElapsed/1000
-					, memoryUsed, memoryUsed/origin:len(), memoryLeaked, repeated))
-			print("-------------------------------------")
+			print(
+				(">>>>> %s: %s Level: %d size: %d B\n"):format(isFile and "File" or "String",
+					stringOrFileName:sub(1, 40), level, origin:len()),
+				("CompressDeflate:   Size : %d B,\tTime: %.3f ms, Speed: %.0f KB/s, Memory: %d B,"
+					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
+					compressData:len(), compressTime, compressData:len()/compressTime, compressMemoryUsed,
+					compressMemoryUsed/origin:len(), compressMemoryLeaked
+				),
+				("DecompressDeflate: cRatio: %.2f,\tTime: %.3f ms, Speed: %.0f KB/s, Memory: %d B,"
+					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
+					origin:len()/compressData:len(), decompressTime, decompressData:len()/decompressTime, decompressMemoryUsed,
+					decompressMemoryUsed/origin:len(), decompressMemoryLeaked
+				),
+				("CompressZlib:      Size : %d B,\tTime: %.3f ms, Speed: %.0f KB/s, Memory: %d B,"
+					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
+					zlibCompressData:len(), zlibCompressTime, zlibCompressData:len()/zlibCompressTime, zlibCompressMemoryUsed,
+					zlibCompressMemoryUsed/origin:len(), zlibCompressMemoryLeaked
+				),
+				("DecompressZlib:    cRatio: %.2f,\tTime: %.3f ms, Speed: %.0f KB/s, Memory: %d B,"
+					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
+					origin:len()/compressData:len(), zlibDecompressTime, zlibDecompressData:len()/zlibDecompressTime
+					, zlibDecompressMemoryUsed,zlibDecompressMemoryUsed/origin:len(), zlibDecompressMemoryLeaked
+				),
+				"\n"
+			)
 		end
+
+		-- Use all avaiable strategies of zdeflate to compress the data, and see if LibDeflate can decompress it.
+		local tmpFileName = "tmp.tmp"
+		WriteToFile(tmpFileName, origin)
+
+		local zdeflate_level, zdeflate_strategy
+		local strategies = {"--filter", "--huffman", "--rle", "--fix", "--default"}
+		local unique_compress = {}
+		local uniques_compress_count = 0
+		for level=0, 8 do
+			zdeflate_level = "-"..level
+			for j=1, #strategies do
+				zdeflate_strategy = strategies[j]
+				local status, stdout, stderr = RunProgram("zdeflate "..zdeflate_level.." "..zdeflate_strategy
+					.." < ", tmpFileName, tmpFileName..".out")
+				lu.assertEquals(status, 0, ("zdeflate cant compress the file? stderr: %s level: %s, strategy: %s")
+					:format(stderr, zdeflate_level, zdeflate_strategy))
+				if not unique_compress[stdout] then
+					unique_compress[stdout] = true
+					uniques_compress_count = uniques_compress_count + 1
+					local decompressData = LibDeflate:Decompress(stdout)
+					AssertLongStringEqual(decompressData, origin,
+						("My decompress fail to decompress at zdeflate level: %s, strategy: %s")
+						:format(level, zdeflate_strategy))
+				end
+			end
+		end
+		print(
+			(">>>>> %s: %s size: %d B\n")
+				:format(isFile and "File" or "String", stringOrFileName:sub(1, 40), origin:len()),
+			("Full decompress coverage test ok. unique compresses: %d\n")
+				:format(uniques_compress_count),
+			"\n")
 	end
 
 	FullMemoryCollect()
@@ -256,97 +279,64 @@ local function CheckStr(str, levels, minRunTime, inputFileName, outputFileName, 
 	local totalMemoryDifference = totalMemoryBefore - totalMemoryAfter
 
 	if totalMemoryDifference > 0 then
-		print(("Actual Memory Leak in the test: %d"):format(totalMemoryDifference))
+		print(
+			(">>>>> %s: %s size: %d B\n")
+				:format(isFile and "File" or "String", stringOrFileName:sub(1, 40), origin:len()),
+			("Actual Memory Leak in the test: %d\n")
+				:format(totalMemoryDifference),
+			"\n")
+		-- ^If above "leak" is very small, it is very likely that it is false positive.
 		if not jit and totalMemoryDifference >  64 then
 			-- Lua JIT has some problems to garbage collect stuffs, so don't consider as failure.
 			lu.assertTrue(false, ("Fail the test because too many actual Memory Leak in the test: %d")
 				:format(totalMemoryDifference))
-			return 2
 		end
 	end
-
-	-- Use all avaiable strategies of zdeflate to compress the data, and see if LibDeflate can decompress it.
-	local level, strategy
-	local strategies = {"--filter", "--huffman", "--rle", "--fix", "--default"}
-	local tmpFileName = "tmp.tmp"
-	local tmpFile = io.open(tmpFileName, "wb")
-	tmpFile:write(origin)
-	tmpFile:close()
-	print((">> %s %s, Size: %s"):format((inputFileName and "File:" or "Str:")
-		,(inputFileName or origin):sub(1, 40), origin:len()))
-	local unique_compress = {}
-	local uniques_compress_count = 0
-	for i=0, 8 do
-		level = "-"..i
-		for j=1, #strategies do
-			strategy = strategies[j]
-			local status, stdout, stderr = RunProgram("zdeflate "..level.." "..strategy.." < ", tmpFileName, tmpFileName..".out")
-			lu.assertEquals(status, 0, ("zdeflate cant compress the file? stderr: %s level: %s, strategy: %s")
-				:format(stderr, level, strategy))
-			if status ~= 0 then
-				return 3
-			end
-			if not unique_compress[stdout] then
-				unique_compress[stdout] = true
-				uniques_compress_count = uniques_compress_count + 1
-				local decomp = Lib:Decompress(stdout)
-				if origin ~= decomp then
-					print(("My decompress fail to decompress at zdeflate level: %s, strategy: %s")
-						:format(level, strategy))
-					lu.assertTrue(false, ("My decompress fail to decompress at zdeflate level: %s, strategy: %s")
-						:format(level, strategy))
-					return 4
-				end
-			end
-		end
-	end
-	print(("Full decompress coverage test ok. unique compresses: %d"):format(uniques_compress_count))
-	print("-------------------------------------")
 
 	return 0
 end
 
-local function CheckDecompressIncludingError(compressed, decompressed, start, stop)
+local function CheckDecompressIncludingError(compress, decompress, start, stop)
 	start = start or 1
-	stop = stop or compressed:len()
-	local d, decompressed_return = Lib:Decompress(compressed, start, stop)
-	if d ~= decompressed then
-		lu.assertTrue(false, ("My decompressed does not match expected result."..
-			"expected: %s, actual: %s, Returned status of decompress: %d"):format(decompressed, d, decompressed_return))
+	stop = stop or compress:len()
+	local d, decompress_return = LibDeflate:Decompress(compress, start, stop)
+	if d ~= decompress then
+		lu.assertTrue(false, ("My decompress does not match expected result."..
+			"expected: %s, actual: %s, Returned status of decompress: %d"):format(decompress, d, decompress_return))
 	else
 		-- Check my decompress result with "puff"
 		local inputFileName = "tmpFile"
 		local inputFile = io.open(inputFileName, "wb")
 		inputFile:setvbuf("full")
-		inputFile:write(compressed:sub(start, stop))
+		inputFile:write(compress:sub(start, stop))
 		inputFile:flush()
 		inputFile:close()
 		local returnedStatus_puff, stdout_puff, stderr_puff = RunProgram("puff -w", inputFileName
-			, inputFileName..".decompressed")
+			, inputFileName..".decompress")
 		local returnedStatus_zdeflate, stdout_zdeflate, stderr_zdeflate = RunProgram("zdeflate -d <", inputFileName
-			, inputFileName..".decompressed")
+			, inputFileName..".decompress")
 		if not d then
 			if returnedStatus_puff ~= 0 and returnedStatus_zdeflate ~= 0 then
-				print((">>>> %q cannot be decompress as expected"):format(compressed:sub(1, 15)))
+				print((">>>> %q cannot be decompress as expected"):format(compress:sub(1, 15)))
 			elseif returnedStatus_puff ~= 0 and returnedStatus_zdeflate == 0 then
 				lu.assertTrue(false, "Puff error but not zdeflate?")
 			elseif returnedStatus_puff == 0 and returnedStatus_zdeflate ~= 0 then
 				lu.assertTrue(false, "zDeflate error but not puff?")
 			else
-				lu.assertTrue(false, "My decompressed returns error, but not puff and zdeflate.")
+				lu.assertTrue(false, "My decompress returns error, but not puff and zdeflate.")
 			end
 
 		else
 			if d == stdout_puff and d == stdout_zdeflate then
-				print((">>>> %q is decompressed successfully"):format(compressed:sub(1, 15)))
+				print((">>>> %q is decompress successfully"):format(compress:sub(1, 15)))
 			else
 				lu.assertTrue(false, "My decompress result does not match puff or zdeflate.")
 			end
-			if decompressed_return ~= 0 then
-				-- decompressed_return is the number of unprocessed bytes in the data.
+			if decompress_return ~= 0 then
+				-- decompress_return is the number of unprocessed bytes in the data.
 				-- Some byte not processed, compare with puff and zdeflate
-				lu.assertEquals(("%d"):format(decompressed_return), stderr_puff, "My decompress unprocessed bytes not match puff")
-				lu.assertEquals(("%d"):format(decompressed_return), stderr_zdeflate,
+				lu.assertEquals(("%d"):format(decompress_return), stderr_puff, "My decompress unprocessed bytes not match puff")
+				lu.assertEquals(("%d"):format(decompress_return), stderr_zdeflate,
 				 "My decompress unprocessed bytes not match zdeflate")
 			end
 		end
@@ -354,13 +344,12 @@ local function CheckDecompressIncludingError(compressed, decompressed, start, st
 
 end
 
-local function CheckFile(inputFileName, levels, minRunTime, start, stop)
-	local inputFile = io.open(inputFileName, "rb")
-	lu.assertNotNil(inputFile, "Input file "..inputFileName.." does not exist")
-	local inputFileContent = inputFile:read("*all")
-	inputFile:close()
-	return CheckStr(inputFileContent, levels, minRunTime, inputFileName, inputFileName..".deflate",
-		start, stop)
+local function CheckCompressAndDecompressString(str, levels, start, stop)
+	return CheckCompressAndDecompress(str, false, levels, start, stop)
+end
+
+local function CheckCompressAndDecompressFile(inputFileName, levels, start, stop)
+	return CheckCompressAndDecompress(inputFileName, true, levels, start, stop)
 end
 
 -- Commandline
@@ -375,20 +364,20 @@ if args and #args >= 1 and type(args[0]) == "string" then
 		inputFile.close()
 		os.exit(0)
 	elseif #args >= 3 and args[1] == "-c" then
-	-- For testing purpose, check the if a file can be correctly compressed and decompressed to origin
-		os.exit(CheckFile(args[2], "all", 0, args[3]))
+	-- For testing purpose, check the if a file can be correctly compress and decompress to origin
+		os.exit(CheckCompressAndDecompressFile(args[2], "all", 0, args[3])) -- TODO
 	end
 end
 
 TestMin1Strings = {}
 	function TestMin1Strings:testEmpty()
-		CheckStr("", "all")
+		CheckCompressAndDecompressString("", "all")
 	end
 	function TestMin1Strings:testAllLiterals1()
-		CheckStr("ab", "all")
+		CheckCompressAndDecompressString("ab", "all")
 	end
 	function TestMin1Strings:testAllLiterals2()
-		CheckStr("abcdefgh", "all")
+		CheckCompressAndDecompressString("abcdefgh", "all")
 	end
 	function TestMin1Strings:testAllLiterals3()
 		local t = {}
@@ -396,15 +385,15 @@ TestMin1Strings = {}
 			t[#t+1] = string.char(i)
 		end
 		local str = table.concat(t)
-		CheckStr(str, "all")
+		CheckCompressAndDecompressString(str, "all")
 	end
 
 	function TestMin1Strings:testRepeat()
-		CheckStr("aaaaaaaaaaaaaaaaaa", "all")
+		CheckCompressAndDecompressString("aaaaaaaaaaaaaaaaaa", "all")
 	end
 
 	function TestMin1Strings:testRepeatInTheMiddle()
-		CheckStr("aaaaaaaaaaaaaaaaaa", "all", nil, nil, nil, 2, 8)
+		CheckCompressAndDecompressString("aaaaaaaaaaaaaaaaaa", "all", nil, nil, nil, 2, 8)
 	end
 
 	function TestMin1Strings:testLongRepeat()
@@ -412,229 +401,225 @@ TestMin1Strings = {}
 		for i=1, 100000 do
 			repeated[i] = "c"
 		end
-		CheckStr(table.concat(repeated), "all")
+		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
 
 TestMin2MyData = {}
 	function TestMin2MyData:TestItemStrings()
-		CheckFile("tests/data/itemStrings.txt", "all")
+		CheckCompressAndDecompressFile("tests/data/itemStrings.txt", "all")
 	end
 
 	function TestMin2MyData:TestSmallTest()
-		CheckFile("tests/data/smalltest.txt", "all")
+		CheckCompressAndDecompressFile("tests/data/smalltest.txt", "all")
 	end
 
 	function TestMin2MyData:TestSmallTestInTheMiddle()
-		CheckFile("tests/data/smalltest.txt", "all", nil, 10, GetFileSize("tests/data/smalltest.txt")-10)
+		CheckCompressAndDecompressFile("tests/data/smalltest.txt", "all", nil, 10, GetFileSize("tests/data/smalltest.txt")-10)
 	end
 
 	function TestMin2MyData:TestReconnectData()
-		CheckFile("tests/data/reconnectData.txt", "all")
+		CheckCompressAndDecompressFile("tests/data/reconnectData.txt", "all")
 	end
 
 TestMin3ThirdPartySmall = {}
 	function TestMin3ThirdPartySmall:TestEmpty()
-		CheckFile("tests/data/3rdparty/empty", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/empty", "all")
 	end
 
 	function TestMin3ThirdPartySmall:TestX()
-		CheckFile("tests/data/3rdparty/x", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/x", "all")
 	end
 
 	function TestMin3ThirdPartySmall:TestXYZZY()
-		CheckFile("tests/data/3rdparty/xyzzy", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/xyzzy", "all")
 	end
 
 Test4ThirdPartyMedium = {}
 	function Test4ThirdPartyMedium:Test10x10y()
-		CheckFile("tests/data/3rdparty/10x10y", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/10x10y", "all")
 	end
 
 	function Test4ThirdPartyMedium:TestQuickFox()
-		CheckFile("tests/data/3rdparty/quickfox", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/quickfox", "all")
 	end
 
 	function Test4ThirdPartyMedium:Test64x()
-		CheckFile("tests/data/3rdparty/64x", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/64x", "all")
 	end
 
 	function Test4ThirdPartyMedium:TestUkkonoona()
-		CheckFile("tests/data/3rdparty/ukkonooa", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/ukkonooa", "all")
 	end
 
 	function Test4ThirdPartyMedium:TestMonkey()
-		CheckFile("tests/data/3rdparty/monkey", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/monkey", "all")
 	end
 
 	function Test4ThirdPartyMedium:TestRandomChunks()
-		CheckFile("tests/data/3rdparty/random_chunks", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/random_chunks", "all")
 	end
 
 	function Test4ThirdPartyMedium:TestGrammerLsp()
-		CheckFile("tests/data/3rdparty/grammar.lsp", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/grammar.lsp", "all")
 	end
 
 	function Test4ThirdPartyMedium:TestXargs1()
-		CheckFile("tests/data/3rdparty/xargs.1", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/xargs.1", "all")
 	end
 
 	function Test4ThirdPartyMedium:TestRandomOrg10KBin()
-		CheckFile("tests/data/3rdparty/random_org_10k.bin", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/random_org_10k.bin", "all")
 	end
 
 	function Test4ThirdPartyMedium:TestCpHtml()
-		CheckFile("tests/data/3rdparty/cp.html", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/cp.html", "all")
 	end
 
 	function Test4ThirdPartyMedium:TestBadData1Snappy()
-		CheckFile("tests/data/3rdparty/baddata1.snappy", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/baddata1.snappy", "all")
 	end
 
 	function Test4ThirdPartyMedium:TestBadData2Snappy()
-		CheckFile("tests/data/3rdparty/baddata2.snappy", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/baddata2.snappy", "all")
 	end
 
 	function Test4ThirdPartyMedium:TestBadData3Snappy()
-		CheckFile("tests/data/3rdparty/baddata3.snappy", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/baddata3.snappy", "all")
 	end
 
 	function Test4ThirdPartyMedium:TestSum()
-		CheckFile("tests/data/3rdparty/sum", "all")
-	end
-
-	function Test4ThirdPartyMedium:TestCompressedFile()
-		CheckFile("tests/data/3rdparty/compressed_file", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/sum", "all")
 	end
 
 Test5_64K = {}
 	function Test5_64K:Test64KFile()
-		CheckFile("tests/data/64k.txt", "all")
+		CheckCompressAndDecompressFile("tests/data/64k.txt", "all")
 	end
 	function Test5_64K:Test64KFilePlus1()
-		CheckFile("tests/data/64kplus1.txt", "all")
+		CheckCompressAndDecompressFile("tests/data/64kplus1.txt", "all")
 	end
 	function Test5_64K:Test64KFilePlus2()
-		CheckFile("tests/data/64kplus2.txt", "all")
+		CheckCompressAndDecompressFile("tests/data/64kplus2.txt", "all")
 	end
 	function Test5_64K:Test64KFilePlus3()
-		CheckFile("tests/data/64kplus3.txt", "all")
+		CheckCompressAndDecompressFile("tests/data/64kplus3.txt", "all")
 	end
 	function Test5_64K:Test64KFilePlus4()
-		CheckFile("tests/data/64kplus4.txt", "all")
+		CheckCompressAndDecompressFile("tests/data/64kplus4.txt", "all")
 	end
 	function Test5_64K:Test64KFileMinus1()
-		CheckFile("tests/data/64kminus1.txt", "all")
+		CheckCompressAndDecompressFile("tests/data/64kminus1.txt", "all")
 	end
 	function Test5_64K:Test64KRepeated()
 		local repeated = {}
 		for i=1, 65536 do
 			repeated[i] = "c"
 		end
-		CheckStr(table.concat(repeated), "all")
+		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
 	function Test5_64K:Test64KRepeatedPlus1()
 		local repeated = {}
 		for i=1, 65536+1 do
 			repeated[i] = "c"
 		end
-		CheckStr(table.concat(repeated), "all")
+		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
 	function Test5_64K:Test64KRepeatedPlus2()
 		local repeated = {}
 		for i=1, 65536+2 do
 			repeated[i] = "c"
 		end
-		CheckStr(table.concat(repeated), "all")
+		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
 	function Test5_64K:Test64KRepeatedPlus3()
 		local repeated = {}
 		for i=1, 65536+3 do
 			repeated[i] = "c"
 		end
-		CheckStr(table.concat(repeated), "all")
+		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
 	function Test5_64K:Test64KRepeatedPlus4()
 		local repeated = {}
 		for i=1, 65536+4 do
 			repeated[i] = "c"
 		end
-		CheckStr(table.concat(repeated), "all")
+		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
 	function Test5_64K:Test64KRepeatedMinus1()
 		local repeated = {}
 		for i=1, 65536-1 do
 			repeated[i] = "c"
 		end
-		CheckStr(table.concat(repeated), "all")
+		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
 	function Test5_64K:Test64KRepeatedMinus2()
 		local repeated = {}
 		for i=1, 65536-2 do
 			repeated[i] = "c"
 		end
-		CheckStr(table.concat(repeated), "all")
+		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
 
 -- > 64K
 Test6ThirdPartyBig = {}
 	function Test6ThirdPartyBig:TestBackward65536()
-		CheckFile("tests/data/3rdparty/backward65536", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/backward65536", "all")
 	end
 	function Test6ThirdPartyBig:TestHTML()
-		CheckFile("tests/data/3rdparty/html", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/html", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:TestPaper100kPdf()
-		CheckFile("tests/data/3rdparty/paper-100k.pdf", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/paper-100k.pdf", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:TestGeoProtodata()
-		CheckFile("tests/data/3rdparty/geo.protodata", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/geo.protodata", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:TestFireworksJpeg()
-		CheckFile("tests/data/3rdparty/fireworks.jpeg", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/fireworks.jpeg", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:TestAsyoulik()
-		CheckFile("tests/data/3rdparty/asyoulik.txt", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/asyoulik.txt", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:TestCompressedRepeated()
-		CheckFile("tests/data/3rdparty/compressed_repeated", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/compressed_repeated", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:TestAlice29()
-		CheckFile("tests/data/3rdparty/alice29.txt", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/alice29.txt", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:TestQuickfox_repeated()
-		CheckFile("tests/data/3rdparty/quickfox_repeated", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/quickfox_repeated", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:TestKppknGtb()
-		CheckFile("tests/data/3rdparty/kppkn.gtb", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/kppkn.gtb", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:TestZeros()
-		CheckFile("tests/data/3rdparty/zeros", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/zeros", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:TestMapsdatazrh()
-		CheckFile("tests/data/3rdparty/mapsdatazrh", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/mapsdatazrh", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:TestHtml_x_4()
-		CheckFile("tests/data/3rdparty/html_x_4", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/html_x_4", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:TestLcet10()
-		CheckFile("tests/data/3rdparty/lcet10.txt", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/lcet10.txt", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:TestPlrabn12()
-		CheckFile("tests/data/3rdparty/plrabn12.txt", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/plrabn12.txt", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:Testptt5()
-		CheckFile("tests/data/3rdparty/ptt5", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/ptt5", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:TestUrls10K()
-		CheckFile("tests/data/3rdparty/urls.10K", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/urls.10K", {1,2,3,4,5})
 	end
 	function Test6ThirdPartyBig:TestKennedyXls()
-		CheckFile("tests/data/3rdparty/kennedy.xls", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/kennedy.xls", {1,2,3,4,5})
 	end
 
 Test7WoWData = {}
 	function Test7WoWData:TestWarlockWeakAuras()
-		CheckFile("tests/data/warlockWeakAuras.txt", "all")
+		CheckCompressAndDecompressFile("tests/data/warlockWeakAuras.txt", "all")
 	end
 
 TestMin8Decompress = {}
@@ -706,7 +691,7 @@ TestMin8Decompress = {}
 TestMin9Internals = {}
 	-- Test from puff
 	function TestMin9Internals:TestLoadString()
-		local loadStrToTable = Lib.internals.loadStrToTable
+		local loadStrToTable = LibDeflate.internals.loadStrToTable
 		local tmp
 		for _=1, 1000 do
 			local t = {}
@@ -744,8 +729,8 @@ TestMin9Internals = {}
 	end
 
 	function TestMin9Internals:TestSimpleRandom()
-		local compressedEmpty = Lib:Compress("")
-		lu.assertEquals(Lib:Decompress(compressedEmpty), "", "My decompress does not match origin for empty string.")
+		local compressEmpty = LibDeflate:Compress("")
+		lu.assertEquals(LibDeflate:Decompress(compressEmpty), "", "My decompress does not match origin for empty string.")
 		for _=1, 3000 do
 			local tmp
 			local strLen = math.random(0, 1000)
@@ -760,8 +745,8 @@ TestMin9Internals = {}
 			local level = (math.random() < 0.5) and (math.random(1, 8)) or nil
 
 			local expected = str:sub(start or 1, stop or str:len())
-			local compressed = Lib:Compress(str, level, start, stop)
-			local _, actual = pcall(function() return Lib:Decompress(compressed) end)
+			local compress = LibDeflate:Compress(str, level, start, stop)
+			local _, actual = pcall(function() return LibDeflate:Decompress(compress) end)
 			if expected ~= actual then
 				local strDumpFile = io.open("fail_random.txt", "wb")
 				if (strDumpFile) then
@@ -779,40 +764,40 @@ TestMin9Internals = {}
 	end
 
 	function TestMin9Internals:TestAdler32()
-		lu.assertEquals(1, Lib:Adler32(""))
-		lu.assertEquals(Lib:Adler32("1"), 0x00320032)
-		lu.assertEquals(Lib:Adler32("12"), 0x00960064)
-		lu.assertEquals(Lib:Adler32("123"), 0x012D0097)
-		lu.assertEquals(Lib:Adler32("1234"), 0x01F800CB)
-		lu.assertEquals(Lib:Adler32("12345"), 0x02F80100)
-		lu.assertEquals(Lib:Adler32("123456"), 0x042E0136)
-		lu.assertEquals(Lib:Adler32("1234567"), 0x059B016D)
-		lu.assertEquals(Lib:Adler32("12345678"), 0x074001A5)
-		lu.assertEquals(Lib:Adler32("123456789"), 0x091E01DE)
-		lu.assertEquals(Lib:Adler32("1234567890"), 0x0B2C020E)
-		lu.assertEquals(Lib:Adler32("1234567890a"), 0x0D9B026F)
-		lu.assertEquals(Lib:Adler32("1234567890ab"), 0x106C02D1)
-		lu.assertEquals(Lib:Adler32("1234567890abc"), 0x13A00334)
-		lu.assertEquals(Lib:Adler32("1234567890abcd"), 0x17380398)
-		lu.assertEquals(Lib:Adler32("1234567890abcde"), 0x1B3503FD)
-		lu.assertEquals(Lib:Adler32("1234567890abcdef"), 0x1F980463)
-		lu.assertEquals(Lib:Adler32("1234567890abcefg"), 0x1F9E0466)
-		lu.assertEquals(Lib:Adler32("1234567890abcefgh"), 0x246C04CE)
-		lu.assertEquals(Lib:Adler32("1234567890abcefghi"), 0x29A30537)
-		lu.assertEquals(Lib:Adler32("1234567890abcefghij"), 0x2F4405A1)
-		lu.assertEquals(Lib:Adler32("1234567890abcefghijk"), 0x3550060C)
-		lu.assertEquals(Lib:Adler32("1234567890abcefghijkl"), 0x3BC80678)
-		lu.assertEquals(Lib:Adler32("1234567890abcefghijklm"), 0x42AD06E5)
-		lu.assertEquals(Lib:Adler32("1234567890abcefghijklmn"), 0x4A000753)
-		lu.assertEquals(Lib:Adler32("1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0x8C40150C)
+		lu.assertEquals(1, LibDeflate:Adler32(""))
+		lu.assertEquals(LibDeflate:Adler32("1"), 0x00320032)
+		lu.assertEquals(LibDeflate:Adler32("12"), 0x00960064)
+		lu.assertEquals(LibDeflate:Adler32("123"), 0x012D0097)
+		lu.assertEquals(LibDeflate:Adler32("1234"), 0x01F800CB)
+		lu.assertEquals(LibDeflate:Adler32("12345"), 0x02F80100)
+		lu.assertEquals(LibDeflate:Adler32("123456"), 0x042E0136)
+		lu.assertEquals(LibDeflate:Adler32("1234567"), 0x059B016D)
+		lu.assertEquals(LibDeflate:Adler32("12345678"), 0x074001A5)
+		lu.assertEquals(LibDeflate:Adler32("123456789"), 0x091E01DE)
+		lu.assertEquals(LibDeflate:Adler32("1234567890"), 0x0B2C020E)
+		lu.assertEquals(LibDeflate:Adler32("1234567890a"), 0x0D9B026F)
+		lu.assertEquals(LibDeflate:Adler32("1234567890ab"), 0x106C02D1)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abc"), 0x13A00334)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abcd"), 0x17380398)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abcde"), 0x1B3503FD)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abcdef"), 0x1F980463)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abcefg"), 0x1F9E0466)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abcefgh"), 0x246C04CE)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abcefghi"), 0x29A30537)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abcefghij"), 0x2F4405A1)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abcefghijk"), 0x3550060C)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abcefghijkl"), 0x3BC80678)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abcefghijklm"), 0x42AD06E5)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abcefghijklmn"), 0x4A000753)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0x8C40150C)
 		local adler32Test = GetFileData("tests/data/adler32Test.txt")
-		lu.assertEquals(Lib:Adler32(adler32Test), 0x5D9BAF5D)
-		lu.assertEquals(Lib:Adler32(adler32Test, 2), 0x9077AEF9)
-		lu.assertEquals(Lib:Adler32(adler32Test, 2, adler32Test:len()-1), 0xE16FAEC4)
-		lu.assertEquals(Lib:Adler32(adler32Test, nil, adler32Test:len()-1), 0xAE2FAF28)
-		lu.assertEquals(Lib:Adler32(adler32Test, 2, 1), 1)
+		lu.assertEquals(LibDeflate:Adler32(adler32Test), 0x5D9BAF5D)
+		lu.assertEquals(LibDeflate:Adler32(adler32Test, 2), 0x9077AEF9)
+		lu.assertEquals(LibDeflate:Adler32(adler32Test, 2, adler32Test:len()-1), 0xE16FAEC4)
+		lu.assertEquals(LibDeflate:Adler32(adler32Test, nil, adler32Test:len()-1), 0xAE2FAF28)
+		lu.assertEquals(LibDeflate:Adler32(adler32Test, 2, 1), 1)
 		local adler32Test2 = GetFileData("tests/data/adler32Test2.txt")
-		lu.assertEquals(Lib:Adler32(adler32Test2), 0xD6A07E29)
+		lu.assertEquals(LibDeflate:Adler32(adler32Test2), 0xD6A07E29)
 	end
 local runner = lu.LuaUnit.new()
 os.exit( runner:runSuite())
