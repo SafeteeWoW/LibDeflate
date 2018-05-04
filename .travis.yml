@@ -31,11 +31,11 @@ before_install:
 script:
   - luacheck -g -u .
   - lua tests/LibDeflateTest.lua --verbose --shuffle
-  # converage test makes it too slow. so only run in luajit
-  - if [[ "$LUA" == "luajit" ]]; lua -lluacov tests/LibDeflateTest.lua --verbose --shuffle; fi
+  # converage test makes it too slow. so only run once in luajit linux
+  - if [[ "$LUA" == "luajit" && "$TRAVIS_OS_NAME" == "linux" ]]; then lua -lluacov tests/LibDeflateTest.lua --verbose --shuffle; fi
 
 after_success:
-  - if [[ "$LUA" == "luajit" ]]; luacov-coveralls -v --include %./LibDeflate.lua; fi
+  - if [[ "$LUA" == "luajit" && "$TRAVIS_OS_NAME" == "linux" ]]; then luacov-coveralls -v --include %./LibDeflate.lua; fi
 
 notifications:
   email:
