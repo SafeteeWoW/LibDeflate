@@ -15,7 +15,7 @@ local ipairs = ipairs
 local print = print
 local tostring = tostring
 local string_byte = string.byte
-local unpack = unpack
+local unpack = unpack or table.unpack
 math.randomseed(0) -- I don't like true random tests that I cant 100% reproduce.
 
 local function OpenFile(fileName, mode)
