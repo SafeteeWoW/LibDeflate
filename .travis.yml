@@ -30,13 +30,12 @@ before_install:
 
 script:
   - luacheck -g -u .
-  #- lua -v -lluacov tests/LibDeflateTest.lua --shuffle
-  # converage test makes it too slow.
   - lua tests/LibDeflateTest.lua --verbose --shuffle
+  # converage test makes it too slow. so only run in luajit
+  - if [[ "$LUA" == "luajit" ]]; lua -lluacov tests/LibDeflateTest.lua --verbose --shuffle; fi
 
 after_success:
-  # - luacov-coveralls -v --include %./LibDeflate.lua
-  # converage test is a good thing, but not for this project.
+  - if [[ "$LUA" == "luajit" ]]; luacov-coveralls -v --include %./LibDeflate.lua; fi
 
 notifications:
   email:
