@@ -369,17 +369,17 @@ if args and #args >= 1 and type(args[0]) == "string" then
 	end
 end
 
-TestMin1Strings = {}
-	function TestMin1Strings:testEmpty()
+TestBasicStrings = {}
+	function TestBasicStrings:testEmpty()
 		CheckCompressAndDecompressString("", "all")
 	end
-	function TestMin1Strings:testAllLiterals1()
+	function TestBasicStrings:testAllLiterals1()
 		CheckCompressAndDecompressString("ab", "all")
 	end
-	function TestMin1Strings:testAllLiterals2()
+	function TestBasicStrings:testAllLiterals2()
 		CheckCompressAndDecompressString("abcdefgh", "all")
 	end
-	function TestMin1Strings:testAllLiterals3()
+	function TestBasicStrings:testAllLiterals3()
 		local t = {}
 		for i=0, 255 do
 			t[#t+1] = string.char(i)
@@ -388,15 +388,15 @@ TestMin1Strings = {}
 		CheckCompressAndDecompressString(str, "all")
 	end
 
-	function TestMin1Strings:testRepeat()
+	function TestBasicStrings:testRepeat()
 		CheckCompressAndDecompressString("aaaaaaaaaaaaaaaaaa", "all")
 	end
 
-	function TestMin1Strings:testRepeatInTheMiddle()
+	function TestBasicStrings:testRepeatInTheMiddle()
 		CheckCompressAndDecompressString("aaaaaaaaaaaaaaaaaa", "all", nil, nil, nil, 2, 8)
 	end
 
-	function TestMin1Strings:testLongRepeat()
+	function TestBasicStrings:testLongRepeat()
 		local repeated = {}
 		for i=1, 100000 do
 			repeated[i] = "c"
@@ -404,155 +404,155 @@ TestMin1Strings = {}
 		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
 
-TestMin2MyData = {}
-	function TestMin2MyData:TestItemStrings()
+TestMyData = {}
+	function TestMyData:TestItemStrings()
 		CheckCompressAndDecompressFile("tests/data/itemStrings.txt", "all")
 	end
 
-	function TestMin2MyData:TestSmallTest()
+	function TestMyData:TestSmallTest()
 		CheckCompressAndDecompressFile("tests/data/smalltest.txt", "all")
 	end
 
-	function TestMin2MyData:TestSmallTestInTheMiddle()
+	function TestMyData:TestSmallTestInTheMiddle()
 		CheckCompressAndDecompressFile("tests/data/smalltest.txt", "all", nil, 10, GetFileSize("tests/data/smalltest.txt")-10)
 	end
 
-	function TestMin2MyData:TestReconnectData()
+	function TestMyData:TestReconnectData()
 		CheckCompressAndDecompressFile("tests/data/reconnectData.txt", "all")
 	end
 
-TestMin3ThirdPartySmall = {}
-	function TestMin3ThirdPartySmall:TestEmpty()
+TestThirdPartySmall = {}
+	function TestThirdPartySmall:TestEmpty()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/empty", "all")
 	end
 
-	function TestMin3ThirdPartySmall:TestX()
+	function TestThirdPartySmall:TestX()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/x", "all")
 	end
 
-	function TestMin3ThirdPartySmall:TestXYZZY()
+	function TestThirdPartySmall:TestXYZZY()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/xyzzy", "all")
 	end
 
-Test4ThirdPartyMedium = {}
-	function Test4ThirdPartyMedium:Test10x10y()
+TestThirdPartyMedium = {}
+	function TestThirdPartyMedium:Test10x10y()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/10x10y", "all")
 	end
 
-	function Test4ThirdPartyMedium:TestQuickFox()
+	function TestThirdPartyMedium:TestQuickFox()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/quickfox", "all")
 	end
 
-	function Test4ThirdPartyMedium:Test64x()
+	function TestThirdPartyMedium:Test64x()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/64x", "all")
 	end
 
-	function Test4ThirdPartyMedium:TestUkkonoona()
+	function TestThirdPartyMedium:TestUkkonoona()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/ukkonooa", "all")
 	end
 
-	function Test4ThirdPartyMedium:TestMonkey()
+	function TestThirdPartyMedium:TestMonkey()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/monkey", "all")
 	end
 
-	function Test4ThirdPartyMedium:TestRandomChunks()
+	function TestThirdPartyMedium:TestRandomChunks()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/random_chunks", "all")
 	end
 
-	function Test4ThirdPartyMedium:TestGrammerLsp()
+	function TestThirdPartyMedium:TestGrammerLsp()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/grammar.lsp", "all")
 	end
 
-	function Test4ThirdPartyMedium:TestXargs1()
+	function TestThirdPartyMedium:TestXargs1()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/xargs.1", "all")
 	end
 
-	function Test4ThirdPartyMedium:TestRandomOrg10KBin()
+	function TestThirdPartyMedium:TestRandomOrg10KBin()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/random_org_10k.bin", "all")
 	end
 
-	function Test4ThirdPartyMedium:TestCpHtml()
+	function TestThirdPartyMedium:TestCpHtml()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/cp.html", "all")
 	end
 
-	function Test4ThirdPartyMedium:TestBadData1Snappy()
+	function TestThirdPartyMedium:TestBadData1Snappy()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/baddata1.snappy", "all")
 	end
 
-	function Test4ThirdPartyMedium:TestBadData2Snappy()
+	function TestThirdPartyMedium:TestBadData2Snappy()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/baddata2.snappy", "all")
 	end
 
-	function Test4ThirdPartyMedium:TestBadData3Snappy()
+	function TestThirdPartyMedium:TestBadData3Snappy()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/baddata3.snappy", "all")
 	end
 
-	function Test4ThirdPartyMedium:TestSum()
+	function TestThirdPartyMedium:TestSum()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/sum", "all")
 	end
 
-Test5_64K = {}
-	function Test5_64K:Test64KFile()
+Test_64K = {}
+	function Test_64K:Test64KFile()
 		CheckCompressAndDecompressFile("tests/data/64k.txt", "all")
 	end
-	function Test5_64K:Test64KFilePlus1()
+	function Test_64K:Test64KFilePlus1()
 		CheckCompressAndDecompressFile("tests/data/64kplus1.txt", "all")
 	end
-	function Test5_64K:Test64KFilePlus2()
+	function Test_64K:Test64KFilePlus2()
 		CheckCompressAndDecompressFile("tests/data/64kplus2.txt", "all")
 	end
-	function Test5_64K:Test64KFilePlus3()
+	function Test_64K:Test64KFilePlus3()
 		CheckCompressAndDecompressFile("tests/data/64kplus3.txt", "all")
 	end
-	function Test5_64K:Test64KFilePlus4()
+	function Test_64K:Test64KFilePlus4()
 		CheckCompressAndDecompressFile("tests/data/64kplus4.txt", "all")
 	end
-	function Test5_64K:Test64KFileMinus1()
+	function Test_64K:Test64KFileMinus1()
 		CheckCompressAndDecompressFile("tests/data/64kminus1.txt", "all")
 	end
-	function Test5_64K:Test64KRepeated()
+	function Test_64K:Test64KRepeated()
 		local repeated = {}
 		for i=1, 65536 do
 			repeated[i] = "c"
 		end
 		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
-	function Test5_64K:Test64KRepeatedPlus1()
+	function Test_64K:Test64KRepeatedPlus1()
 		local repeated = {}
 		for i=1, 65536+1 do
 			repeated[i] = "c"
 		end
 		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
-	function Test5_64K:Test64KRepeatedPlus2()
+	function Test_64K:Test64KRepeatedPlus2()
 		local repeated = {}
 		for i=1, 65536+2 do
 			repeated[i] = "c"
 		end
 		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
-	function Test5_64K:Test64KRepeatedPlus3()
+	function Test_64K:Test64KRepeatedPlus3()
 		local repeated = {}
 		for i=1, 65536+3 do
 			repeated[i] = "c"
 		end
 		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
-	function Test5_64K:Test64KRepeatedPlus4()
+	function Test_64K:Test64KRepeatedPlus4()
 		local repeated = {}
 		for i=1, 65536+4 do
 			repeated[i] = "c"
 		end
 		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
-	function Test5_64K:Test64KRepeatedMinus1()
+	function Test_64K:Test64KRepeatedMinus1()
 		local repeated = {}
 		for i=1, 65536-1 do
 			repeated[i] = "c"
 		end
 		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
-	function Test5_64K:Test64KRepeatedMinus2()
+	function Test_64K:Test64KRepeatedMinus2()
 		local repeated = {}
 		for i=1, 65536-2 do
 			repeated[i] = "c"
@@ -561,76 +561,76 @@ Test5_64K = {}
 	end
 
 -- > 64K
-Test6ThirdPartyBig = {}
-	function Test6ThirdPartyBig:TestBackward65536()
+TestThirdPartyBig = {}
+	function TestThirdPartyBig:TestBackward65536()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/backward65536", "all")
 	end
-	function Test6ThirdPartyBig:TestHTML()
+	function TestThirdPartyBig:TestHTML()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/html", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:TestPaper100kPdf()
+	function TestThirdPartyBig:TestPaper100kPdf()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/paper-100k.pdf", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:TestGeoProtodata()
+	function TestThirdPartyBig:TestGeoProtodata()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/geo.protodata", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:TestFireworksJpeg()
+	function TestThirdPartyBig:TestFireworksJpeg()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/fireworks.jpeg", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:TestAsyoulik()
+	function TestThirdPartyBig:TestAsyoulik()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/asyoulik.txt", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:TestCompressedRepeated()
+	function TestThirdPartyBig:TestCompressedRepeated()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/compressed_repeated", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:TestAlice29()
+	function TestThirdPartyBig:TestAlice29()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/alice29.txt", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:TestQuickfox_repeated()
+	function TestThirdPartyBig:TestQuickfox_repeated()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/quickfox_repeated", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:TestKppknGtb()
+	function TestThirdPartyBig:TestKppknGtb()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/kppkn.gtb", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:TestZeros()
+	function TestThirdPartyBig:TestZeros()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/zeros", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:TestMapsdatazrh()
+	function TestThirdPartyBig:TestMapsdatazrh()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/mapsdatazrh", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:TestHtml_x_4()
+	function TestThirdPartyBig:TestHtml_x_4()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/html_x_4", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:TestLcet10()
+	function TestThirdPartyBig:TestLcet10()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/lcet10.txt", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:TestPlrabn12()
+	function TestThirdPartyBig:TestPlrabn12()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/plrabn12.txt", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:Testptt5()
+	function TestThirdPartyBig:Testptt5()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/ptt5", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:TestUrls10K()
+	function TestThirdPartyBig:TestUrls10K()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/urls.10K", {1,2,3,4,5})
 	end
-	function Test6ThirdPartyBig:TestKennedyXls()
+	function TestThirdPartyBig:TestKennedyXls()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/kennedy.xls", {1,2,3,4,5})
 	end
 
-Test7WoWData = {}
-	function Test7WoWData:TestWarlockWeakAuras()
+TestWoWData = {}
+	function TestWoWData:TestWarlockWeakAuras()
 		CheckCompressAndDecompressFile("tests/data/warlockWeakAuras.txt", "all")
 	end
 
-TestMin8Decompress = {}
+TestDecompress = {}
 	-- Test from puff
-	function TestMin8Decompress:TestStoreEmpty()
+	function TestDecompress:TestStoreEmpty()
 		CheckDecompressIncludingError("\001\000\000\255\255", "")
 	end
-	function TestMin8Decompress:TestStore1()
+	function TestDecompress:TestStore1()
 		CheckDecompressIncludingError("\001\001\000\254\255\010", "\010")
 	end
-	function TestMin8Decompress:TestStore2()
+	function TestDecompress:TestStore2()
 		local t = {}
 		for i=1, 65535 do
 			t[i] = "a"
@@ -638,7 +638,7 @@ TestMin8Decompress = {}
 		local str = table.concat(t)
 		CheckDecompressIncludingError("\001\255\255\000\000"..str, str)
 	end
-	function TestMin8Decompress:TestStore3()
+	function TestDecompress:TestStore3()
 		local t = {}
 		for i=1, 65535 do
 			t[i] = "a"
@@ -646,17 +646,17 @@ TestMin8Decompress = {}
 		local str = table.concat(t)
 		CheckDecompressIncludingError("\000\255\255\000\000"..str.."\001\255\255\000\000"..str, str..str)
 	end
-	function TestMin8Decompress:TestStore4()
+	function TestDecompress:TestStore4()
 		-- 0101 00fe ff31
 		CheckDecompressIncludingError("\001\001\000\254\255\049", "1")
 	end
-	function TestMin8Decompress:TestStore5()
+	function TestDecompress:TestStore5()
 		local size = 0x5555
 		local str = GetRandomString(size)
 		CheckDecompressIncludingError("\001\085\085\170\170"..str, str)
 	end
 
-	function TestMin8Decompress:TestStoreRandom()
+	function TestDecompress:TestStoreRandom()
 		for i = 1, 20 do
 			local size = math.random(1, 65535)
 			local str = GetRandomString(size)
@@ -665,13 +665,13 @@ TestMin8Decompress = {}
 				..string.char(255-size%256)..string.char(255-(size-size%256)/256)..str, str)
 		end
 	end
-	function TestMin8Decompress:TestFix1()
+	function TestDecompress:TestFix1()
 		CheckDecompressIncludingError("\003\000", "")
 	end
-	function TestMin8Decompress:TestFix2()
+	function TestDecompress:TestFix2()
 		CheckDecompressIncludingError("\051\004\000", "1")
 	end
-	function TestMin8Decompress:TestFixThenStore1()
+	function TestDecompress:TestFixThenStore1()
 		local t = {}
 		for i=1, 65535 do
 			t[i] = "a"
@@ -679,11 +679,11 @@ TestMin8Decompress = {}
 		local str = table.concat(t)
 		CheckDecompressIncludingError("\050\004\000\255\255\000\000"..str.."\001\255\255\000\000"..str, "1"..str..str)
 	end
-	function TestMin8Decompress:TestIncomplete()
+	function TestDecompress:TestIncomplete()
 		-- Additonal 1 byte after the end of compression data
 		CheckDecompressIncludingError("\001\001\000\254\255\010\000", "\010")
 	end
-	function TestMin8Decompress:TestInTheMiddle()
+	function TestDecompress:TestInTheMiddle()
 		-- Additonal 1 byte before and 1 byte after.
 		CheckDecompressIncludingError("\001\001\001\000\254\255\010\001", "\010", 2, 7)
 	end
@@ -693,7 +693,7 @@ TestMin9Internals = {}
 	function TestMin9Internals:TestLoadString()
 		local loadStrToTable = LibDeflate.internals.loadStrToTable
 		local tmp
-		for _=1, 1000 do
+		for _=1, 50 do
 			local t = {}
 			local strLen = math.random(0, 1000)
 			local str = GetRandomString(strLen)
@@ -731,7 +731,7 @@ TestMin9Internals = {}
 	function TestMin9Internals:TestSimpleRandom()
 		local compressEmpty = LibDeflate:Compress("")
 		lu.assertEquals(LibDeflate:Decompress(compressEmpty), "", "My decompress does not match origin for empty string.")
-		for _=1, 3000 do
+		for _=1, 50 do
 			local tmp
 			local strLen = math.random(0, 1000)
 			local str = GetRandomString(strLen)
@@ -799,5 +799,26 @@ TestMin9Internals = {}
 		local adler32Test2 = GetFileData("tests/data/adler32Test2.txt")
 		lu.assertEquals(LibDeflate:Adler32(adler32Test2), 0xD6A07E29)
 	end
+
+local function AddToCoverageTest(suite, test)
+	assert(suite)
+	assert(type(suite[test]) == "function")
+	CodeCoverage[test] = function(_, ...) return suite[test](_G[suite], ...) end
+end
+local function AddAllToCoverageTest(suite)
+	for k, _ in pairs(suite) do
+		AddToCoverageTest(suite, k)
+	end
+end
+
+CodeCoverage = {}
+	AddAllToCoverageTest(TestBasicStrings)
+	AddAllToCoverageTest(TestMyData)
+	AddAllToCoverageTest(TestWoWData)
+	AddAllToCoverageTest(TestDecompress)
+	AddAllToCoverageTest(TestMin9Internals)
+	AddToCoverageTest(TestThirdPartyBig, "TestUrls10K")
+
+
 local runner = lu.LuaUnit.new()
 os.exit( runner:runSuite())
