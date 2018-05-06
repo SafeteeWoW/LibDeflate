@@ -930,7 +930,7 @@ TestDecompress = {}
 		-- Copy direct from output
 		CheckDecompressIncludingError(HexToString("63 0 3 0 0 0 0 0"), ("\000"):rep(6))
 	end
-	function TestDecompress:MyAdditionalCoverage()
+	function TestDecompress:TestAdditionalCoverage()
 		CheckDecompressIncludingError(HexToString("78"), nil, nil, nil, true) -- no zlib FLG
 		CheckDecompressIncludingError(HexToString("1"), nil) -- Stored block no len
 		CheckDecompressIncludingError(HexToString("1 1 0"), nil) -- Stored block no len comp
