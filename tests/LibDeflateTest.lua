@@ -708,14 +708,14 @@ TestThirdPartyBig = {}
 	function TestThirdPartyBig:TestPlrabn12()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/plrabn12.txt", {1,2,3,4,5})
 	end
-	function TestThirdPartyBig:Testptt5()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/ptt5", {1,2,3,4,5})
-	end
 	function TestThirdPartyBig:TestUrls10K()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/urls.10K", {1,2,3,4,5})
 	end
+	function TestThirdPartyBig:Testptt5()
+		CheckCompressAndDecompressFile("tests/data/3rdparty/ptt5", {1,2,3,4})
+	end
 	function TestThirdPartyBig:TestKennedyXls()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/kennedy.xls", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/kennedy.xls", {1,2,3,4})
 	end
 
 TestWoWData = {}
