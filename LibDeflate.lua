@@ -18,15 +18,21 @@
 
 local LibDeflate
 if LibStub then
-	local MAJOR,MINOR = "LibDeflate-1.0", -1
-	LibDeflate = LibStub:NewLibrary(MAJOR, MINOR)
-	if not LibDeflate then
-		return LibStub:GetLibrary(MAJOR)
+	local MAJOR, MINOR = "LibDeflate", -1
+	-- When MAJOR is changed, I should name it as LibDeflate2
+	local lib, minor = LibStub:GetLibrary(MAJOR, true)
+	if lib and minor and minor >= MINOR then -- No need to update.
+		return lib
+	else -- Update or first time register
+		LibDeflate = LibStub:NewLibrary(MAJOR, MINOR)
+		-- NOTE: It is important that new version has implemented all exported APIs and tables in the old version,
+		-- so the old library is fully garbage collected, and we 100% ensure the backward compatibility.
 	end
 else
-	-- TODO: Cleanup tables in the old version
 	LibDeflate = {}
 end
+
+LibDeflate._VERSION = -1
 
 -- local is faster than global
 local assert = assert
@@ -1022,7 +1028,6 @@ local function Deflate(WriteBits, Flush, WriteString, str, level, start, stop)
 					lCodes, lExtraBits, dCodes, dExtraBits, HLIT, HDIST, HCLEN,
 					codeLensCodeLens, codeLensCodeCodes, rleCodes, rleExtraBits, lCodeLens, lCodeCodes, dCodeLens, dCodeCodes)
 			totalBitSize = totalBitSize + dynamicBlockBitSize
-			-- print("Choose Fix block because it is smaller! "..(dynamicBlockBitSize-fixBlockBitSize))
 		end
 
 		result, bitsWritten = Flush()
@@ -1199,6 +1204,9 @@ local function CreateReader(inputString, start, stop)
 	-- To improve speed, this function does not check if the input has been exhausted.
 	-- Use ReaderBitsLeft() < 0 to check it.
 	local function Decode(huffmanLenCount, huffmanSymbol, minLen)
+		if minLen <= 0 then -- No code but attempt to decode
+			return -10
+		end
 		if cacheBitRemaining < 15 and input then
 			local lShiftMask = _pow2[cacheBitRemaining]
 			local byte1, byte2, byte3, byte4 = string_byte(input, inputNextBytePos, inputNextBytePos+3)
@@ -1261,7 +1269,7 @@ local function ConstructInflateHuffman(huffmanLen, n, maxBitLength)
 	end
 
 	if huffmanLenCount[0] == n then -- No Codes
-		return 0  -- Complete, but decode will fail
+		return 0, huffmanLenCount, {}, 0  -- Complete, but decode will fail
 	end
 
 	local left = 1

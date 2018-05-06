@@ -14,9 +14,90 @@ local io = io
 local ipairs = ipairs
 local print = print
 local tostring = tostring
+local string_char = string.char
 local string_byte = string.byte
 local unpack = unpack or table.unpack
 math.randomseed(0) -- I don't like true random tests that I cant 100% reproduce.
+
+local _byte0 = string_byte("0", 1)
+local _byte9 = string_byte("9", 1)
+local _byteA = string_byte("A", 1)
+local _byteF = string_byte("F", 1)
+local _bytea = string_byte("a", 1)
+local _bytef = string_byte("f", 1)
+local function HexToString(str)
+	local t = {}
+	local val = 1
+	for i=1, str:len()+1 do
+		local b = string_byte(str, i, i) or -1
+		if b >= _byte0 and b <= _byte9 then
+			val = val*16 + b - _byte0
+		elseif b >= _byteA and b <= _byteF then
+			val = val*16 + b - _byteA + 10
+		elseif b >= _bytea and b <= _bytef then
+			val = val*16 + b - _bytea + 10
+		elseif val ~= 1 and val < 32 then  -- one digit followed by delimiter
+            val = val + 240                 -- make it look like two digits
+		end
+		if val > 255 then
+			t[#t+1] = string_char(val % 256)
+			val = 1
+		end
+	end
+	return table.concat(t)
+end
+assert(HexToString("f") == string_char(15))
+assert(HexToString("1f") == string_char(31))
+assert(HexToString("1f 2") == string_char(31)..string_char(2))
+assert(HexToString("1f 22") == string_char(31)..string_char(34))
+assert(HexToString("F") == string_char(15))
+assert(HexToString("1F") == string_char(31))
+assert(HexToString("1F 2") == string_char(31)..string_char(2))
+assert(HexToString("1F 22") == string_char(31)..string_char(34))
+
+assert(HexToString("a") == string_char(10))
+assert(HexToString("1a") == string_char(26))
+assert(HexToString("1a 90") == string_char(26)..string_char(144))
+assert(HexToString("1a 9") == string_char(26)..string_char(9))
+assert(HexToString("A") == string_char(10))
+assert(HexToString("1A") == string_char(26))
+assert(HexToString("1A 09") == string_char(26)..string_char(9))
+assert(HexToString("1A 00") == string_char(26)..string_char(0))
+
+local function HalfByteToHex(halfByte)
+	assert (halfByte >= 0 and halfByte < 16)
+	if halfByte < 10 then
+		return string_char(_byte0 + halfByte)
+	else
+		return string_char(_bytea + halfByte-10)
+	end
+end
+
+local function StringToHex(str)
+	local tmp = {}
+	for i = 1, str:len() do
+		local b = string_byte(str, i, i)
+		if b < 16 then
+			tmp[#tmp+1] = "0"..HalfByteToHex(b)
+		else
+			tmp[#tmp+1] = HalfByteToHex((b-b%16)/16)..HalfByteToHex(b%16)
+		end
+	end
+	return table.concat(tmp, " ")
+end
+assert (StringToHex("\000"), "00")
+assert (StringToHex("\000\255"), "00 ff")
+assert (StringToHex(HexToString("05 e0 81 91 24 cb b2 2c 49 e2 0f 2e 8b 9a 47 56 9f fb fe ec d2 ff 1f"))
+	== "05 e0 81 91 24 cb b2 2c 49 e2 0f 2e 8b 9a 47 56 9f fb fe ec d2 ff 1f")
+
+-- Return a string with limited size
+local function StringForPrint(str)
+	if str:len() < 101 then
+		return str
+	else
+		return str:sub(1, 101)..(" (%d more characters not shown)"):format(str:len()-101)
+	end
+end
 
 local function OpenFile(fileName, mode)
 	local f = io.open(fileName, mode)
@@ -43,7 +124,7 @@ local function WriteToFile(fileName, data)
 	f:close()
 end
 
-local function GetRandomString(strLen)
+local function GetLimitedRandomString(strLen)
 	local randoms = {}
 	for _=1, 7 do
 		randoms[#randoms+1] = string.char(math.random(1, 255))
@@ -51,6 +132,14 @@ local function GetRandomString(strLen)
 	local tmp = {}
 	for _=1, strLen do
 		tmp[#tmp+1] = randoms[math.random(1, 7)]
+	end
+	return table.concat(tmp)
+end
+
+local function GetRandomString(strLen)
+	local tmp = {}
+	for _=1, strLen do
+		tmp[#tmp+1] = string_char(math.random(0, 255))
 	end
 	return table.concat(tmp)
 end
@@ -296,13 +385,19 @@ local function CheckCompressAndDecompress(stringOrFileName, isFile, levels, star
 	return 0
 end
 
-local function CheckDecompressIncludingError(compress, decompress, start, stop)
+local function CheckDecompressIncludingError(compress, decompress, start, stop, isZlib)
 	start = start or 1
 	stop = stop or compress:len()
-	local d, decompress_return = LibDeflate:Decompress(compress, start, stop)
+	local d, decompress_return
+	if isZlib then
+		d, decompress_return = LibDeflate:DecompressZlib(compress, start, stop)
+	else
+		d, decompress_return = LibDeflate:Decompress(compress, start, stop)
+	end
 	if d ~= decompress then
 		lu.assertTrue(false, ("My decompress does not match expected result."..
-			"expected: %s, actual: %s, Returned status of decompress: %d"):format(decompress, d, decompress_return))
+			"expected: %s, actual: %s, Returned status of decompress: %d")
+			:format(StringForPrint(StringToHex(d)), StringForPrint(StringToHex(decompress)), decompress_return))
 	else
 		-- Check my decompress result with "puff"
 		local inputFileName = "tmpFile"
@@ -313,32 +408,38 @@ local function CheckDecompressIncludingError(compress, decompress, start, stop)
 		inputFile:close()
 		local returnedStatus_puff, stdout_puff, stderr_puff = RunProgram("puff -w", inputFileName
 			, inputFileName..".decompress")
-		local returnedStatus_zdeflate, stdout_zdeflate, stderr_zdeflate = RunProgram("zdeflate -d <", inputFileName
-			, inputFileName..".decompress")
+		local returnedStatus_zdeflate, stdout_zdeflate, stderr_zdeflate =
+			RunProgram(isZlib and "zdeflate --zlib -d <" or "zdeflate -d <", inputFileName, inputFileName..".decompress")
 		if not d then
-			if returnedStatus_puff ~= 0 and returnedStatus_zdeflate ~= 0 then
-				print((">>>> %q cannot be decompress as expected"):format(compress:sub(1, 15)))
-			elseif returnedStatus_puff ~= 0 and returnedStatus_zdeflate == 0 then
-				lu.assertTrue(false, "Puff error but not zdeflate?")
-			elseif returnedStatus_puff == 0 and returnedStatus_zdeflate ~= 0 then
-				lu.assertTrue(false, "zDeflate error but not puff?")
+			if not isZlib then
+				if returnedStatus_puff ~= 0 and returnedStatus_zdeflate ~= 0 then
+					print((">>>> %q cannot be decompress as expected"):format((StringForPrint(StringToHex(compress)))))
+				elseif returnedStatus_puff ~= 0 and returnedStatus_zdeflate == 0 then
+					lu.assertTrue(false,
+					(">>>> %q puff error but not zdeflate?"):format((StringForPrint(StringToHex(compress)))))
+				elseif returnedStatus_puff == 0 and returnedStatus_zdeflate ~= 0 then
+					lu.assertTrue(false,
+					(">>>> %q zdeflate error but not puff?"):format((StringForPrint(StringToHex(compress)))))
+				else
+					lu.assertTrue(false,
+					(">>>> %q my decompress error, but not puff or zdeflate"):format((StringForPrint(StringToHex(compress)))))
+				end
 			else
-				lu.assertTrue(false, "My decompress returns error, but not puff and zdeflate.")
+				if returnedStatus_zdeflate ~= 0 then
+					print((">>>> %q cannot be zlib decompress as expected"):format(StringForPrint(StringToHex(compress))))
+				else
+					lu.assertTrue(false,
+					(">>>> %q my decompress error, but not zdeflate"):format((StringForPrint(StringToHex(compress)))))
+				end
 			end
 
 		else
-			if d == stdout_puff and d == stdout_zdeflate then
-				print((">>>> %q is decompress successfully"):format(compress:sub(1, 15)))
-			else
-				lu.assertTrue(false, "My decompress result does not match puff or zdeflate.")
+			AssertLongStringEqual(d, stdout_zdeflate)
+			if not isZlib then
+				AssertLongStringEqual(d, stdout_puff)
 			end
-			if decompress_return ~= 0 then
-				-- decompress_return is the number of unprocessed bytes in the data.
-				-- Some byte not processed, compare with puff and zdeflate
-				lu.assertEquals(("%d"):format(decompress_return), stderr_puff, "My decompress unprocessed bytes not match puff")
-				lu.assertEquals(("%d"):format(decompress_return), stderr_zdeflate,
-				 "My decompress unprocessed bytes not match zdeflate")
-			end
+			print((">>>> %q is decompressed to %q as expected")
+				:format(StringForPrint(StringToHex(compress)), StringForPrint(StringToHex(d))))
 		end
 	end
 
@@ -652,14 +753,14 @@ TestDecompress = {}
 	end
 	function TestDecompress:TestStore5()
 		local size = 0x5555
-		local str = GetRandomString(size)
+		local str = GetLimitedRandomString(size)
 		CheckDecompressIncludingError("\001\085\085\170\170"..str, str)
 	end
 
 	function TestDecompress:TestStoreRandom()
-		for i = 1, 20 do
+		for _ = 1, 20 do
 			local size = math.random(1, 65535)
-			local str = GetRandomString(size)
+			local str = GetLimitedRandomString(size)
 			CheckDecompressIncludingError("\001"..string.char(size%256)
 				..string.char((size-size%256)/256)
 				..string.char(255-size%256)..string.char(255-(size-size%256)/256)..str, str)
@@ -687,16 +788,146 @@ TestDecompress = {}
 		-- Additonal 1 byte before and 1 byte after.
 		CheckDecompressIncludingError("\001\001\001\000\254\255\010\001", "\010", 2, 7)
 	end
+	function TestDecompress:TestStoreSizeTooBig()
+		CheckDecompressIncludingError("\001\001\000\254\255", nil)
+		CheckDecompressIncludingError("\001\002\000\253\255\001", nil)
+	end
+	function TestDecompress:TestEmtpy()
+		CheckDecompressIncludingError("", nil)
+	end
+	function TestDecompress:TestOneByte()
+		for i=0, 255 do
+			CheckDecompressIncludingError(string.char(i), nil)
+		end
+	end
+	function TestDecompress:TestPuffReturn2()
+		CheckDecompressIncludingError("\000", nil)
+		CheckDecompressIncludingError("\002", nil)
+		CheckDecompressIncludingError("\004", nil)
+		CheckDecompressIncludingError(HexToString("00 01 00 fe ff"), nil)
+		CheckDecompressIncludingError(HexToString("04 80 49 92 24 49 92 24 0f b4 ff ff c3 04"), nil)
+	end
+	function TestDecompress:TestPuffReturn245()
+		CheckDecompressIncludingError(HexToString("0c c0 81 00 00 00 00 00 90 ff 6b 04"), nil)
+	end
+	function TestDecompress:TestPuffReturn246()
+		CheckDecompressIncludingError(HexToString("1a 07"), nil)
+		CheckDecompressIncludingError(HexToString("02 7e ff ff"), nil)
+		CheckDecompressIncludingError(HexToString("04 c0 81 08 00 00 00 00 20 7f eb 0b 00 00"), nil)
+	end
+	function TestDecompress:TestPuffReturn247()
+		CheckDecompressIncludingError(HexToString("04 00 24 e9 ff 6d"), nil)
+	end
+	function TestDecompress:TestPuffReturn248()
+		CheckDecompressIncludingError(HexToString("04 80 49 92 24 49 92 24 0f b4 ff ff c3 84"), nil)
+	end
+	function TestDecompress:TestPuffReturn249()
+		CheckDecompressIncludingError(HexToString("04 80 49 92 24 49 92 24 71 ff ff 93 11 00"), nil)
+	end
+	function TestDecompress:TestPuffReturn250()
+		CheckDecompressIncludingError(HexToString("04 00 24 e9 ff ff"), nil)
+	end
+	function TestDecompress:TestPuffReturn251()
+		CheckDecompressIncludingError(HexToString("04 00 24 49"), nil)
+	end
+	function TestDecompress:TestPuffReturn252()
+		CheckDecompressIncludingError(HexToString("04 00 fe ff"), nil)
+	end
+	function TestDecompress:TestPuffReturn253()
+		CheckDecompressIncludingError(HexToString("fc 00 00"), nil)
+	end
+	function TestDecompress:TestPuffReturn254()
+		CheckDecompressIncludingError(HexToString("00 00 00 00 00"), nil)
+	end
+	function TestDecompress:TestZlibCoverSupport()
+		CheckDecompressIncludingError(HexToString("63 00"), nil)
+		CheckDecompressIncludingError(HexToString("63 18 05"), nil)
+		local tmp = {}
+		local zeros = table.concat(tmp)
+		CheckDecompressIncludingError(HexToString("63 18 68 30 d0 0 0"), ("\000"):rep(257))
+		CheckDecompressIncludingError(HexToString("3 00"), "")
+		CheckDecompressIncludingError("", nil)
+		CheckDecompressIncludingError("", nil, nil, nil, true)
+	end
+	function TestDecompress:TestZlibCoverWrap()
+		CheckDecompressIncludingError(HexToString("77 85"), nil, nil, nil, true) -- Bad zlib header
+		CheckDecompressIncludingError(HexToString("70 85"), nil, nil, nil, true) -- Bad zlib header
+		CheckDecompressIncludingError(HexToString("88 9c"), nil, nil, nil, true) -- Bad window size
+		CheckDecompressIncludingError(HexToString("f8 9c"), nil, nil, nil, true) -- Bad window size
+		CheckDecompressIncludingError(HexToString("78 90"), nil, nil, nil, true) -- Bad zlib header check
+		CheckDecompressIncludingError(HexToString("78 9c 63 00 00 00 01 00 01"), "\000", nil, nil, true) -- check Adler32
+		CheckDecompressIncludingError(HexToString("78 9c 63 00 00 00 01 00"), nil, nil, nil, true) -- Adler32 incomplete
+		CheckDecompressIncludingError(HexToString("78 9c 63 00 00 00 01 00 02"), nil, nil, nil, true) -- wrong Adler32
+		CheckDecompressIncludingError(HexToString("78 9c 63 0"), nil, nil, nil, true) -- no Adler32
+	end
+	function TestDecompress:TestZlibCoverInflate()
+		CheckDecompressIncludingError(HexToString("0 0 0 0 0"), nil) -- invalid store block length
+		CheckDecompressIncludingError(HexToString("3 0"), "", nil) -- Fixed block
+		CheckDecompressIncludingError(HexToString("6"), nil) -- Invalid block type
+		CheckDecompressIncludingError(HexToString("1 1 0 fe ff 0"), "\000") -- Stored block
+		CheckDecompressIncludingError(HexToString("fc 0 0"), nil) -- Too many length or distance symbols
+		CheckDecompressIncludingError(HexToString("4 0 fe ff"), nil) -- Invalid code lengths set
+		CheckDecompressIncludingError(HexToString("4 0 24 49 0"), nil) -- Invalid bit length repeat
+		CheckDecompressIncludingError(HexToString("4 0 24 e9 ff ff"), nil) -- Invalid bit length repeat
+		CheckDecompressIncludingError(HexToString("4 0 24 e9 ff 6d"), nil) -- Invalid code: missing end of block
+		-- Invalid literal/lengths set
+		CheckDecompressIncludingError(HexToString("4 80 49 92 24 49 92 24 71 ff ff 93 11 0"), nil)
+		-- Invalid distance set
+		CheckDecompressIncludingError(HexToString("4 80 49 92 24 49 92 24 f b4 ff ff c3 84"), nil)
+		-- Invalid literal/length code
+		CheckDecompressIncludingError(HexToString("4 c0 81 8 0 0 0 0 20 7f eb b 0 0"), nil)
+		CheckDecompressIncludingError(HexToString("2 7e ff ff"), nil) -- Invalid distance code
+		CheckDecompressIncludingError(HexToString("c c0 81 0 0 0 0 0 90 ff 6b 4 0"), nil) -- Invalid distance too far
+		CheckDecompressIncludingError(HexToString("1f 8b 8 0 0 0 0 0 0 0 3 0 0 0 0 1"), nil) -- incorrect data check
+		CheckDecompressIncludingError(HexToString("1f 8b 8 0 0 0 0 0 0 0 3 0 0 0 0 0 0 0 0 1"), nil) --incorrect length check
+		CheckDecompressIncludingError(HexToString("5 c0 21 d 0 0 0 80 b0 fe 6d 2f 91 6c"), "") -- pull 17
+		-- long code
+		CheckDecompressIncludingError(HexToString("05 e0 81 91 24 cb b2 2c 49 e2 0f 2e 8b 9a 47 56 9f fb fe ec d2 ff 1f"), "")
+		-- extra length
+		CheckDecompressIncludingError(HexToString("ed c0 1 1 0 0 0 40 20 ff 57 1b 42 2c 4f"), ("\000"):rep(516))
+		-- long distance and extra
+		CheckDecompressIncludingError(HexToString("ed cf c1 b1 2c 47 10 c4 30 fa 6f 35 1d 1 82 59 3d fb be 2e 2a fc f c")
+			, ("\000"):rep(518))
+		-- Window end
+		CheckDecompressIncludingError(HexToString("ed c0 81 0 0 0 0 80 a0 fd a9 17 a9 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0")
+			, nil)
+		-- inflate_fast TYPE return
+		CheckDecompressIncludingError(HexToString("2 8 20 80 0 3 0"), "")
+		-- Window wrap
+		CheckDecompressIncludingError(HexToString("63 18 5 40 c 0"), ("\000"):rep(262))
+	end
+	function TestDecompress:TestZlibCoverFast()
+		-- fast length extra bits
+		CheckDecompressIncludingError(
+			HexToString("e5 e0 81 ad 6d cb b2 2c c9 01 1e 59 63 ae 7d ee fb 4d fd b5 35 41 68"), nil)
+		-- fast distance extra bits
+		CheckDecompressIncludingError(
+			HexToString("25 fd 81 b5 6d 59 b6 6a 49 ea af 35 6 34 eb 8c b9 f6 b9 1e ef 67 49"), nil)
+		CheckDecompressIncludingError(HexToString("3 7e 0 0 0 0 0"), nil) -- Fast invalid distance code
+		CheckDecompressIncludingError(HexToString("1b 7 0 0 0 0 0"), nil) -- Fast literal/length code
+		-- fast 2nd level codes and too far back
+		CheckDecompressIncludingError(
+			HexToString("d c7 1 ae eb 38 c 4 41 a0 87 72 de df fb 1f b8 36 b1 38 5d ff ff 0"), nil)
+		-- Very common case
+		CheckDecompressIncludingError(
+			HexToString("63 18 5 8c 10 8 0 0 0 0"), ("\000"):rep(258)..("\000\001"):rep(4))
+		-- Continous and wrap aroudn window
+		CheckDecompressIncludingError(
+			HexToString("63 60 60 18 c9 0 8 18 18 18 26 c0 28 0 29 0 0 0")
+			, ("\000"):rep(261)..("\144")..("\000"):rep(6)..("\144\000"))
+		-- Copy direct from output
+		CheckDecompressIncludingError(HexToString("63 0 3 0 0 0 0 0"), ("\000"):rep(6))
+	end
 
-TestMin9Internals = {}
+TestInternals = {}
 	-- Test from puff
-	function TestMin9Internals:TestLoadString()
+	function TestInternals:TestLoadString()
 		local loadStrToTable = LibDeflate.internals.loadStrToTable
 		local tmp
 		for _=1, 50 do
 			local t = {}
 			local strLen = math.random(0, 1000)
-			local str = GetRandomString(strLen)
+			local str = GetLimitedRandomString(strLen)
 			local uncorruped_data = {}
 			for i=1, strLen do
 				uncorruped_data[i] = math.random(1, 12345)
@@ -728,13 +959,13 @@ TestMin9Internals = {}
 		end
 	end
 
-	function TestMin9Internals:TestSimpleRandom()
+	function TestInternals:TestSimpleRandom()
 		local compressEmpty = LibDeflate:Compress("")
 		lu.assertEquals(LibDeflate:Decompress(compressEmpty), "", "My decompress does not match origin for empty string.")
 		for _=1, 50 do
 			local tmp
 			local strLen = math.random(0, 1000)
-			local str = GetRandomString(strLen)
+			local str = GetLimitedRandomString(strLen)
 			local start = (math.random() < 0.5) and (math.random(0, strLen)) or nil
 			local stop = (math.random() < 0.5) and (math.random(0, strLen)) or nil
 			if start and stop and start > stop then
@@ -763,7 +994,7 @@ TestMin9Internals = {}
 		end
 	end
 
-	function TestMin9Internals:TestAdler32()
+	function TestInternals:TestAdler32()
 		lu.assertEquals(1, LibDeflate:Adler32(""))
 		lu.assertEquals(LibDeflate:Adler32("1"), 0x00320032)
 		lu.assertEquals(LibDeflate:Adler32("12"), 0x00960064)
@@ -800,6 +1031,70 @@ TestMin9Internals = {}
 		lu.assertEquals(LibDeflate:Adler32(adler32Test2), 0xD6A07E29)
 	end
 
+	function TestInternals:TestLibStub()
+		-- Start of LibStub
+		local LIBSTUB_MAJOR, LIBSTUB_MINOR = "LibStub", 2
+		local LibStub = _G[LIBSTUB_MAJOR]
+
+		if not LibStub or LibStub.minor < LIBSTUB_MINOR then
+			LibStub = LibStub or {libs = {}, minors = {} }
+			_G[LIBSTUB_MAJOR] = LibStub
+			LibStub.minor = LIBSTUB_MINOR
+			function LibStub:NewLibrary(major, minor)
+				assert(type(major) == "string", "Bad argument #2 to `NewLibrary' (string expected)")
+				minor = assert(tonumber(string.match(minor, "%d+")), "Minor version must either be a number or contain a number.")
+
+				local oldminor = self.minors[major]
+				if oldminor and oldminor >= minor then return nil end
+				self.minors[major], self.libs[major] = minor, self.libs[major] or {}
+				return self.libs[major], oldminor
+			end
+			function LibStub:GetLibrary(major, silent)
+				if not self.libs[major] and not silent then
+					error(("Cannot find a library instance of %q."):format(tostring(major)), 2)
+				end
+				return self.libs[major], self.minors[major]
+			end
+			function LibStub:IterateLibraries() return pairs(self.libs) end
+			setmetatable(LibStub, { __call = LibStub.GetLibrary })
+		end
+		-- End of LibStub
+		local MAJOR = "LibDeflate"
+		CheckCompressAndDecompressString("aaabbbcccddddddcccbbbaaa", "all")
+		LibDeflate = dofile("LibDeflate.lua")
+		lu.assertNotNil(LibDeflate, "LibStub does not return LibDeflate")
+		lu.assertEquals(LibStub:GetLibrary(MAJOR, true), LibDeflate, "Cant find LibDeflate in LibStub.")
+		CheckCompressAndDecompressString("aaabbbcccddddddcccbbbaaa", "all")
+		------------------------------------------------------
+		FullMemoryCollect()
+		local memory1 = math.floor(collectgarbage("collect")*1024)
+		local LibDeflateTmp = dofile("LibDeflate.lua")
+		lu.assertEquals(LibDeflateTmp, LibDeflate, "LibStub unexpectedly recreates the library.")
+		lu.assertNotNil(LibDeflate, "LibStub does not return LibDeflate")
+		lu.assertEquals(LibStub:GetLibrary(MAJOR, true), LibDeflate, "Cant find LibDeflate in LibStub.")
+		CheckCompressAndDecompressString("aaabbbcccddddddcccbbbaaa", "all")
+		FullMemoryCollect()
+		local memory2 = math.floor(collectgarbage("collect")*1024)
+		if not jit then
+			lu.assertTrue((memory2 - memory1 <= 32), ("Too much Memory leak after LibStub without update: %d")
+				:format(memory2-memory1))
+		end
+		----------------------------------------------------
+		LibStub.minors[MAJOR] = -1000
+		FullMemoryCollect()
+		local memory3 = math.floor(collectgarbage("collect")*1024)
+		LibDeflateTmp = dofile("LibDeflate.lua")
+		CheckCompressAndDecompressString("aaabbbcccddddddcccbbbaaa", "all")
+		FullMemoryCollect()
+		local memory4 = math.floor(collectgarbage("collect")*1024)
+		lu.assertEquals(LibDeflateTmp, LibDeflate, "LibStub unexpectedly recreates the library.")
+		lu.assertTrue(LibStub.minors[MAJOR] > -1000, "LibDeflate is not updated.")
+		if not jit then
+			lu.assertTrue((memory4 - memory3 <= 100), ("Too much Memory leak after LibStub update: %d")
+				:format(memory4-memory3))
+		end
+	end
+
 local function AddToCoverageTest(suite, test)
 	assert(suite)
 	assert(type(suite[test]) == "function")
@@ -816,9 +1111,37 @@ CodeCoverage = {}
 	AddAllToCoverageTest(TestMyData)
 	AddAllToCoverageTest(TestWoWData)
 	AddAllToCoverageTest(TestDecompress)
-	AddAllToCoverageTest(TestMin9Internals)
+	AddAllToCoverageTest(TestInternals)
 	AddToCoverageTest(TestThirdPartyBig, "TestUrls10K")
+	AddToCoverageTest(TestThirdPartyBig, "Testptt5")
+	AddToCoverageTest(TestThirdPartyBig, "TestKennedyXls")
 
-
+-- Check if decompress can give any lua error for random string.
+DecompressInfinite = {}
+	function DecompressInfinite:Test()
+		math.randomseed(os.time())
+		for _=1, 100000 do
+			local len = math.random(0, 10000)
+			local str = GetRandomString(len)
+			LibDeflate:Decompress(str)
+			LibDeflate:DecompressZlib(str)
+			print(StringForPrint(StringToHex(str)))
+		end
+	end
 local runner = lu.LuaUnit.new()
-os.exit( runner:runSuite())
+local exitCode = runner:runSuite()
+print("========================================================")
+print("LibDeflate", "Version:", LibDeflate._VERSION, "\n")
+print("Exported keys:")
+for k, v in pairs(LibDeflate) do
+	assert(type(k) == "string")
+	print(k, type(v))
+end
+print("--------------------------------------------------------")
+if exitCode == 0 then
+	print("TEST OK")
+else
+	print("TEST FAILED")
+end
+
+os.exit(exitCode)
