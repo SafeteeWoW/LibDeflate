@@ -165,7 +165,15 @@ end
 local function RunProgram(program, inputFileName, stdoutFileName)
 	local stderrFileName = stdoutFileName..".stderr"
 	local status, _, ret = os.execute(program.." "..inputFileName.. "> "..stdoutFileName.." 2> "..stderrFileName)
-	local returnedStatus = type(status) == "number" and status or ret or -255 -- lua 5.1 and 5.3 compatibilty
+	local returnedStatus
+	if type(status) == "number" then -- lua 5.1
+		returnedStatus = status
+	else -- Lua 5.2/5.3
+		returnedStatus = ret
+		if not status and ret == 0 then
+			returnedStatus = -1    -- Lua bug on Windows when the returned value is -1, ret is 0
+		end
+	end
 	local stdout = GetFileData(stdoutFileName)
 	local stderr = GetFileData(stderrFileName)
 	return returnedStatus, stdout, stderr
