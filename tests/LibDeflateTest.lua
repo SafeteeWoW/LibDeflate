@@ -74,6 +74,9 @@ local function HalfByteToHex(halfByte)
 end
 
 local function StringToHex(str)
+	if not str then
+		return "nil"
+	end
 	local tmp = {}
 	for i = 1, str:len() do
 		local b = string_byte(str, i, i)
@@ -247,7 +250,7 @@ local function CheckCompressAndDecompress(stringOrFileName, isFile, levels, star
 		if isFile then
 			compressFileName = stringOrFileName..".compress"
 		else
-			compressFileName = "string.compress"
+			compressFileName = "tests/string.compress"
 		end
 
 		local decompressFileName = compressFileName..".decompress"
@@ -337,7 +340,7 @@ local function CheckCompressAndDecompress(stringOrFileName, isFile, levels, star
 		end
 
 		-- Use all avaiable strategies of zdeflate to compress the data, and see if LibDeflate can decompress it.
-		local tmpFileName = "tmp.tmp"
+		local tmpFileName = "tests/tmp.tmp"
 		WriteToFile(tmpFileName, origin)
 
 		local zdeflate_level, zdeflate_strategy
@@ -408,7 +411,7 @@ local function CheckDecompressIncludingError(compress, decompress, start, stop, 
 			:format(StringForPrint(StringToHex(d)), StringForPrint(StringToHex(decompress)), decompress_return))
 	else
 		-- Check my decompress result with "puff"
-		local inputFileName = "tmpFile"
+		local inputFileName = "tests/tmpFile"
 		local inputFile = io.open(inputFileName, "wb")
 		inputFile:setvbuf("full")
 		inputFile:write(compress:sub(start, stop))
@@ -880,6 +883,7 @@ TestDecompress = {}
 		CheckDecompressIncludingError(HexToString("4 0 24 e9 ff 6d"), nil) -- Invalid code: missing end of block
 		-- Invalid literal/lengths set
 		CheckDecompressIncludingError(HexToString("4 80 49 92 24 49 92 24 71 ff ff 93 11 0"), nil)
+		CheckDecompressIncludingError(HexToString("4 80 49 92 24 49 92 24 71 ff ff 93 11 0"), nil)
 		-- Invalid distance set
 		CheckDecompressIncludingError(HexToString("4 80 49 92 24 49 92 24 f b4 ff ff c3 84"), nil)
 		-- Invalid literal/length code
@@ -925,6 +929,17 @@ TestDecompress = {}
 			, ("\000"):rep(261)..("\144")..("\000"):rep(6)..("\144\000"))
 		-- Copy direct from output
 		CheckDecompressIncludingError(HexToString("63 0 3 0 0 0 0 0"), ("\000"):rep(6))
+	end
+	function TestDecompress:MyAdditionalCoverage()
+		CheckDecompressIncludingError(HexToString("78"), nil, nil, nil, true) -- no zlib FLG
+		CheckDecompressIncludingError(HexToString("1"), nil) -- Stored block no len
+		CheckDecompressIncludingError(HexToString("1 1 0"), nil) -- Stored block no len comp
+		CheckDecompressIncludingError(HexToString("1 1 0 ff ff 0"), nil) -- Stored block not one's complement
+		CheckDecompressIncludingError(HexToString("1 1 0 fe fe 0"), nil) -- Stored block not one's complement
+		CheckDecompressIncludingError(HexToString("1 34 43 cb bc")..("\000"):rep(17204), ("\000"):rep(17204)) -- Stored block
+		-- Stored block with 1 less byte
+		CheckDecompressIncludingError(HexToString("1 34 43 cb bc")..("\000"):rep(17203), nil)
+		CheckDecompressIncludingError(HexToString("1 34 43 cb bc")..("\000"):rep(17202), nil)
 	end
 
 TestInternals = {}
@@ -1042,7 +1057,8 @@ TestInternals = {}
 	function TestInternals:TestLibStub()
 		-- Start of LibStub
 		local LIBSTUB_MAJOR, LIBSTUB_MINOR = "LibStub", 2
-		local LibStub = _G[LIBSTUB_MAJOR]
+		-- NOTE: It is intended that LibStub is global
+		LibStub = _G[LIBSTUB_MAJOR]
 
 		if not LibStub or LibStub.minor < LIBSTUB_MINOR then
 			LibStub = LibStub or {libs = {}, minors = {} }
@@ -1067,16 +1083,26 @@ TestInternals = {}
 			setmetatable(LibStub, { __call = LibStub.GetLibrary })
 		end
 		-- End of LibStub
+		local LibStub = _G.LibStub
+		lu.assertNotNil(LibStub, "LibStub not in global?")
 		local MAJOR = "LibDeflate"
 		CheckCompressAndDecompressString("aaabbbcccddddddcccbbbaaa", "all")
-		LibDeflate = dofile("LibDeflate.lua")
+		lu.assertNotNil(package.loaded["LibDeflate"], "LibDeflate is not loaded")
+		package.loaded["LibDeflate"] = nil
+		-- Not sure if luaconv can recognize code in dofile(), let's just use require
+		LibDeflate = require("LibDeflate")
+		lu.assertNotNil(package.loaded["LibDeflate"], "LibDeflate is not loaded")
 		lu.assertNotNil(LibDeflate, "LibStub does not return LibDeflate")
 		lu.assertEquals(LibStub:GetLibrary(MAJOR, true), LibDeflate, "Cant find LibDeflate in LibStub.")
 		CheckCompressAndDecompressString("aaabbbcccddddddcccbbbaaa", "all")
 		------------------------------------------------------
 		FullMemoryCollect()
 		local memory1 = math.floor(collectgarbage("collect")*1024)
-		local LibDeflateTmp = dofile("LibDeflate.lua")
+		lu.assertNotNil(package.loaded["LibDeflate"], "LibDeflate is not loaded")
+		package.loaded["LibDeflate"] = nil
+		-- Not sure if luaconv can recognize code in dofile(), let's just use require
+		local LibDeflateTmp = require("LibDeflate")
+		lu.assertNotNil(package.loaded["LibDeflate"], "LibDeflate is not loaded")
 		lu.assertEquals(LibDeflateTmp, LibDeflate, "LibStub unexpectedly recreates the library.")
 		lu.assertNotNil(LibDeflate, "LibStub does not return LibDeflate")
 		lu.assertEquals(LibStub:GetLibrary(MAJOR, true), LibDeflate, "Cant find LibDeflate in LibStub.")
@@ -1091,7 +1117,11 @@ TestInternals = {}
 		LibStub.minors[MAJOR] = -1000
 		FullMemoryCollect()
 		local memory3 = math.floor(collectgarbage("collect")*1024)
-		LibDeflateTmp = dofile("LibDeflate.lua")
+		lu.assertNotNil(package.loaded["LibDeflate"], "LibDeflate is not loaded")
+		package.loaded["LibDeflate"] = nil
+		-- Not sure if luaconv can recognize code in dofile(), let's just use require
+		LibDeflateTmp = require("LibDeflate")
+		lu.assertNotNil(package.loaded["LibDeflate"], "LibDeflate is not loaded")
 		CheckCompressAndDecompressString("aaabbbcccddddddcccbbbaaa", "all")
 		FullMemoryCollect()
 		local memory4 = math.floor(collectgarbage("collect")*1024)
@@ -1123,6 +1153,9 @@ CodeCoverage = {}
 	AddToCoverageTest(TestThirdPartyBig, "TestUrls10K")
 	AddToCoverageTest(TestThirdPartyBig, "Testptt5")
 	AddToCoverageTest(TestThirdPartyBig, "TestKennedyXls")
+	AddToCoverageTest(TestThirdPartyBig, "TestGeoProtodata")
+	AddToCoverageTest(TestThirdPartyBig, "TestPaper100kPdf")
+	AddToCoverageTest(TestThirdPartyBig, "TestMapsdatazrh")
 
 -- Check if decompress can give any lua error for random string.
 DecompressInfinite = {}

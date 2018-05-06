@@ -1167,7 +1167,7 @@ local function CreateReader(inputString, start, stop)
 		end
 		cacheBitRemaining = cacheBitRemaining - byteFromCache*8
 		length = length - byteFromCache
-		if (stop - inputNextBytePos + 1) * 8 + cacheBitRemaining < 0 then
+		if (stop - inputNextBytePos - length + 1) * 8 + cacheBitRemaining < 0 then
 			return -1 -- out of input
 		end
 		for i=inputNextBytePos, inputNextBytePos+length-1 do
@@ -1204,33 +1204,35 @@ local function CreateReader(inputString, start, stop)
 	-- To improve speed, this function does not check if the input has been exhausted.
 	-- Use ReaderBitsLeft() < 0 to check it.
 	local function Decode(huffmanLenCount, huffmanSymbol, minLen)
-		if minLen <= 0 then -- No code but attempt to decode
-			return -10
-		end
-		if cacheBitRemaining < 15 and input then
-			local lShiftMask = _pow2[cacheBitRemaining]
-			local byte1, byte2, byte3, byte4 = string_byte(input, inputNextBytePos, inputNextBytePos+3)
-			-- This requires lua number to be at least double ()
-			cache = cache + ((byte1 or 0)+(byte2 or 0)*256+(byte3 or 0)*65536+(byte4 or 0)*16777216)*lShiftMask
-			inputNextBytePos = inputNextBytePos + 4
-			cacheBitRemaining = cacheBitRemaining + 32
-		end
-		-- Whether input has been exhausted is not checked.
+		local code = 0
+		local first = 0
+		local index = 0
+		if minLen > 0 then
+			if cacheBitRemaining < 15 and input then
+				local lShiftMask = _pow2[cacheBitRemaining]
+				local byte1, byte2, byte3, byte4 = string_byte(input, inputNextBytePos, inputNextBytePos+3)
+				-- This requires lua number to be at least double ()
+				cache = cache + ((byte1 or 0)+(byte2 or 0)*256+(byte3 or 0)*65536+(byte4 or 0)*16777216)*lShiftMask
+				inputNextBytePos = inputNextBytePos + 4
+				cacheBitRemaining = cacheBitRemaining + 32
+			end
+			-- Whether input has been exhausted is not checked.
 
-		local rShiftMask = _pow2[minLen]
-		cacheBitRemaining = cacheBitRemaining - minLen
-		local code = cache % rShiftMask
-		cache = (cache - code) / rShiftMask
-		-- Reverse the bits
-		code = _reverseBitsTbl[minLen][code]
+			local rShiftMask = _pow2[minLen]
+			cacheBitRemaining = cacheBitRemaining - minLen
+			code = cache % rShiftMask
+			cache = (cache - code) / rShiftMask
+			-- Reverse the bits
+			code = _reverseBitsTbl[minLen][code]
 
-		local count = huffmanLenCount[minLen]-- Number of codes of length len
-		if code < count then
-			return huffmanSymbol[code]
+			local count = huffmanLenCount[minLen]-- Number of codes of length len
+			if code < count then
+				return huffmanSymbol[code]
+			end
+			index = count
+			first = count + count -- First code of length lenfirst = first + count
+			code = code + code
 		end
-		local index = count
-		local first = count + count -- First code of length lenfirst = first + count
-		code = code + code
 
 		for len = minLen+1, 15 do
 			local bit
@@ -1346,6 +1348,7 @@ local function DecodeUntilEndOfBlock(state, litHuffmanLen, litHuffmanSym, litMin
 			end
 			bufferSize = bufferSize - 32768
 			buffer[bufferSize+1] = nil
+			-- NOTE: buffer[32769..end] is not cleared. This is why "bufferSize" variable is needed.
 		end
 	until symbol == 256
 
@@ -1477,15 +1480,15 @@ local function DecompressDynamicBlock(state)
 	end
 
 	local litErr, litHuffmanLenCount, litHuffmanSym, litMinLen = ConstructInflateHuffman(litHuffmanLen, nLen, 15)
+	--dynamic block code description: invalid literal/length code lengths,Incomplete code ok only for single length 1 code
 	if (litErr ~=0 and (litErr < 0 or nLen ~= (litHuffmanLenCount[0] or 0)+(litHuffmanLenCount[1] or 0))) then
-		return -7   -- dynamic block code description: invalid literal/length code lengths
-					-- Incomplete code ok only for single length 1 code
+		return -7
 	end
 
 	local distErr, distHuffmanLenCount, distHuffmanSym, distMinLen = ConstructInflateHuffman(distHuffmanLen, nDist, 15)
+	-- dynamic block code description: invalid distance code lengths, Incomplete code ok only for single length 1 code
 	if (distErr ~=0 and (distErr < 0 or nDist ~= (distHuffmanLenCount[0] or 0)+(distHuffmanLenCount[1] or 0))) then
-		return -8   -- dynamic block code description: invalid distance code lengths,
-					-- Incomplete code ok only for single length 1 code
+		return -8
 	end
 
 	-- Build buffman table for literal/length codes

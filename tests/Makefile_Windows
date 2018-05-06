@@ -11,10 +11,10 @@
 all: puff.exe zdeflate.exe
 
 puff.exe: puff.c puff.h pufftest.c
-	cl /O2 puff.c pufftest.c /Fe puff
+	cl /O2 /Fe:puff puff.c pufftest.c
 
 zdeflate.exe: zdeflate.c
-	cl /O2 zdeflate.c /I $(ZLIB_PATH) /MD /link $(ZLIB_PATH)\zlib.lib
+	cl /O2 /Fe:zedeflate zdeflate.c /I $(ZLIB_PATH) /MD /link $(ZLIB_PATH)\zlib.lib
 
 test: ../LibDeflate.lua LibDeflateTest.lua
 	cd .. && lua tests\LibDeflateTest.lua
