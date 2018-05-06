@@ -186,8 +186,8 @@ local function AssertLongStringEqual(actual, expected, msg)
 	if actual ~= expected then
 		lu.assertNotNil(actual, ("%s actual is nil"):format(msg or ""))
 		lu.assertNotNil(expected, ("%s expected is nil"):format(msg or ""))
-		local diffIndex = -1
-		for i=1, expected:len() do
+		local diffIndex = 1
+		for i=1, math.max(expected:len(), actual:len()) do
 			if string_byte(actual, i, i) ~= string_byte(expected, i, i) then
 				diffIndex = i
 			end
