@@ -656,11 +656,11 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 		local chainSize = #hashChain
 
 		if (chainSize > 0 and index+2 <= blockEnd and (not config_use_lazy or prevLen < config_max_lazy_match)) then
-			local iEnd = (config_use_lazy and prevLen >= config_good_prev_length)
-				and (chainSize - config_good_hash_chain + 1) or 1
-			if iEnd < 1 then iEnd = 1 end
+			local depth = (config_use_lazy and prevLen >= config_good_prev_length) and
+				config_good_hash_chain or config_max_hash_chain
 
-			for i=chainSize, iEnd, -1 do
+			local i = chainSize
+			while i >= 1 and depth > 0 do
 				local prev = hashChain[i]
 				if index - prev > 32768 then
 					break
@@ -682,6 +682,9 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 						break
 					end
 				end
+
+				i = i - 1
+				depth = depth - 1
 			end
 		end
 
