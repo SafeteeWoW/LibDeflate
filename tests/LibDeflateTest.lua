@@ -957,12 +957,13 @@ TestInternals = {}
 				start = stop
 				stop = tmp
 			end
-			loadStrToTable(str, t, start, stop)
-			for i=1, strLen do
-				if i < start or i > stop then
+			local offset = math.random(0, strLen)
+			loadStrToTable(str, t, start, stop, offset)
+			for i=-1000, 2000 do
+				if i < start-offset or i > stop-offset then
 					lu.assertEquals(t[i], uncorruped_data[i], "loadStr corrupts unintended location")
 				else
-					lu.assertEquals(t[i], string_byte(str, i, i), ("loadStr gives wrong data!, start=%d, stop=%d, i=%d")
+					lu.assertEquals(t[i], string_byte(str, i+offset), ("loadStr gives wrong data!, start=%d, stop=%d, i=%d")
 						:format(start, stop, i))
 				end
 			end

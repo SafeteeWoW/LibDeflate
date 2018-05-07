@@ -547,10 +547,6 @@ local function RunLengthEncodeHuffmanLens(lcodeLens, maxNonZeroLenlCode, dcodeLe
 end
 
 local function loadStrToTable(str, t, start, stop, offset)
-	start = (start < 1) and 1 or start -- TODO: Remove this
-	stop = (stop > str:len()) and str:len() or stop
-	if start > stop or start > str:len() or stop <= 0 then return end
-	if not offset then offset = 0 end
 	local i=start-offset
 	while i <= stop - 15-offset do
 		t[i], t[i+1], t[i+2], t[i+3], t[i+4], t[i+5], t[i+6], t[i+7],
