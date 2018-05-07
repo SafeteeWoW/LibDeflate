@@ -546,40 +546,25 @@ local function RunLengthEncodeHuffmanLens(lcodeLens, maxNonZeroLenlCode, dcodeLe
 	return rleCodes, rleExtraBits, rleCodesTblLen, rleCodesCount
 end
 
-local function loadStrToTable(str, t, start, stop)
-	start = (start < 1) and 1 or start
+local function loadStrToTable(str, t, start, stop, offset)
+	start = (start < 1) and 1 or start -- TODO: Remove this
 	stop = (stop > str:len()) and str:len() or stop
 	if start > stop or start > str:len() or stop <= 0 then return end
-	local i=start
-	while i <= stop - 15 do
-		local x1, x2, x3, x4, x5, x6, x7, x8,
-			x9, x10, x11, x12, x13, x14, x15, x16 = string_byte(str, i, i+15)
-		t[i]=x1
-		t[i+1]=x2
-		t[i+2]=x3
-		t[i+3]=x4
-		t[i+4]=x5
-		t[i+5]=x6
-		t[i+6]=x7
-		t[i+7]=x8
-		t[i+8]=x9
-		t[i+9]=x10
-		t[i+10]=x11
-		t[i+11]=x12
-		t[i+12]=x13
-		t[i+13]=x14
-		t[i+14]=x15
-		t[i+15]=x16
+	if not offset then offset = 0 end
+	local i=start-offset
+	while i <= stop - 15-offset do
+		t[i], t[i+1], t[i+2], t[i+3], t[i+4], t[i+5], t[i+6], t[i+7],
+			t[i+8], t[i+9], t[i+10], t[i+11], t[i+12], t[i+13], t[i+14], t[i+15] = string_byte(str, i+offset, i+15+offset)
 		i = i + 16
 	end
-	while (i <= stop) do
-		t[i] = string_byte(str, i, i)
+	while (i <= stop-offset) do
+		t[i] = string_byte(str, i+offset, i+offset)
 		i = i + 1
 	end
 	return t
 end
 
-local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockEnd, compressStart, dictionary)
+local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockEnd, offset)
 	if not level then
 		level = 5
 	end
@@ -591,10 +576,8 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 	local config_max_insert_length = (not config_use_lazy) and config_max_lazy_match or 2147483646
 	local config_good_hash_chain = (config_max_hash_chain-config_max_hash_chain%4/4)
 
-	local index = blockStart
-	local indexEnd = blockEnd + (config_use_lazy and 1 or 0)
-
 	local hash
+	--[[
 	local dictHashTables
 	local dictStrTable
 	local dictStrLen = 0
@@ -616,8 +599,10 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 			end
 		end
 	end
+	--]]
 
-	hash = (strTable[blockStart] or 0)*256 + (strTable[blockStart+1] or 0)
+
+	hash = (strTable[blockStart-offset] or 0)*256 + (strTable[blockStart+1-offset] or 0)
 
 	-- Only hold max of 64KB string in the strTable at one time.
 	-- When we have read half of it, wipe the first 32KB bytes of the strTable and load the next 32KB.
@@ -641,12 +626,15 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 	local curLen = 0
 	local curDist = 0
 
+	local index = blockStart
+	local indexEnd = blockEnd + (config_use_lazy and 1 or 0)
 	while (index <= indexEnd) do
+		local strTableIndex = index - offset
 		prevLen = curLen
 		prevDist = curDist
 		curLen = 0
 
-		hash = (hash*256+(strTable[index+2] or 0))%16777216
+		hash = (hash*256+(strTable[strTableIndex+2] or 0))%16777216
 
 		local hashChain = hashTables[hash]
 		if not hashChain then
@@ -667,8 +655,9 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 				end
 				if prev < index then
 					local j = 3
+					local prevStrTableIndex = prev-offset
 					while (j < 258 and index + j < blockEnd) do
-						if (strTable[prev+j] == strTable[index+j]) then
+						if (strTable[prevStrTableIndex+j] == strTable[strTableIndex+j]) then
 							j = j + 1
 						else
 							break
@@ -745,7 +734,7 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 			end
 
 			for i=index+1, index+prevLen-(config_use_lazy and 2 or 1) do
-				hash = (hash*256+(strTable[i+2] or 0))%16777216
+				hash = (hash*256+(strTable[i-offset+2] or 0))%16777216
 				if prevLen <= config_max_insert_length then
 					hashChain = hashTables[hash]
 					if not hashChain then
@@ -758,7 +747,7 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 			index = index + prevLen - (config_use_lazy and 1 or 0)
 			matchAvailable = false
 		elseif (not config_use_lazy) or matchAvailable then
-			local code = strTable[config_use_lazy and (index-1) or index]
+			local code = strTable[config_use_lazy and (strTableIndex-1) or strTableIndex]
 			lCodeTblSize = lCodeTblSize + 1
 			lCodes[lCodeTblSize] = code
 			lCodesCount[code] = (lCodesCount[code] or 0) + 1
@@ -996,24 +985,22 @@ end
 local function Deflate(WriteBits, Flush, WriteString, str, level, dictionary)
 	local strTable = {}
 	local hashTables = {}
-	-- The maximum size of the first dynamic block is 64KB-1
-	local INITIAL_BLOCK_SIZE = 64*1024 - 1
-	-- The maximum size of the additional block is 32KB
-	local ADDITIONAL_BLOCK_SIZE = 32*1024
 	local isLastBlock = nil
 	local blockStart
 	local blockEnd
 	local result, bitsWritten
 	local totalBitSize = select(2, Flush())
 	local strLen = str:len()
-
+	local offset
 	while not isLastBlock do
 		if not blockStart then
 			blockStart = 1
-			blockEnd = INITIAL_BLOCK_SIZE
+			blockEnd = 64*1024 - 1
+			offset = 0
 		else
 			blockStart = blockEnd + 1
-			blockEnd = blockEnd + ADDITIONAL_BLOCK_SIZE
+			blockEnd = blockEnd + 32*1024
+			offset = blockStart - 32*1024 - 1
 		end
 
 		if blockEnd >= strLen then
@@ -1026,6 +1013,7 @@ local function Deflate(WriteBits, Flush, WriteString, str, level, dictionary)
 		assert(blockEnd-blockStart+1 <= 65535) -- TODO: comment
 
 		-- TODO: move this into CompressBlockLZ77
+		--[[
 		if 1 == blockStart and dictionary then
 			local dictStrTable = dictionary.strTable
 			local dictStrLen = dictionary.strLen
@@ -1034,12 +1022,10 @@ local function Deflate(WriteBits, Flush, WriteString, str, level, dictionary)
 				strTable[1-(dictStrLen-i+1)] = dictStrTable[i]
 			end
 		end
-		-- TODO: move this into CompressBlockLZ77
-		loadStrToTable(str, strTable, blockStart, (blockEnd+3 > strLen) and strLen or (blockEnd+3))
-		-- +3 is needed for dynamic block
-
+		--]]
+		loadStrToTable(str, strTable, blockStart, blockEnd + 3, offset)
 		local lCodes, lExtraBits, lCodesCount, dCodes, dExtraBits, dCodesCount =
-			CompressBlockLZ77(level, strTable, hashTables, blockStart, blockEnd)
+			CompressBlockLZ77(level, strTable, hashTables, blockStart, blockEnd, offset)
 
 		local HLIT, HDIST, HCLEN, codeLensCodeLens, codeLensCodeCodes, rleCodes, rleExtraBits
 			, lCodeLens, lCodeCodes, dCodeLens, dCodeCodes =
@@ -1073,8 +1059,10 @@ local function Deflate(WriteBits, Flush, WriteString, str, level, dictionary)
 
 		-- Memory clean up, so memory consumption does not always grow linearly, even if input string is > 64K.
 		if not isLastBlock then
-			for i=blockEnd-2*ADDITIONAL_BLOCK_SIZE+1, blockEnd-ADDITIONAL_BLOCK_SIZE do
-				strTable[i] = nil
+			local j = 1
+			for i=blockEnd-32767, blockEnd do
+				strTable[j] = strTable[i-offset]
+				j = j + 1
 			end
 
 			for k, t in pairs(hashTables) do
@@ -1086,7 +1074,7 @@ local function Deflate(WriteBits, Flush, WriteString, str, level, dictionary)
 						local new = {}
 						local newSize = 0
 						for i=2, tSize do
-							local j = t[i]
+							j = t[i]
 							if blockEnd+1 - j <= 32768 then
 								newSize = newSize + 1
 								new[newSize] = j
@@ -1659,6 +1647,7 @@ function LibDeflate:Adler32(str)
 	return b*65536+a
 end
 
+--[[
 function LibDeflate:CreateDictionary(str)
 	assert(type(str) == "string")
 	local strLen = str:len()
@@ -1708,6 +1697,7 @@ function LibDeflate:CreateDictionary(str)
 	end
 	return dictionary
 end
+--]]
 
 -- Fix huffman code
 do
