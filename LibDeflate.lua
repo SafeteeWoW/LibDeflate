@@ -252,7 +252,7 @@ local function CreateWriter()
 		end
 	end
 
-	local function WriteString(str, start, stop)
+	local function WriteString(str)
 		assert(cacheBitRemaining%8==0)
 		for _=1, cacheBitRemaining, 8 do
 			bufferSize = bufferSize + 1
@@ -261,7 +261,7 @@ local function CreateWriter()
 		end
 		cacheBitRemaining = 0
 		bufferSize = bufferSize + 1
-		buffer[bufferSize] = str:sub(start, stop)
+		buffer[bufferSize] = str
 	end
 
 	return WriteBits, Flush, WriteString
@@ -550,29 +550,28 @@ local function loadStrToTable(str, t, start, stop)
 	start = (start < 1) and 1 or start
 	stop = (stop > str:len()) and str:len() or stop
 	if start > stop or start > str:len() or stop <= 0 then return end
-	local i=start-1
-	while i <= stop - 16 do
+	local i=start
+	while i <= stop - 15 do
 		local x1, x2, x3, x4, x5, x6, x7, x8,
-			x9, x10, x11, x12, x13, x14, x15, x16 = string_byte(str, i+1, i+16)
-		t[i+1]=x1
-		t[i+2]=x2
-		t[i+3]=x3
-		t[i+4]=x4
-		t[i+5]=x5
-		t[i+6]=x6
-		t[i+7]=x7
-		t[i+8]=x8
-		t[i+9]=x9
-		t[i+10]=x10
-		t[i+11]=x11
-		t[i+12]=x12
-		t[i+13]=x13
-		t[i+14]=x14
-		t[i+15]=x15
-		t[i+16]=x16
+			x9, x10, x11, x12, x13, x14, x15, x16 = string_byte(str, i, i+15)
+		t[i]=x1
+		t[i+1]=x2
+		t[i+2]=x3
+		t[i+3]=x4
+		t[i+4]=x5
+		t[i+5]=x6
+		t[i+6]=x7
+		t[i+7]=x8
+		t[i+8]=x9
+		t[i+9]=x10
+		t[i+10]=x11
+		t[i+11]=x12
+		t[i+12]=x13
+		t[i+13]=x14
+		t[i+14]=x15
+		t[i+15]=x16
 		i = i + 16
 	end
-	i = i + 1
 	while (i <= stop) do
 		t[i] = string_byte(str, i, i)
 		i = i + 1
@@ -580,7 +579,7 @@ local function loadStrToTable(str, t, start, stop)
 	return t
 end
 
-local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockEnd)
+local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockEnd, compressStart, dictionary)
 	if not level then
 		level = 5
 	end
@@ -594,7 +593,31 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 
 	local index = blockStart
 	local indexEnd = blockEnd + (config_use_lazy and 1 or 0)
-	local hash = (strTable[blockStart] or 0)*256 + (strTable[blockStart+1] or 0)
+
+	local hash
+	local dictHashTables
+	local dictStrTable
+	local dictStrLen = 0
+	if dictionary then
+		dictHashTables = dictionary.hashTables
+		dictStrTable = dictionary.strTable
+		dictStrLen = dictionary.strLen
+		if blockStart == compressStart then
+			-- TODO: carefully test this part
+			if blockEnd >= blockStart and dictStrLen >= 2 then
+				hash = dictStrTable[dictStrLen-1]*65536+dictStrTable[dictStrLen]*256+strTable[blockStart]
+				local t = hashTables[hash] or {-1}
+				if #t == 1 then hashTables[hash] = t else t[#t+1] = -1 end
+			end
+			if blockEnd >= blockStart+1 and dictStrLen >= 1 then
+				hash = dictStrTable[dictStrLen]*65536+strTable[blockStart]*256+strTable[blockStart+1]
+				local t = hashTables[hash] or {0}
+				if #t == 1 then hashTables[hash] = t else t[#t+1] = 0 end
+			end
+		end
+	end
+
+	hash = (strTable[blockStart] or 0)*256 + (strTable[blockStart+1] or 0)
 
 	-- Only hold max of 64KB string in the strTable at one time.
 	-- When we have read half of it, wipe the first 32KB bytes of the strTable and load the next 32KB.
@@ -964,10 +987,10 @@ local function CompressBlockStore(WriteBits, WriteString, isLastBlock, str, bloc
 	local comp = (255 - size % 256) + (255 - (size-size%256)/256)*256
 	WriteBits(comp, 16)
 
-	WriteString(str, blockStart, blockEnd)
+	WriteString(str:sub(blockStart, blockEnd))
 end
 
-local function Deflate(WriteBits, Flush, WriteString, str, level, start, stop)
+local function Deflate(WriteBits, Flush, WriteString, str, level, dictionary)
 	local strTable = {}
 	local hashTables = {}
 	-- The maximum size of the first dynamic block is 64KB-1
@@ -979,18 +1002,19 @@ local function Deflate(WriteBits, Flush, WriteString, str, level, start, stop)
 	local blockEnd
 	local result, bitsWritten
 	local totalBitSize = select(2, Flush())
+	local strLen = str:len()
 
 	while not isLastBlock do
 		if not blockStart then
-			blockStart = start
-			blockEnd = start + INITIAL_BLOCK_SIZE - 1
+			blockStart = 1
+			blockEnd = INITIAL_BLOCK_SIZE
 		else
 			blockStart = blockEnd + 1
 			blockEnd = blockEnd + ADDITIONAL_BLOCK_SIZE
 		end
 
-		if blockEnd >= stop then
-			blockEnd = stop
+		if blockEnd >= strLen then
+			blockEnd = strLen
 			isLastBlock = true
 		else
 			isLastBlock = false
@@ -998,7 +1022,17 @@ local function Deflate(WriteBits, Flush, WriteString, str, level, start, stop)
 
 		assert(blockEnd-blockStart+1 <= 65535) -- TODO: comment
 
-		loadStrToTable(str, strTable, blockStart, (blockEnd+3 > stop) and stop or (blockEnd+3))
+		-- TODO: move this into CompressBlockLZ77
+		if 1 == blockStart and dictionary then
+			local dictStrTable = dictionary.strTable
+			local dictStrLen = dictionary.strLen
+			-- TODO: test this boundary
+			for i=dictStrLen, (dictStrLen-256) > 1 and (dictStrLen-256) or 1, -1 do
+				strTable[1-(dictStrLen-i+1)] = dictStrTable[i]
+			end
+		end
+		-- TODO: move this into CompressBlockLZ77
+		loadStrToTable(str, strTable, blockStart, (blockEnd+3 > strLen) and strLen or (blockEnd+3))
 		-- +3 is needed for dynamic block
 
 		local lCodes, lExtraBits, lCodesCount, dCodes, dExtraBits, dCodesCount =
@@ -1063,42 +1097,20 @@ local function Deflate(WriteBits, Flush, WriteString, str, level, start, stop)
 	end
 end
 
-function LibDeflate:CompressDeflate(str, level, start, stop)
+function LibDeflate:CompressDeflate(str, level)
 	assert(type(str)=="string")
 	assert(type(level)=="nil" or (type(level)=="number" and level >= 1 and level <= 8))
-	assert(type(start)=="nil" or (type(start)=="number"))
-	assert(type(stop)=="nil" or (type(stop)=="number"))
-
-	start = start or 1
-	start = (start < 1) and 1 or start
-	stop = stop or str:len()
-	stop = (stop > str:len()) and str:len() or stop
-	if start > stop then
-		start = 1
-		stop = 0
-	end
 
 	local WriteBits, Flush, WriteString = CreateWriter()
 
-	Deflate(WriteBits, Flush, WriteString, str, level, start, stop)
+	Deflate(WriteBits, Flush, WriteString, str, level)
 	local result, totalBitSize = Flush(true)
 	return result, totalBitSize
 end
 
-function LibDeflate:CompressZlib(str, level, start, stop)
+function LibDeflate:CompressZlib(str, level)
 	assert(type(str)=="string")
 	assert(type(level)=="nil" or (type(level)=="number" and level >= 1 and level <= 8))
-	assert(type(start)=="nil" or (type(start)=="number"))
-	assert(type(stop)=="nil" or (type(stop)=="number"))
-
-	start = start or 1
-	start = (start < 1) and 1 or start
-	stop = stop or str:len()
-	stop = (stop > str:len()) and str:len() or stop
-	if start > stop then
-		start = 1
-		stop = 0
-	end
 
 	local WriteBits, Flush, WriteString = CreateWriter()
 
@@ -1117,10 +1129,10 @@ function LibDeflate:CompressZlib(str, level, start, stop)
 	assert((CMF*256+FLG)%31 == 0)
 	WriteBits(FLG, 8)
 
-	Deflate(WriteBits, Flush, WriteString, str, level, start, stop)
+	Deflate(WriteBits, Flush, WriteString, str, level)
 	Flush(true)
 
-	local adler = self:Adler32(str, start, stop)
+	local adler = self:Adler32(str)
 
 	-- Most significant byte first
 	local byte0 = ((adler-adler%16777216)/16777216)%256
@@ -1136,15 +1148,16 @@ function LibDeflate:CompressZlib(str, level, start, stop)
 	return result, totalBitSize
 end
 
-function LibDeflate:Compress(str, level, start, stop)
-	return self:CompressDeflate(str, level, start, stop)
+function LibDeflate:Compress(str, level)
+	return self:CompressDeflate(str, level)
 end
 
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
-local function CreateReader(inputString, start, stop)
+local function CreateReader(inputString)
 	local input = inputString
-	local inputNextBytePos = start
+	local inputLen = inputString:len()
+	local inputNextBytePos = 1
 	local cacheBitRemaining = 0
 	local cache = 0
 
@@ -1167,7 +1180,7 @@ local function CreateReader(inputString, start, stop)
 		end
 		cacheBitRemaining = cacheBitRemaining - byteFromCache*8
 		length = length - byteFromCache
-		if (stop - inputNextBytePos - length + 1) * 8 + cacheBitRemaining < 0 then
+		if (inputLen - inputNextBytePos - length + 1) * 8 + cacheBitRemaining < 0 then
 			return -1 -- out of input
 		end
 		for i=inputNextBytePos, inputNextBytePos+length-1 do
@@ -1207,6 +1220,7 @@ local function CreateReader(inputString, start, stop)
 		local code = 0
 		local first = 0
 		local index = 0
+		local count
 		if minLen > 0 then
 			if cacheBitRemaining < 15 and input then
 				local lShiftMask = _pow2[cacheBitRemaining]
@@ -1225,7 +1239,7 @@ local function CreateReader(inputString, start, stop)
 			-- Reverse the bits
 			code = _reverseBitsTbl[minLen][code]
 
-			local count = huffmanLenCount[minLen]-- Number of codes of length len
+			count = huffmanLenCount[minLen]-- Number of codes of length len
 			if code < count then
 				return huffmanSymbol[code]
 			end
@@ -1255,7 +1269,7 @@ local function CreateReader(inputString, start, stop)
 	end
 
 	local function ReaderBitsLeft()
-		return (stop - inputNextBytePos + 1) * 8 + cacheBitRemaining
+		return (inputLen - inputNextBytePos + 1) * 8 + cacheBitRemaining
 	end
 
 	return ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary
@@ -1522,13 +1536,11 @@ local function Inflate(state)
 	return state.result
 end
 
-function LibDeflate:DecompressDeflate(str, start, stop)
+function LibDeflate:DecompressDeflate(str)
 	-- WIP
 	assert(type(str) == "string")
 
-	start = start or 1
-	stop = stop or str:len()
-	local ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary = CreateReader(str, start, stop)
+	local ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary = CreateReader(str)
 	local state =
 	{
 		ReadBits = ReadBits,
@@ -1551,13 +1563,11 @@ function LibDeflate:DecompressDeflate(str, start, stop)
 	return state.result, byteLeft
 end
 
-function LibDeflate:DecompressZlib(str, start, stop)
+function LibDeflate:DecompressZlib(str)
 	-- WIP
 	assert(type(str) == "string")
 
-	start = start or 1
-	stop = stop or str:len()
-	local ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary = CreateReader(str, start, stop)
+	local ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary = CreateReader(str)
 	local state =
 	{
 		ReadBits = ReadBits,
@@ -1619,38 +1629,81 @@ function LibDeflate:DecompressZlib(str, start, stop)
 	return state.result, byteLeft
 end
 
-function LibDeflate:Decompress(str, start, stop)
-	return self:DecompressDeflate(str, start, stop)
+function LibDeflate:Decompress(str)
+	return self:DecompressDeflate(str)
 end
 
-function LibDeflate:Adler32(str, start, stop)
+function LibDeflate:Adler32(str)
 	assert(type(str) == "string")
-	assert(type(start)=="nil" or type(start) == "number")
-	assert(type(stop)=="nil" or type(stop) == "number")
-	start = start or 1
-	stop = stop or str:len()
-	start = (start < 1) and 1 or start
-	stop = (stop > str:len()) and str:len() or stop
-	if start > stop or start > str:len() or stop <= 0 then return 1 end
+	local strLen = str:len()
 
-	local i=start-1
+	local i = 1
 	local a = 1
 	local b = 0
-	while i <= stop - 16 do
+	while i <= strLen - 15 do
 		local x1, x2, x3, x4, x5, x6, x7, x8,
-			x9, x10, x11, x12, x13, x14, x15, x16 = string_byte(str, i+1, i+16)
+			x9, x10, x11, x12, x13, x14, x15, x16 = string_byte(str, i, i+15)
 		b = (b+16*a+16*x1+15*x2+14*x3+13*x4+12*x5+11*x6+10*x7+9*x8+8*x9+7*x10+6*x11+5*x12+4*x13+3*x14+2*x15+x16)%65521
 		a = (a+x1+x2+x3+x4+x5+x6+x7+x8+x9+x10+x11+x12+x13+x14+x15+x16)%65521
 		i =  i + 16
 	end
-	i = i + 1
-	while (i <= stop) do
+	while (i <= strLen) do
 		local x = string_byte(str, i, i)
 		a = (a + x) % 65521
 		b = (b + a) % 65521
 		i = i + 1
 	end
 	return b*65536+a
+end
+
+function LibDeflate:CreateDictionary(str)
+	assert(type(str) == "string")
+	local strLen = str:len()
+	assert(strLen > 0)
+	assert(strLen <= 32768)
+	local dictionary = {}
+	dictionary.strTable = {}
+	dictionary.strSize = strLen
+	dictionary.hashTables = {}
+	local strTable = dictionary.strTable
+	local hashTables = dictionary.hashTables
+	strTable[1] = string_byte(str, 1, 1)
+	strTable[2] = string_byte(str, 2, 2)
+	if strLen >= 3 then
+		local i = 1
+		local hash = string_byte(str, 1, 1)*256+string_byte(str, 2, 2)
+		while i <= strLen - 2 - 3 do
+			local x1, x2, x3, x4 = string_byte(str, i+2, i+5)
+			strTable[i+2] = x1
+			strTable[i+3] = x2
+			strTable[i+4] = x3
+			strTable[i+5] = x4
+			hash = (hash*256+x1)%16777216
+			local t = hashTables[hash] or {strLen-i}
+			if #t == 1 then hashTables[hash] = t else t[#t+1] = strLen-i end
+			i =  i + 1
+			hash = (hash*256+x2)%16777216
+			t = hashTables[hash] or {strLen-i}
+			if #t == 1 then hashTables[hash] = t else t[#t+1] = strLen-i end
+			i =  i + 1
+			hash = (hash*256+x3)%16777216
+			t = hashTables[hash] or {strLen-i}
+			if #t == 1 then hashTables[hash] = t else t[#t+1] = strLen-i end
+			i =  i + 1
+			hash = (hash*256+x4)%16777216
+			t = hashTables[hash] or {strLen-i}
+			if #t == 1 then hashTables[hash] = t else t[#t+1] = strLen-i end
+			i = i + 1
+		end
+		while i <= strLen - 2 do
+			local x = string_byte(str, i+2)
+			strTable[i+2] = x
+			hash = (hash*256+x)%16777216
+			local t = hashTables[hash] or {strLen-i}
+			if #t == 1 then hashTables[hash] = t else t[#t+1] = strLen-i end
+		end
+	end
+	return dictionary
 end
 
 -- Fix huffman code

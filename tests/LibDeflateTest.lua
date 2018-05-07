@@ -226,14 +226,12 @@ local function MemCheckAndBenchmarkFunc(func, ...)
 	return memoryLeaked, memoryUsed, elapsedTime*1000/repeatCount, unpack(ret)
 end
 
--- TODO: allow negative start or stop?
-local function CheckCompressAndDecompress(stringOrFileName, isFile, levels, start, stop)
+local function CheckCompressAndDecompress(stringOrFileName, isFile, levels)
 	local origin
 	if isFile then
 		origin = GetFileData(stringOrFileName)
-		origin = origin:sub(start or 1, stop or origin:len())
 	else
-		origin = stringOrFileName:sub(start or 1, stop or stringOrFileName:len())
+		origin = stringOrFileName
 	end
 
 	FullMemoryCollect()
@@ -262,7 +260,7 @@ local function CheckCompressAndDecompress(stringOrFileName, isFile, levels, star
 			-- Compress by raw deflate
 			local compressMemoryLeaked, compressMemoryUsed, compressTime,
 				compressData, compressBitSize = MemCheckAndBenchmarkFunc(LibDeflate.Compress, LibDeflate
-				, origin, level, start, stop)
+				, origin, level)
 			lu.assertEquals(math.ceil(compressBitSize/8), compressData:len(),
 				"Unexpected compress bit size")
 			WriteToFile(compressFileName, compressData)
@@ -291,7 +289,7 @@ local function CheckCompressAndDecompress(stringOrFileName, isFile, levels, star
 			-- Compress with Zlib header instead of raw Deflate
 			local zlibCompressMemoryLeaked, zlibCompressMemoryUsed, zlibCompressTime,
 				zlibCompressData, zlibCompressBitSize = MemCheckAndBenchmarkFunc(LibDeflate.CompressZlib, LibDeflate
-				, origin, level, start, stop)
+				, origin, level)
 			lu.assertEquals(zlibCompressBitSize/8, zlibCompressData:len(), "Unexpected zlib bit size")
 
 
@@ -396,14 +394,13 @@ local function CheckCompressAndDecompress(stringOrFileName, isFile, levels, star
 	return 0
 end
 
-local function CheckDecompressIncludingError(compress, decompress, start, stop, isZlib)
-	start = start or 1
-	stop = stop or compress:len()
+local function CheckDecompressIncludingError(compress, decompress, isZlib)
+	assert (isZlib == true or isZlib == nil)
 	local d, decompress_return
 	if isZlib then
-		d, decompress_return = LibDeflate:DecompressZlib(compress, start, stop)
+		d, decompress_return = LibDeflate:DecompressZlib(compress)
 	else
-		d, decompress_return = LibDeflate:Decompress(compress, start, stop)
+		d, decompress_return = LibDeflate:Decompress(compress)
 	end
 	if d ~= decompress then
 		lu.assertTrue(false, ("My decompress does not match expected result."..
@@ -414,7 +411,7 @@ local function CheckDecompressIncludingError(compress, decompress, start, stop, 
 		local inputFileName = "tests/tmpFile"
 		local inputFile = io.open(inputFileName, "wb")
 		inputFile:setvbuf("full")
-		inputFile:write(compress:sub(start, stop))
+		inputFile:write(compress)
 		inputFile:flush()
 		inputFile:close()
 		local returnedStatus_puff, stdout_puff, stderr_puff = RunProgram("puff -w", inputFileName
@@ -456,12 +453,16 @@ local function CheckDecompressIncludingError(compress, decompress, start, stop, 
 
 end
 
-local function CheckCompressAndDecompressString(str, levels, start, stop)
-	return CheckCompressAndDecompress(str, false, levels, start, stop)
+local function CheckZlibDecompressIncludingError(compress, decompress)
+	return CheckDecompressIncludingError(compress, decompress, true)
 end
 
-local function CheckCompressAndDecompressFile(inputFileName, levels, start, stop)
-	return CheckCompressAndDecompress(inputFileName, true, levels, start, stop)
+local function CheckCompressAndDecompressString(str, levels)
+	return CheckCompressAndDecompress(str, false, levels)
+end
+
+local function CheckCompressAndDecompressFile(inputFileName, levels)
+	return CheckCompressAndDecompress(inputFileName, true, levels)
 end
 
 -- Commandline
@@ -504,10 +505,6 @@ TestBasicStrings = {}
 		CheckCompressAndDecompressString("aaaaaaaaaaaaaaaaaa", "all")
 	end
 
-	function TestBasicStrings:testRepeatInTheMiddle()
-		CheckCompressAndDecompressString("aaaaaaaaaaaaaaaaaa", "all", nil, nil, nil, 2, 8)
-	end
-
 	function TestBasicStrings:testLongRepeat()
 		local repeated = {}
 		for i=1, 100000 do
@@ -523,10 +520,6 @@ TestMyData = {}
 
 	function TestMyData:TestSmallTest()
 		CheckCompressAndDecompressFile("tests/data/smalltest.txt", "all")
-	end
-
-	function TestMyData:TestSmallTestInTheMiddle()
-		CheckCompressAndDecompressFile("tests/data/smalltest.txt", "all", nil, 10, GetFileSize("tests/data/smalltest.txt")-10)
 	end
 
 	function TestMyData:TestReconnectData()
@@ -795,10 +788,6 @@ TestDecompress = {}
 		-- Additonal 1 byte after the end of compression data
 		CheckDecompressIncludingError("\001\001\000\254\255\010\000", "\010")
 	end
-	function TestDecompress:TestInTheMiddle()
-		-- Additonal 1 byte before and 1 byte after.
-		CheckDecompressIncludingError("\001\001\001\000\254\255\010\001", "\010", 2, 7)
-	end
 	function TestDecompress:TestStoreSizeTooBig()
 		CheckDecompressIncludingError("\001\001\000\254\255", nil)
 		CheckDecompressIncludingError("\001\002\000\253\255\001", nil)
@@ -853,23 +842,21 @@ TestDecompress = {}
 	function TestDecompress:TestZlibCoverSupport()
 		CheckDecompressIncludingError(HexToString("63 00"), nil)
 		CheckDecompressIncludingError(HexToString("63 18 05"), nil)
-		local tmp = {}
-		local zeros = table.concat(tmp)
 		CheckDecompressIncludingError(HexToString("63 18 68 30 d0 0 0"), ("\000"):rep(257))
 		CheckDecompressIncludingError(HexToString("3 00"), "")
 		CheckDecompressIncludingError("", nil)
-		CheckDecompressIncludingError("", nil, nil, nil, true)
+		CheckDecompressIncludingError("", nil, true)
 	end
 	function TestDecompress:TestZlibCoverWrap()
-		CheckDecompressIncludingError(HexToString("77 85"), nil, nil, nil, true) -- Bad zlib header
-		CheckDecompressIncludingError(HexToString("70 85"), nil, nil, nil, true) -- Bad zlib header
-		CheckDecompressIncludingError(HexToString("88 9c"), nil, nil, nil, true) -- Bad window size
-		CheckDecompressIncludingError(HexToString("f8 9c"), nil, nil, nil, true) -- Bad window size
-		CheckDecompressIncludingError(HexToString("78 90"), nil, nil, nil, true) -- Bad zlib header check
-		CheckDecompressIncludingError(HexToString("78 9c 63 00 00 00 01 00 01"), "\000", nil, nil, true) -- check Adler32
-		CheckDecompressIncludingError(HexToString("78 9c 63 00 00 00 01 00"), nil, nil, nil, true) -- Adler32 incomplete
-		CheckDecompressIncludingError(HexToString("78 9c 63 00 00 00 01 00 02"), nil, nil, nil, true) -- wrong Adler32
-		CheckDecompressIncludingError(HexToString("78 9c 63 0"), nil, nil, nil, true) -- no Adler32
+		CheckZlibDecompressIncludingError(HexToString("77 85"), nil) -- Bad zlib header
+		CheckZlibDecompressIncludingError(HexToString("70 85"), nil) -- Bad zlib header
+		CheckZlibDecompressIncludingError(HexToString("88 9c"), nil) -- Bad window size
+		CheckZlibDecompressIncludingError(HexToString("f8 9c"), nil) -- Bad window size
+		CheckZlibDecompressIncludingError(HexToString("78 90"), nil) -- Bad zlib header check
+		CheckZlibDecompressIncludingError(HexToString("78 9c 63 00 00 00 01 00 01"), "\000") -- check Adler32
+		CheckZlibDecompressIncludingError(HexToString("78 9c 63 00 00 00 01 00"), nil) -- Adler32 incomplete
+		CheckZlibDecompressIncludingError(HexToString("78 9c 63 00 00 00 01 00 02"), nil) -- wrong Adler32
+		CheckZlibDecompressIncludingError(HexToString("78 9c 63 0"), nil) -- no Adler32
 	end
 	function TestDecompress:TestZlibCoverInflate()
 		CheckDecompressIncludingError(HexToString("0 0 0 0 0"), nil) -- invalid store block length
@@ -931,7 +918,7 @@ TestDecompress = {}
 		CheckDecompressIncludingError(HexToString("63 0 3 0 0 0 0 0"), ("\000"):rep(6))
 	end
 	function TestDecompress:TestAdditionalCoverage()
-		CheckDecompressIncludingError(HexToString("78"), nil, nil, nil, true) -- no zlib FLG
+		CheckZlibDecompressIncludingError(HexToString("78"), nil) -- no zlib FLG
 		CheckDecompressIncludingError(HexToString("1"), nil) -- Stored block no len
 		CheckDecompressIncludingError(HexToString("1 1 0"), nil) -- Stored block no len comp
 		CheckDecompressIncludingError(HexToString("1 1 0 ff ff 0"), nil) -- Stored block not one's complement
@@ -989,24 +976,16 @@ TestInternals = {}
 			local tmp
 			local strLen = math.random(0, 1000)
 			local str = GetLimitedRandomString(strLen)
-			local start = (math.random() < 0.5) and (math.random(0, strLen)) or nil
-			local stop = (math.random() < 0.5) and (math.random(0, strLen)) or nil
-			if start and stop and start > stop then
-				tmp = start
-				start = stop
-				stop = tmp
-			end
 			local level = (math.random() < 0.5) and (math.random(1, 8)) or nil
-
-			local expected = str:sub(start or 1, stop or str:len())
-			local compress = LibDeflate:Compress(str, level, start, stop)
+			local expected = str
+			local compress = LibDeflate:Compress(str, level)
 			local _, actual = pcall(function() return LibDeflate:Decompress(compress) end)
 			if expected ~= actual then
 				local strDumpFile = io.open("fail_random.txt", "wb")
 				if (strDumpFile) then
 					strDumpFile:write(str)
-					print(("Failed test has been dumped to fail_random.txt, with level=%s, start=%s, stop=%s"):
-						format(tostring(level), tostring(start), tostring(stop)))
+					print(("Failed test has been dumped to fail_random.txt, with level=%s"):
+						format(tostring(level)))
 					strDumpFile:close()
 					if type(actual) == "string" then
 						print(("Error msg is:\n"), actual:sub(1, 100))
@@ -1018,7 +997,7 @@ TestInternals = {}
 	end
 
 	function TestInternals:TestAdler32()
-		lu.assertEquals(1, LibDeflate:Adler32(""))
+		lu.assertEquals(LibDeflate:Adler32(""), 1)
 		lu.assertEquals(LibDeflate:Adler32("1"), 0x00320032)
 		lu.assertEquals(LibDeflate:Adler32("12"), 0x00960064)
 		lu.assertEquals(LibDeflate:Adler32("123"), 0x012D0097)
@@ -1046,10 +1025,6 @@ TestInternals = {}
 		lu.assertEquals(LibDeflate:Adler32("1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0x8C40150C)
 		local adler32Test = GetFileData("tests/data/adler32Test.txt")
 		lu.assertEquals(LibDeflate:Adler32(adler32Test), 0x5D9BAF5D)
-		lu.assertEquals(LibDeflate:Adler32(adler32Test, 2), 0x9077AEF9)
-		lu.assertEquals(LibDeflate:Adler32(adler32Test, 2, adler32Test:len()-1), 0xE16FAEC4)
-		lu.assertEquals(LibDeflate:Adler32(adler32Test, nil, adler32Test:len()-1), 0xAE2FAF28)
-		lu.assertEquals(LibDeflate:Adler32(adler32Test, 2, 1), 1)
 		local adler32Test2 = GetFileData("tests/data/adler32Test2.txt")
 		lu.assertEquals(LibDeflate:Adler32(adler32Test2), 0xD6A07E29)
 	end
