@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <stdlib.h>
 #include "zlib.h"
 
 #if defined(MSDOS) || defined(OS2) || defined(WIN32) || defined(__CYGWIN__) || defined(_WIN32)
@@ -34,7 +35,7 @@
    level is supplied, Z_VERSION_ERROR if the version of zlib.h and the
    version of the library linked do not match, or Z_ERRNO if there is
    an error reading or writing the files. */
-int def(FILE *source, FILE *dest, int level, int strategy, int isZlib)
+int def(FILE *source, FILE *dest, int level, int strategy, int isZlib, char* dictionary, int dictSize)
 {
     int ret, flush;
     unsigned have;
@@ -49,6 +50,8 @@ int def(FILE *source, FILE *dest, int level, int strategy, int isZlib)
     ret = deflateInit2(&strm, level, Z_DEFLATED, isZlib?15:-15, 8, strategy);
     if (ret != Z_OK)
         return ret;
+    if (dictionary)
+        deflateSetDictionary(&strm, dictionary, dictSize);
 
     /* compress until end of file */
     do {
@@ -90,7 +93,7 @@ int def(FILE *source, FILE *dest, int level, int strategy, int isZlib)
    invalid or incomplete, Z_VERSION_ERROR if the version of zlib.h and
    the version of the library linked do not match, or Z_ERRNO if there
    is an error reading or writing the files. */
-int inf(FILE *source, FILE *dest, int isZlib)
+int inf(FILE *source, FILE *dest, int isZlib, char* dictionary, int dictSize)
 {
     int ret;
     unsigned have;
@@ -107,6 +110,8 @@ int inf(FILE *source, FILE *dest, int isZlib)
     ret = inflateInit2(&strm, isZlib?15:-15);
     if (ret != Z_OK)
         return ret;
+    if (dictionary)
+        inflateSetDictionary(&strm, dictionary, dictSize);
 
     /* decompress until deflate stream ends or end of file */
     do {
@@ -199,6 +204,8 @@ int main(int argc, char **argv)
     int strategy = Z_DEFAULT_STRATEGY;
     int isDecompress = 0;
     int isZlib = 0;
+    char* dictionary = 0;
+    int dictSize = 0;
 
     int i = 0;
     for (i = 1; i < argc; ++i) {
@@ -237,6 +244,23 @@ int main(int argc, char **argv)
             strategy = Z_FIXED;
         else if (strcmp(arg, "--default") == 0)
             strategy = Z_DEFAULT_STRATEGY;
+        else if (strcmp(arg, "--dict") == 0) {
+            dictionary = (char*)malloc(32769);
+            i++;
+            char* filename = argv[i];
+            FILE* file = fopen(filename, "rb");
+            if (file) {
+                fseek(file, 0, SEEK_END);
+                dictSize = ftell(file);
+                rewind(file);
+                fread(dictionary, 1, dictSize, file);
+                dictionary[dictSize] = 0;
+                fclose(file);
+            } else {
+                fprintf(stderr, "Cant open dictionary file %s", filename);
+                return 255;
+            }
+        }
         else {
             fputs("zpipe usage: zpipe [-d] [--zlib] [-0/-1/.../-9] "
                 "[--filter/--huffman/--rle/--fix/--default] "
@@ -246,15 +270,19 @@ int main(int argc, char **argv)
     }
     /* do compression if no arguments */
     if (!isDecompress) {
-        ret = def(stdin, stdout, level, strategy, isZlib);
+        ret = def(stdin, stdout, level, strategy, isZlib, dictionary, dictSize);
         if (ret != Z_OK)
             zerr(ret);
         return ret;
     } else {
-        ret = inf(stdin, stdout, isZlib);
+        ret = inf(stdin, stdout, isZlib, dictionary, dictSize);
         if (ret != Z_OK)
             zerr(ret);
         return ret;
+    }
+
+    if (dictionary) {
+        free(dictionary);
     }
     return 0;
 }

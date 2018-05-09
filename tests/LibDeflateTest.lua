@@ -190,11 +190,13 @@ local function AssertLongStringEqual(actual, expected, msg)
 		for i=1, math.max(expected:len(), actual:len()) do
 			if string_byte(actual, i, i) ~= string_byte(expected, i, i) then
 				diffIndex = i
+				break
 			end
 		end
 		local actualMsg = string.format("%s actualLen: %d, expectedLen:%d, first difference at: %d,"
 			.." actualByte: %s, expectByte: %s", msg or "", actual:len(), expected:len(), diffIndex,
-			tostring(string.byte(actual, diffIndex, diffIndex)), tostring(string.byte(expected, diffIndex, diffIndex)))
+			string.byte(actual, diffIndex) or "nil",
+			string.byte(expected, diffIndex) or "nil")
 		lu.assertTrue(false, actualMsg)
 	end
 end
@@ -226,6 +228,9 @@ local function MemCheckAndBenchmarkFunc(func, ...)
 	return memoryLeaked, memoryUsed, elapsedTime*1000/repeatCount, unpack(ret)
 end
 
+local dictionary32768 = GetFileData("tests/dictionary32768.txt")
+dictionary32768 = LibDeflate:CreateDictionary(dictionary32768)
+
 local function CheckCompressAndDecompress(stringOrFileName, isFile, levels)
 	local origin
 	if isFile then
@@ -255,6 +260,8 @@ local function CheckCompressAndDecompress(stringOrFileName, isFile, levels)
 
 		local zlibCompressFileName = compressFileName..".zlib"
 		local zlibDecompressFileName = zlibCompressFileName..".decompress"
+		local dictCompressFileName = compressFileName..".dict"
+		local dictDecompressFileName = compressFileName..".dict.decompress"
 
 		for _, level in ipairs(levels) do
 			-- Compress by raw deflate
@@ -310,6 +317,27 @@ local function CheckCompressAndDecompress(stringOrFileName, isFile, levels)
 			AssertLongStringEqual(zlibDecompressData, origin
 				, "LibDeflate zlib decompress result does not match origin string.")
 
+
+			local dictCompressMemoryLeaked, dictCompressMemoryUsed, dictCompressTime,
+				dictCompressData, dictCompressBitSize = MemCheckAndBenchmarkFunc(LibDeflate.CompressDeflate, LibDeflate
+				, origin, level, dictionary32768)
+			WriteToFile(dictCompressFileName, dictCompressData)
+			lu.assertEquals(math.ceil(dictCompressBitSize/8), dictCompressData:len(),
+				"Unexpected compress bit size")
+			local dictReturnedStatus_zdeflate, dictStdout_zdeflate, dictStderr_zdeflate =
+				RunProgram("zdeflate -d --dict tests/dictionary32768.txt <", dictCompressFileName, dictDecompressFileName)
+			lu.assertEquals(dictReturnedStatus_zdeflate, 0, "zdeflate fails to decompress with dict with msg "
+				..tostring(dictStderr_zdeflate))
+			AssertLongStringEqual(dictStdout_zdeflate, origin,
+				"zdeflate decompress with dictionary result does not match origin string.")
+			local dictDecompressMemoryLeaked, dictDecompressMemoryUsed, dictDecompressTime,
+				dictDecompressData, dictDecompressUnprocessByte = MemCheckAndBenchmarkFunc(LibDeflate.DecompressDeflate, LibDeflate
+				, dictCompressData, dictionary32768)
+			lu.assertEquals(dictDecompressUnprocessByte, 0, "Unprocessed bytes after LibDeflate zlib decompression "
+					..tostring(dictDecompressUnprocessByte))
+			AssertLongStringEqual(dictDecompressData, origin,
+				"my decompress with dictionary result does not match origin string.")
+
 			print(
 				(">>>>> %s: %s Level: %d size: %d B\n"):format(isFile and "File" or "String",
 					stringOrFileName:sub(1, 40), level, origin:len()),
@@ -318,10 +346,21 @@ local function CheckCompressAndDecompress(stringOrFileName, isFile, levels)
 					compressData:len(), compressTime, compressData:len()/compressTime, compressMemoryUsed,
 					compressMemoryUsed/origin:len(), compressMemoryLeaked
 				),
+				("CompDeflateDict:   Size : %d B,\tTime: %.3f ms, Speed: %.0f KB/s, Memory: %d B,"
+					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
+					dictCompressData:len(), dictCompressTime, dictCompressData:len()/dictCompressTime, dictCompressMemoryUsed,
+					dictCompressMemoryUsed/origin:len(), dictCompressMemoryLeaked
+				),
 				("DecompressDeflate: cRatio: %.2f,\tTime: %.3f ms, Speed: %.0f KB/s, Memory: %d B,"
 					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
 					origin:len()/compressData:len(), decompressTime, decompressData:len()/decompressTime, decompressMemoryUsed,
 					decompressMemoryUsed/origin:len(), decompressMemoryLeaked
+				),
+				("DeCompDeflateDict: cRatio : %.2f,\tTime: %.3f ms, Speed: %.0f KB/s, Memory: %d B,"
+					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
+					origin:len()/dictCompressData:len(), dictDecompressTime, dictDecompressData:len()/dictDecompressTime,
+					dictDecompressMemoryUsed,
+					dictDecompressMemoryUsed/origin:len(), dictDecompressMemoryLeaked
 				),
 				("CompressZlib:      Size : %d B,\tTime: %.3f ms, Speed: %.0f KB/s, Memory: %d B,"
 					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
@@ -982,7 +1021,7 @@ TestInternals = {}
 			local compress = LibDeflate:Compress(str, level)
 			local _, actual = pcall(function() return LibDeflate:Decompress(compress) end)
 			if expected ~= actual then
-				local strDumpFile = io.open("fail_random.txt", "wb")
+				local strDumpFile = io.open("fail_random.tmp", "wb")
 				if (strDumpFile) then
 					strDumpFile:write(str)
 					print(("Failed test has been dumped to fail_random.txt, with level=%s"):
@@ -1107,6 +1146,38 @@ TestInternals = {}
 			lu.assertTrue((memory4 - memory3 <= 100), ("Too much Memory leak after LibStub update: %d")
 				:format(memory4-memory3))
 		end
+	end
+
+TestPresetDict = {}
+	function TestPresetDict:TestBasic()
+		--[[
+		local dict = {}
+		for i=8468, 0, -1 do
+			dict[#dict+1] = tostring(i)
+		end
+		dict = table.concat(dict).."00"
+		print(dict:len())
+		--]]
+		dict = [[ilvl::::::::110:::1517:3336:3528:3337]]
+		local fileData = GetFileData("tests/data/itemStrings.txt")
+		local dictionary = LibDeflate:CreateDictionary(dict)
+		print("dictLen", dict:len())
+		for i=1, dict:len() do
+			assert(dictionary.strTable[i] == string_byte(dict, i, i))
+		end
+		for i=1, dict:len()-2 do
+			local hash = string_byte(dict, i, i)*65536+string_byte(dict, i+1, i+1)*256+string_byte(dict, i+2, i+2)
+			assert(dictionary.hashTables[hash])
+		end
+		assert(dictionary.strLen == dict:len())
+		assert(dictionary)
+
+		local compress = LibDeflate:Compress(fileData, 7, dictionary)
+		print(compress:len())
+
+		local decompressed = LibDeflate:Decompress(compress, dictionary)
+		print(fileData:len(), decompressed:len())
+		AssertLongStringEqual(fileData, decompressed)
 	end
 
 local function AddToCoverageTest(suite, test)
