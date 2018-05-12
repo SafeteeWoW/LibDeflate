@@ -1,6 +1,10 @@
---[[
-	LibDeflate: Pure Lua implemenation of the DEFLATE lossless data compression algorithm.
-	Copyright (C) <2018>  Haoqian He (Github: SafeteeWoW; World of Warcraft: Safetyy-Illidan(US))
+--[[--
+	LibDeflate
+	Pure Lua compressors and decompressors of the DEFLATE/zlib format.
+
+	@author Haoqian He
+		(Github: SafeteeWoW; World of Warcraft: Safetyy-Illidan(US))
+	@copyright LibDeflate <2018> Haoqian He
 
 	This program is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -14,120 +18,243 @@
 
 	You should have received a copy of the GNU General Public License
 	along with this program.  If not, see <https://www.gnu.org/licenses/>.
---]]
 
-local LibDeflate
-if LibStub then
-	local MAJOR, MINOR = "LibDeflate", -1
-	-- When MAJOR is changed, I should name it as LibDeflate2
-	local lib, minor = LibStub:GetLibrary(MAJOR, true)
-	if lib and minor and minor >= MINOR then -- No need to update.
-		return lib
-	else -- Update or first time register
-		LibDeflate = LibStub:NewLibrary(MAJOR, MINOR)
-		-- NOTE: It is important that new version has implemented all exported APIs and tables in the old version,
-		-- so the old library is fully garbage collected, and we 100% ensure the backward compatibility.
-	end
-else
-	LibDeflate = {}
-end
+	Credits:
+	1. zlib, by Jean-loup Gailly (compression) and Mark Adler (decompression).
+		<http://www.zlib.net/>
+		Licensed under Zlib License. <http://www.zlib.net/zlib_license.html>
 
-LibDeflate._VERSION = -1
+		zlib is a wildly use library of the DEFLATE implementation.
+		LibDeflate uses some algorithm of the zlib, and use zlib related
+		program in the test script.
 
--- local is faster than global
-local assert = assert
-local table_concat = table.concat
-local table_sort = table.sort
-local string_char = string.char
-local string_byte = string.byte
-local string_sub = string.sub
-local string_find = string.find
-local string_gsub = string.gsub
-local pairs = pairs
-local type = type
-local error = error
+	2. puff, by Mark Adler.
+	TODO
+]]
 
----------------------------------------
---	Precalculated tables start.
----------------------------------------
+------------------------------------------------------------------------------
 
 --[[
-	key of the configuration table is the compression level, and its value stores the compression setting
+	This library is implemented according to the following specifications.
+	Both compressors and decompressors have been implemented in the library.
+	1. RFC1950: DEFLATE Compressed Data Format Specification version 1.3
+		<https://tools.ietf.org/html/rfc1951>
+	2. RFC1951: ZLIB Compressed Data Format Specification version 3.3
+		<https://tools.ietf.org/html/rfc1950>
+
+	This library requires Lua 5.1+ interpreter or LuaJIT v2.0+.
+	This library does not have any external library dependencies.
+	(Exception: will register in the World of Warcraft library "LibStub",
+	if detected). This is a pure Lua implementation. Therefore, no Lua
+	C API is used. This file "LibDeflate.lua" is the only source file of
+	the library.
+
+	If your Lua distribution does not include all Lua Standary libraries,
+	then the following Lua standard libraries are REQUIRED:
+	1. string
+	2. table
+
+	The following Lua standard libraries are NOT used by this library,
+	thus it is NOT REQUIRED to have them in your Lua to run this library:
+	1. coroutine
+	2. debug
+	3. io
+	4. math
+	5. os
+--]]
+
+--[[
+	key of the configuration table is the compression level,
+	and its value stores the compression setting.
+	These numbers come from zlib source code.
+
+	Higher compression level usually means better compression.
+	(Because LibDeflate uses a simplified version of zlib algorithm,
+	there is no guarantee that higher compression level does not create
+	bigger file than lower level, but I can say it's 99% likely)
+
+	Be careful with the high compression level. This is a pure lua
+	implementation compressor/decompressor, which is significant slower than
+	a C/C++ equivalant compressor/decompressor. Very high compression level
+	costs significant more CPU time, and usually compression size won't be
+	significant smaller when you increase compression level by 1, when the
+	level is already very high. Benchmark yourself if you can afford it.
+
 	See also https://github.com/madler/zlib/blob/master/doc/algorithm.txt,
-	And https://github.com/madler/zlib/blob/master/deflate.c for more infomration
+	https://github.com/madler/zlib/blob/master/deflate.c for more information.
 
 	The meaning of each field:
-	1. use_lazy_evaluation: true/false. Whether the program uses lazy evaluation.
-							See what is "lazy evaluation" in the link above.
-							lazy_evaluation improves ratio, but relatively slow.
-	2. good_prev_length: Only effective if lazy is set, Only use 1/4 of max_chain
-						 if prev length of lazy match is above this.
-	3. max_insert_length/max_lazy_match:
-			If not using lazy evaluation, Insert new strings in the hash table only if the match length is not
-			greater than this length.Only continue lazy evaluation.
-			If using lazy evaluation, only continue lazy evaluation if prev length is strictly smaller than this.
-	4. nice_length: Number. Don't continue to go down the hash chain if match length is above this.
-	5. max_chain: Number. The maximum number of hash chains we look.
-
+	@field 1 use_lazy_evaluation:
+		true/false. Whether the program uses lazy evaluation.
+		See what is "lazy evaluation" in the link above.
+		lazy_evaluation improves ratio, but relatively slow.
+	@field 2 good_prev_length:
+		Only effective if lazy is set, Only use 1/4 of max_chain,
+		if prev length of lazy match is above this.
+	@field 3 max_insert_length/max_lazy_match:
+		If not using lazy evaluation,
+		insert new strings in the hash table only if the match length is not
+		greater than this length. Only continue lazy evaluation.
+		If using lazy evaluation,
+		only continue lazy evaluation,
+		if prev length is strictly smaller than this.
+	@field 4 nice_length:
+		Number. Don't continue to go down the hash chain,
+		if match length is above this.
+	@field 5 max_chain:
+		Number. The maximum number of hash chains we look.
 --]]
-local _configuration_table = {
-	[1] = {false,	nil,	4,	8,	 4},		-- gzip -1
-	[2] = {false,	nil,	5,	18, 8},		-- gzip -2
-	[3] = {false,	nil,	6,	 32,	32,},	-- gzip -3
-
-	[4] = {true,	4,		4,		16,	16},	-- gzip -4
-	[5] = {true,	8,		16,		32,	32},	-- gzip -5
-	[6] = {true,	8,		16,		128,128},	  -- gzip -6
-	[7] = {true,	8,		32,		128,256},	  -- gzip -7
-	[8] = {true,	32,	 128,	258,1024},	 -- gzip -8
-	[9] = {true,	32,	 258,	258,4096},	 -- gzip -9 (maximum compression)
+local _compression_level_config = {
+	[1] = {false, nil, 4, 8, 4}, -- level 1, similar to zlib level 1
+	[2] = {false, nil, 5, 18, 8}, -- level 2, similar to zlib level 2
+	[3] = {false, nil, 6, 32, 32},	-- level 3, similar to zlib level 3
+	[4] = {true, 4,	4, 16, 16},	-- level 4, similar to zlib level 4
+	[5] = {true, 8,	16,	32,	32}, -- level 5, similar to zlib level 5
+	[6] = {true, 8,	16,	128, 128}, -- level 6, similar to zlib level 6
+	[7] = {true, 8,	32,	128, 256}, -- (SLOW) level 7, similar to zlib level 7
+	[8] = {true, 32, 128, 258,1024} ,-- (SLOW) level 8, similar to zlib level 8
+	[9] = {true, 32, 258, 258, 4096},
+		-- (VERY SLOW) level 9, similar to zlib level 9
 }
 
+local LibDeflate
+
+do
+	local _COPYRIGHT =
+	"LibDeflate 0.1.0-alpha1 Copyright 2018 Haoqian He. Licensed under GPLv3"
+	-- Semantic version. all lowercase.
+	-- Suffix can be alpha1, alpha2, beta1, beta2, rc1, rc2, etc.
+	local _VERSION = "0.1.0-alpha1"
+
+	-- Register in the World of Warcraft library "LibStub" if detected.
+	if LibStub then
+		local MAJOR, MINOR = "LibDeflate", -1
+		-- When MAJOR is changed, I should name it as LibDeflate2
+		local lib, minor = LibStub:GetLibrary(MAJOR, true)
+		if lib and minor and minor >= MINOR then -- No need to update.
+			return lib
+		else -- Update or first time register
+			LibDeflate = LibStub:NewLibrary(MAJOR, _VERSION)
+			-- NOTE: It is important that new version has implemented
+			-- all exported APIs and tables in the old version,
+			-- so the old library is fully garbage collected,
+			-- and we 100% ensure the backward compatibility.
+		end
+	else -- "LibStub" is not detected.
+		LibDeflate = {}
+	end
+
+	LibDeflate._VERSION = _VERSION
+	LibDeflate._COPYRIGHT = _COPYRIGHT
+end
+
+-- localize Lua api for faster access.
+local assert = assert
+local error = error
+local pairs = pairs
+local string_byte = string.byte
+local string_char = string.char
+local string_gsub = string.gsub
+local string_sub = string.sub
+local table_concat = table.concat
+local table_sort = table.sort
+local type = type
+
+-- Converts i to 2 to power of i, (0<=i<=31)
 local _pow2 = {}
-local _byteToChar = {}
-local _reverseBitsTbl = {}
--- _reverseBitsTbl[len][val] stores the bit reverse of the number of bit length "len" and value "val"
 
-local _lenToLiteralCode = {}
-local _lenToExtraBits = {}
-local _lenToExtraBitsLen = {}
+-- Converts any byte to a character, (0<=byte<=255)
+local _byte_to_char = {}
 
-local _dist256ToCode = {} -- For distance 1..256
-local _dist256ToExtraBits = {} -- For distance 1..256
-local _dist256ToExtraBitsLen = {} -- For distance 1..256
+-- _reverseBitsTbl[len][val] stores the bit reverse of
+-- the number with bit length "len" and value "val"
+-- For example, decimal number 6 with bits length 5 is binary 00110
+-- It's reverse is binary 01100,
+-- which is decimal 12 and 12 == _reverseBitsTbl[5][6]
+local _reverse_bits_tbl = {}
 
-local _codeLengthHuffmanCodeOrder = {16, 17, 18,
-	0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15}
-local _literalCodeToBaseLen = { -- Size base for length codes 257..285
+-- Convert a LZ77 length (3<=len<=258) to
+-- a deflate literal/LZ77_length code (257<=code<=285)
+local _length_to_deflate_code = {}
+
+-- convert a LZ77 length (3<=len<=258) to
+-- a deflate literal/LZ77_length code extra bits.
+local _length_to_deflate_extra_bits = {}
+
+-- Convert a LZ77 length (3<=len<=258) to
+-- a deflate literal/LZ77_length code extra bit length.
+local _length_to_deflate_extra_bitlen = {}
+
+-- Convert a small LZ77 distance (1<=dist<=256) to a deflate code.
+local _dist256_to_deflate_code = {}
+
+-- Convert a small LZ77 distance (1<=dist<=256) to
+-- a deflate distance code extra bits.
+local _dist256_to_deflate_extra_bits = {}
+
+-- Convert a small LZ77 distance (1<=dist<=256) to
+-- a deflate distance code extra bit length.
+local _dist256_to_deflate_extra_bitlen = {}
+
+-- Convert a literal/LZ77_length deflate code to LZ77 base length
+-- The key of the table is (code - 256), 257<=code<=285
+local _literal_deflate_code_to_base_len = {
 	3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
 	35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258}
-local _literalCodeToExtraBitsLen = { -- Extra bits for length codes 257..285
+
+-- Convert a literal/LZ77_length deflate code to base LZ77 length extra bits
+-- The key of the table is (code - 256), 257<=code<=285
+local _literal_deflate_code_to_extra_bitlen = {
 	0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
 	3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0}
-local _distCodeToBaseDist = { -- Offset base for distance codes 0..29
+
+-- Convert a distance deflate code to base LZ77 distance. (0<=code<=29)
+local _dist_deflate_code_to_base_dist = {
 	[0] = 1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
 	257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145,
 	8193, 12289, 16385, 24577}
-local _distCodeToExtraBitsLen = { -- Extra bits for distance codes 0..29
+
+-- Convert a distance deflate code to LZ77 bits length. (0<=code<=29)
+local _dist_deflate_code_to_extra_bitlen = {
 	[0] = 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
 	7, 7, 8, 8, 9, 9, 10, 10, 11, 11,
 	12, 12, 13, 13}
 
-local _fixLitHuffmanLen
-local _fixDistHuffmanLen
+-- The code order of the first huffman header in the dynamic deflate block.
+-- See the page 12 of RFC1951
+local _hclen_code_order = {16, 17, 18,
+	0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15}
 
-local _fixLitHuffmanCode
-local _fixLitHuffmanSym
-local _fixLitHuffmanLenCount
+-- The following tables are used by fixed deflate block.
+-- The value of these tables are assigned at the bottom of the source.
 
-local _fixDistHuffmanCode
-local _fixDistHuffmanSym
-local _fixDistHuffmanLenCount
-------------------------------------------------------------------------
-------------------------------------------------------------------------
+-- The huffman code of the literal/LZ77_length deflate codes.
+local _fix_block_literal_huffman_code
+
+-- Convert huffman code of the literal/LZ77_length to deflate codes.
+local _fix_block_literal_huffman_to_deflate_code
+
+-- The bit length of the huffman code of literal/LZ77_length deflate codes.
+local _fix_block_literal_huffman_bitlen
+
+-- The count of each bit length of the literal/LZ77_length deflate codes.
+local _fix_block_literal_huffman_bitlen_count
+
+-- The huffman code of the distance deflate codes.
+local _fix_block_dist_huffman_code
+
+-- Convert huffman code of the distance to deflate codes.
+local _fix_block_dist_huffman_to_deflate_code
+
+-- The bit length of the huffman code of the distance deflate codes.
+local _fix_block_dist_huffman_bitlen
+
+-- The count of each bit length of the huffman code of 
+-- the distance deflate codes.
+local _fix_block_dist_huffman_bitlen_count
 
 for i=0, 255 do
-	_byteToChar[i] = string_char(i)
+	_byte_to_char[i] = string_char(i)
 end
 
 do
@@ -139,7 +266,7 @@ do
 end
 
 for i=1, 9 do
-	_reverseBitsTbl[i] = {}
+	_reverse_bits_tbl[i] = {}
 	for j=0, _pow2[i+1]-1 do
 		local res = 0
 		local code = j
@@ -148,7 +275,7 @@ for i=1, 9 do
 			code = (code-code%2)/2
 			res = res*2
 		end
-		_reverseBitsTbl[i][j] = (res-res%2)/2
+		_reverse_bits_tbl[i][j] = (res-res%2)/2
 	end
 end
 
@@ -159,11 +286,11 @@ do
 	local bitsLen = 1
 	for len=3, 258 do
 		if len <= 10 then
-			_lenToLiteralCode[len] = len + 254
-			_lenToExtraBitsLen[len] = 0
+			_length_to_deflate_code[len] = len + 254
+			_length_to_deflate_extra_bitlen[len] = 0
 		elseif len == 258 then
-			_lenToLiteralCode[len] = 285
-			_lenToExtraBitsLen[len] = 0
+			_length_to_deflate_code[len] = 285
+			_length_to_deflate_extra_bitlen[len] = 0
 		else
 			if len > a then
 				a = a + b
@@ -172,19 +299,19 @@ do
 				bitsLen = bitsLen + 1
 			end
 			local t = len-a-1+b/2
-			_lenToLiteralCode[len] = (t-(t%(b/8)))/(b/8) + c
-			_lenToExtraBitsLen[len] = bitsLen
-			_lenToExtraBits[len] = t % (b/8)
+			_length_to_deflate_code[len] = (t-(t%(b/8)))/(b/8) + c
+			_length_to_deflate_extra_bitlen[len] = bitsLen
+			_length_to_deflate_extra_bits[len] = t % (b/8)
 		end
 	end
 end
 
 
 do
-	_dist256ToCode[1] = 0
-	_dist256ToCode[2] = 1
-	_dist256ToExtraBitsLen[1] = 0
-	_dist256ToExtraBitsLen[2] = 0
+	_dist256_to_deflate_code[1] = 0
+	_dist256_to_deflate_code[2] = 1
+	_dist256_to_deflate_extra_bitlen[1] = 0
+	_dist256_to_deflate_extra_bitlen[2] = 0
 
 	local a = 3
 	local b = 4
@@ -197,17 +324,14 @@ do
 			code = code + 2
 			bitsLen = bitsLen + 1
 		end
-		_dist256ToCode[dist] = (dist <= a) and code or (code+1)
-		_dist256ToExtraBitsLen[dist] = (bitsLen < 0) and 0 or bitsLen
+		_dist256_to_deflate_code[dist] = (dist <= a) and code or (code+1)
+		_dist256_to_deflate_extra_bitlen[dist] = (bitsLen < 0) and 0 or bitsLen
 		if b >= 8 then
-			_dist256ToExtraBits[dist] = (dist-b/2-1) % (b/4)
+			_dist256_to_deflate_extra_bits[dist] = (dist-b/2-1) % (b/4)
 		end
 	end
 end
 
----------------------------------------
---	Precalculated tables ends.
----------------------------------------
 local function CreateWriter()
 	local bufferSize = 0
 	local cache = 0
@@ -219,10 +343,10 @@ local function CreateWriter()
 		cacheBitRemaining = bitLength + cacheBitRemaining
 		if cacheBitRemaining >= 32 then
 			-- we have at least 4 bytes to store; bulk it
-			buffer[bufferSize+1] = _byteToChar[cache % 256]
-			buffer[bufferSize+2] = _byteToChar[((cache-cache%256)/256 % 256)]
-			buffer[bufferSize+3] = _byteToChar[((cache-cache%65536)/65536 % 256)]
-			buffer[bufferSize+4] = _byteToChar[((cache-cache%16777216)/16777216 % 256)]
+			buffer[bufferSize+1] = _byte_to_char[cache % 256]
+			buffer[bufferSize+2] = _byte_to_char[((cache-cache%256)/256 % 256)]
+			buffer[bufferSize+3] = _byte_to_char[((cache-cache%65536)/65536 % 256)]
+			buffer[bufferSize+4] = _byte_to_char[((cache-cache%16777216)/16777216 % 256)]
 			bufferSize = bufferSize + 4
 			local rShiftMask = _pow2[32 - cacheBitRemaining + bitLength]
 			cache = (code - code%rShiftMask)/rShiftMask
@@ -568,7 +692,7 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 		level = 5
 	end
 
-	local config = _configuration_table[level]
+	local config = _compression_level_config[level]
 	local config_use_lazy, config_good_prev_length, config_max_lazy_match, config_nice_length
 		, config_max_hash_chain = config[1], config[2], config[3], config[4], config[5]
 
@@ -704,13 +828,13 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 		end
 		if ((not config_use_lazy or matchAvailable) and (prevLen > 3 or (prevLen == 3 and prevDist < 4096))
 		and curLen <= prevLen )then
-			local code = _lenToLiteralCode[prevLen]
-			local lenExtraBitsLength = _lenToExtraBitsLen[prevLen]
+			local code = _length_to_deflate_code[prevLen]
+			local lenExtraBitsLength = _length_to_deflate_extra_bitlen[prevLen]
 			local distCode, distExtraBitsLength, distExtraBits
 			if prevDist <= 256 then
-				distCode = _dist256ToCode[prevDist]
-				distExtraBits = _dist256ToExtraBits[prevDist]
-				distExtraBitsLength =  _dist256ToExtraBitsLen[prevDist]
+				distCode = _dist256_to_deflate_code[prevDist]
+				distExtraBits = _dist256_to_deflate_extra_bits[prevDist]
+				distExtraBitsLength =  _dist256_to_deflate_extra_bitlen[prevDist]
 			else
 				distCode = 16
 				distExtraBitsLength = 7
@@ -742,7 +866,7 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 			dCodesCount[distCode] = (dCodesCount[distCode] or 0) + 1
 
 			if lenExtraBitsLength > 0 then
-				local lenExtraBits = _lenToExtraBits[prevLen]
+				local lenExtraBits = _length_to_deflate_extra_bits[prevLen]
 				lExtraBitTblSize = lExtraBitTblSize + 1
 				lExtraBits[lExtraBitTblSize] = lenExtraBits
 			end
@@ -794,7 +918,7 @@ local function GetBlockDynamicHuffmanHeader(lCodesCount, dCodesCount)
 
 	local HCLEN = 0
 	for i=1, 19 do
-		local symbol = _codeLengthHuffmanCodeOrder[i]
+		local symbol = _hclen_code_order[i]
 		local length = codeLensCodeLens[symbol] or 0
 		if length ~= 0 then
 			HCLEN = i
@@ -833,7 +957,7 @@ local function GetBlockDynamicHuffmanSize(
 		if code > 256 then -- Length code
 			lengthCodeCount = lengthCodeCount + 1
 			if code > 264 and code < 285 then -- Length code with extra bits
-				local extraBitsLength = _literalCodeToExtraBitsLen[code-256]
+				local extraBitsLength = _literal_deflate_code_to_extra_bitlen[code-256]
 				blockBitSize = blockBitSize + extraBitsLength
 			end
 			local distCode = dCodes[lengthCodeCount]
@@ -861,7 +985,7 @@ local function CompressBlockDynamicHuffman(WriteBits, isLastBlock,
 	WriteBits(HCLEN, 4)
 
 	for i = 1, HCLEN+4 do
-		local symbol = _codeLengthHuffmanCodeOrder[i]
+		local symbol = _hclen_code_order[i]
 		local length = codeLensCodeLens[symbol] or 0
 		WriteBits(length, 3)
 	end
@@ -891,7 +1015,7 @@ local function CompressBlockDynamicHuffman(WriteBits, isLastBlock,
 			if code > 264 and code < 285 then -- Length code with extra bits
 				lengthCodeWithExtraCount = lengthCodeWithExtraCount + 1
 				local extraBits = lExtraBits[lengthCodeWithExtraCount]
-				local extraBitsLength = _literalCodeToExtraBitsLen[code-256]
+				local extraBitsLength = _literal_deflate_code_to_extra_bitlen[code-256]
 				WriteBits(extraBits, extraBitsLength)
 			end
 			-- Write distance code
@@ -915,12 +1039,12 @@ local function GetBlockFixHuffmanSize(lCodes, dCodes)
 	local lengthCodeCount = 0
 	for i=1, #lCodes do
 		local code = lCodes[i]
-		local huffmanLength = _fixLitHuffmanLen[code]
+		local huffmanLength = _fix_block_literal_huffman_bitlen[code]
 		blockBitSize = blockBitSize + huffmanLength
 		if code > 256 then -- Length code
 			lengthCodeCount = lengthCodeCount + 1
 			if code > 264 and code < 285 then -- Length code with extra bits
-				local extraBitsLength = _literalCodeToExtraBitsLen[code-256]
+				local extraBitsLength = _literal_deflate_code_to_extra_bitlen[code-256]
 				blockBitSize = blockBitSize + extraBitsLength
 			end
 			local distCode = dCodes[lengthCodeCount]
@@ -944,20 +1068,20 @@ local function CompressBlockFixHuffman(WriteBits, isLastBlock,
 	local distCodeWithExtraCount = 0
 	for i=1, #lCodes do
 		local code = lCodes[i]
-		local huffmanCode = _fixLitHuffmanCode[code]
-		local huffmanLength = _fixLitHuffmanLen[code]
+		local huffmanCode = _fix_block_literal_huffman_code[code]
+		local huffmanLength = _fix_block_literal_huffman_bitlen[code]
 		WriteBits(huffmanCode, huffmanLength)
 		if code > 256 then -- Length code
 			lengthCodeCount = lengthCodeCount + 1
 			if code > 264 and code < 285 then -- Length code with extra bits
 				lengthCodeWithExtraCount = lengthCodeWithExtraCount + 1
 				local extraBits = lExtraBits[lengthCodeWithExtraCount]
-				local extraBitsLength = _literalCodeToExtraBitsLen[code-256]
+				local extraBitsLength = _literal_deflate_code_to_extra_bitlen[code-256]
 				WriteBits(extraBits, extraBitsLength)
 			end
 			-- Write distance code
 			local distCode = dCodes[lengthCodeCount]
-			local distHuffmanCode = _fixDistHuffmanCode[distCode]
+			local distHuffmanCode = _fix_block_dist_huffman_code[distCode]
 			WriteBits(distHuffmanCode, 5)
 
 			if distCode > 3 then -- dist code with extra bits
@@ -1255,7 +1379,7 @@ local function CreateReader(inputString)
 			code = cache % rShiftMask
 			cache = (cache - code) / rShiftMask
 			-- Reverse the bits
-			code = _reverseBitsTbl[minLen][code]
+			code = _reverse_bits_tbl[minLen][code]
 
 			count = huffmanLenCount[minLen]-- Number of codes of length len
 			if code < count then
@@ -1350,7 +1474,7 @@ local function DecodeUntilEndOfBlock(state, litHuffmanLen, litHuffmanSym, litMin
 		dictStrLen = dictionary.strLen
 		bufferEnd = -dictStrLen + 1
 		for i=0, (-dictStrLen+1)<-257 and -257 or (-dictStrLen+1), -1 do
-			local dictChar = _byteToChar[dictStrTable[dictStrLen+i]]
+			local dictChar = _byte_to_char[dictStrTable[dictStrLen+i]]
 			buffer[i] = dictChar
 		end
 	end
@@ -1361,17 +1485,17 @@ local function DecodeUntilEndOfBlock(state, litHuffmanLen, litHuffmanSym, litMin
 			return -10 -- invalid literal/length or distance code in fixed or dynamic block
 		elseif symbol < 256 then -- Literal
 			bufferSize = bufferSize + 1
-			buffer[bufferSize] = _byteToChar[symbol]
+			buffer[bufferSize] = _byte_to_char[symbol]
 		elseif symbol > 256 then -- Length code
 			symbol = symbol - 256
-			local length = _literalCodeToBaseLen[symbol]
-			length = (symbol >= 8) and (length + ReadBits(_literalCodeToExtraBitsLen[symbol])) or length
+			local length = _literal_deflate_code_to_base_len[symbol]
+			length = (symbol >= 8) and (length + ReadBits(_literal_deflate_code_to_extra_bitlen[symbol])) or length
 			symbol = Decode(distHuffmanLen, distHuffmanSym, distMinLen)
 			if symbol < 0 or symbol > 29 then
 				return -10 -- invalid literal/length or distance code in fixed or dynamic block
 			end
-			local dist = _distCodeToBaseDist[symbol]
-			dist = (dist > 4) and (dist + ReadBits(_distCodeToExtraBitsLen[symbol])) or dist
+			local dist = _dist_deflate_code_to_base_dist[symbol]
+			dist = (dist > 4) and (dist + ReadBits(_dist_deflate_code_to_extra_bitlen[symbol])) or dist
 
 			local charBufferIndex = bufferSize-dist+1
 			if charBufferIndex < bufferEnd then
@@ -1387,7 +1511,7 @@ local function DecodeUntilEndOfBlock(state, litHuffmanLen, litHuffmanSym, litMin
 				charBufferIndex = dictStrLen + charBufferIndex
 				for _=1, length do
 					bufferSize = bufferSize + 1
-					buffer[bufferSize] = _byteToChar[dictStrTable[charBufferIndex]]
+					buffer[bufferSize] = _byte_to_char[dictStrTable[charBufferIndex]]
 					charBufferIndex = charBufferIndex + 1
 				end
 			end
@@ -1456,8 +1580,8 @@ local function DecompressStoreBlock(state)
 end
 
 local function DecompressFixBlock(state)
-	return DecodeUntilEndOfBlock(state, _fixLitHuffmanLenCount, _fixLitHuffmanSym, 7,
-		_fixDistHuffmanLenCount, _fixDistHuffmanSym, 5)
+	return DecodeUntilEndOfBlock(state, _fix_block_literal_huffman_bitlen_count, _fix_block_literal_huffman_to_deflate_code, 7,
+		_fix_block_dist_huffman_bitlen_count, _fix_block_dist_huffman_to_deflate_code, 5)
 end
 
 local function DecompressDynamicBlock(state)
@@ -1472,7 +1596,7 @@ local function DecompressDynamicBlock(state)
 	local lengthLengths = {}
 
 	for index=1, nCode do
-		lengthLengths[_codeLengthHuffmanCodeOrder[index]] = ReadBits(3)
+		lengthLengths[_hclen_code_order[index]] = ReadBits(3)
 	end
 
 	local err, lenLenHuffmanLenCount, lenLenHuffmanSym, lenLenMinLen = ConstructInflateHuffman(lengthLengths, 19, 7)
@@ -1746,32 +1870,32 @@ end
 
 -- Fix huffman code
 do
-	_fixLitHuffmanLen = {}
+	_fix_block_literal_huffman_bitlen = {}
 	for sym=0, 143 do
-		_fixLitHuffmanLen[sym] = 8
+		_fix_block_literal_huffman_bitlen[sym] = 8
 	end
 	for sym=144, 255 do
-		_fixLitHuffmanLen[sym] = 9
+		_fix_block_literal_huffman_bitlen[sym] = 9
 	end
 	for sym=256, 279 do
-	    _fixLitHuffmanLen[sym] = 7
+	    _fix_block_literal_huffman_bitlen[sym] = 7
 	end
 	for sym=280, 287 do
-		_fixLitHuffmanLen[sym] = 8
+		_fix_block_literal_huffman_bitlen[sym] = 8
 	end
 
-	_fixDistHuffmanLen = {}
+	_fix_block_dist_huffman_bitlen = {}
 	for dist=0, 31 do
-		_fixDistHuffmanLen[dist] = 5
+		_fix_block_dist_huffman_bitlen[dist] = 5
 	end
 	local status
-	status, _fixLitHuffmanLenCount, _fixLitHuffmanSym = ConstructInflateHuffman(_fixLitHuffmanLen, 288, 9)
+	status, _fix_block_literal_huffman_bitlen_count, _fix_block_literal_huffman_to_deflate_code = ConstructInflateHuffman(_fix_block_literal_huffman_bitlen, 288, 9)
 	assert(status == 0)
-	status, _fixDistHuffmanLenCount, _fixDistHuffmanSym = ConstructInflateHuffman(_fixDistHuffmanLen, 32, 5)
+	status, _fix_block_dist_huffman_bitlen_count, _fix_block_dist_huffman_to_deflate_code = ConstructInflateHuffman(_fix_block_dist_huffman_bitlen, 32, 5)
 	assert(status == 0)
 
-	_fixLitHuffmanCode = GetHuffmanCodeFromBitLength(_fixLitHuffmanLenCount, _fixLitHuffmanLen, 287, 9)
-	_fixDistHuffmanCode = GetHuffmanCodeFromBitLength(_fixDistHuffmanLenCount, _fixDistHuffmanLen, 31, 5)
+	_fix_block_literal_huffman_code = GetHuffmanCodeFromBitLength(_fix_block_literal_huffman_bitlen_count, _fix_block_literal_huffman_bitlen, 287, 9)
+	_fix_block_dist_huffman_code = GetHuffmanCodeFromBitLength(_fix_block_dist_huffman_bitlen_count, _fix_block_dist_huffman_bitlen, 31, 5)
 end
 
 
@@ -1784,6 +1908,7 @@ end
 -- implemented by Galmok of European Stormrage (Horde), galmok@gmail.com
 -- From LibCompress <https://www.wowace.com/projects/libcompress>, which is licensed under GPLv2
 -- The code has been modified by the author of LibDeflate.
+-----------------------------------------------------------------------
 
 --[[
 	Howto: Encode and Decode:
@@ -1808,7 +1933,7 @@ end
 	GetChatEncodeTable: Sets up encoding for the chat channel (many bytes encoded, see the function for details)
 
 	Except for the mapped characters, all encoding will be with 1 escape character followed by 1 suffix, i.e. 2 bytes.
-]]
+--]]
 -- to be able to match any requested byte value, the search string must be preprocessed
 -- characters to escape with %:
 -- ( ) . % + - * ? [ ] ^ $
@@ -1923,7 +2048,7 @@ function LibDeflate:GetEncodeDecodeTable(reservedChars, escapeChars, mapChars)
 				end
 			end
 
-			local char_r = _byteToChar[r]
+			local char_r = _byte_to_char[r]
 			encode_translate[c] = escapeChar..char_r
 			encode_search[#encode_search+1] = c
 			decode_translate[char_r] = c
@@ -2003,7 +2128,7 @@ end
 local function GenerateWoWChatChannelEncodeTable()
 	local r = {}
 	for i = 128, 255 do
-		r[#r+1] = _byteToChar[i]
+		r[#r+1] = _byte_to_char[i]
 	end
 
 	local reservedChars = "sS\000\010\013\124%"..table_concat(r)
