@@ -41,8 +41,11 @@ local table_sort = table.sort
 local string_char = string.char
 local string_byte = string.byte
 local string_sub = string.sub
+local string_find = string.find
+local string_gsub = string.gsub
 local pairs = pairs
 local type = type
+local error = error
 
 ---------------------------------------
 --	Precalculated tables start.
@@ -1694,7 +1697,7 @@ function LibDeflate:CreateDictionary(str)
 	assert(type(str) == "string")
 	local strLen = str:len()
 	assert(strLen > 0)
-	assert(strLen <= 32768)
+	assert(strLen <= 32768, tostring(strLen))
 	local dictionary = {}
 	dictionary.strTable = {}
 	dictionary.strLen = strLen
@@ -1769,6 +1772,258 @@ do
 
 	_fixLitHuffmanCode = GetHuffmanCodeFromBitLength(_fixLitHuffmanLenCount, _fixLitHuffmanLen, 287, 9)
 	_fixDistHuffmanCode = GetHuffmanCodeFromBitLength(_fixDistHuffmanLenCount, _fixDistHuffmanLen, 31, 5)
+end
+
+
+
+----------------------------------------------------------------------
+----------------------------------------------------------------------
+-- Encoding algorithms
+--------------------------------------------------------------------------------
+-- Prefix encoding algorithm
+-- implemented by Galmok of European Stormrage (Horde), galmok@gmail.com
+-- From LibCompress <https://www.wowace.com/projects/libcompress>, which is licensed under GPLv2
+-- The code has been modified by the author of LibDeflate.
+
+--[[
+	Howto: Encode and Decode:
+
+	3 functions are supplied, 2 of them are variants of the first.
+	They return a table with functions to encode and decode text.
+
+	table, msg = LibCompress:GetEncodeDecodeTable(reservedChars, escapeChars,  mapChars)
+
+		reservedChars: The characters in this string will not appear in the encoded data.
+		escapeChars: A string of characters used as escape-characters (don't supply more than needed). #escapeChars >= 1
+		mapChars: First characters in reservedChars maps to first characters in mapChars.  (#mapChars <= #reservedChars)
+
+	return value:
+		table
+			if nil then msg holds an error message, otherwise use like this:
+
+			encoded_message = table:Encode(message)
+			message = table:Decode(encoded_message)
+
+	GetAddonEncodeTable: Sets up encoding for the addon channel (\000 is encoded)
+	GetChatEncodeTable: Sets up encoding for the chat channel (many bytes encoded, see the function for details)
+
+	Except for the mapped characters, all encoding will be with 1 escape character followed by 1 suffix, i.e. 2 bytes.
+]]
+-- to be able to match any requested byte value, the search string must be preprocessed
+-- characters to escape with %:
+-- ( ) . % + - * ? [ ] ^ $
+-- "illegal" byte values:
+-- 0 is replaces %z
+local _gsub_escape_table = {
+	['\000'] = "%z",
+	[('(')] = "%(",
+	[(')')] = "%)",
+	[('.')] = "%.",
+	[('%')] = "%%",
+	[('+')] = "%+",
+	[('-')] = "%-",
+	[('*')] = "%*",
+	[('?')] = "%?",
+	[('[')] = "%[",
+	[(']')] = "%]",
+	[('^')] = "%^",
+	[('$')] = "%$"
+}
+
+local function escape_for_gsub(str)
+	return str:gsub("([%z%(%)%.%%%+%-%*%?%[%]%^%$])",  _gsub_escape_table)
+end
+
+function LibDeflate:GetEncodeDecodeTable(reservedChars, escapeChars, mapChars)
+	reservedChars = reservedChars or ""
+	escapeChars = escapeChars or ""
+	mapChars = mapChars or ""
+	-- select a default escape character
+	if escapeChars == "" then
+		return nil, "No escape characters supplied"
+	end
+	if #reservedChars < #mapChars then
+		return nil, "Number of reserved characters must be"
+			.." at least as many as the number of mapped chars"
+	end
+	if reservedChars == "" then
+		return nil, "No characters to encode"
+	end
+
+	local encodeBytes = reservedChars..escapeChars..mapChars
+	-- build list of bytes not available as a suffix to a prefix byte
+	local taken = {}
+	for i = 1, #encodeBytes do
+		local byte = string_byte(encodeBytes, i, i)
+		if taken[byte] then -- Modified by LibDeflate:
+			return nil, "There must be no duplicate characters in the"
+				.." concatenation of reservedChars, escapeChars and mapChars "
+		end
+		taken[byte] = true
+	end
+
+	-- Modified by LibDeflate:
+	-- Store the patterns and replacement in tables for later use.
+	-- This function is modified that loadstring() lua api is no longer used.
+	local decode_patterns = {}
+	local decode_repls = {}
+
+	-- the encoding can be a single gsub
+	-- , but the decoding can require multiple gsubs
+	local encode_search = {}
+	local encode_translate = {}
+
+	-- map single byte to single byte
+	if #mapChars > 0 then
+		local decode_search = {}
+		local decode_translate = {}
+		for i = 1, #mapChars do
+			local from = string_sub(reservedChars, i, i)
+			local to = string_sub(mapChars, i, i)
+			encode_translate[from] = to
+			encode_search[#encode_search+1] = from
+			decode_translate[to] = from
+			decode_search[#decode_search+1] = to
+		end
+		decode_patterns[#decode_patterns+1] =
+			"([".. escape_for_gsub(table_concat(decode_search)).."])"
+		decode_repls[#decode_repls+1] = decode_translate
+	end
+
+	local escapeCharIndex = 1
+	local escapeChar = string_sub(escapeChars, escapeCharIndex, escapeCharIndex)
+	-- map single byte to double-byte
+	local r = 0 -- suffix char value to the escapeChar
+
+	local decode_search = {}
+	local decode_translate = {}
+	for i = 1, #encodeBytes do
+		local c = string_sub(encodeBytes, i, i)
+		if not encode_translate[c] then
+			-- this loop will update escapeChar and r
+			while r >= 256 or taken[r] do
+			-- Bug in LibCompress r81
+			-- while r < 256 and taken[r] do
+				r = r + 1
+				if r > 255 then -- switch to next escapeChar
+					if not escapeChar or escapeChar == "" then
+						-- we are out of escape chars and we need more!
+						return nil, "Out of escape characters"
+					end
+					decode_patterns[#decode_patterns+1] =
+						escape_for_gsub(escapeChar)
+						.."([".. escape_for_gsub(table_concat(decode_search)).."])"
+					decode_repls[#decode_repls+1] = decode_translate
+
+					escapeCharIndex = escapeCharIndex + 1
+					escapeChar = string_sub(escapeChars, escapeCharIndex, escapeCharIndex)
+					r = 0
+					decode_search = {}
+					decode_translate = {}
+				end
+			end
+
+			local char_r = _byteToChar[r]
+			encode_translate[c] = escapeChar..char_r
+			encode_search[#encode_search+1] = c
+			decode_translate[char_r] = c
+			decode_search[#decode_search+1] = char_r
+			r = r + 1
+		end
+		if i == #encodeBytes then
+			decode_patterns[#decode_patterns+1] =
+				escape_for_gsub(escapeChar).."(["
+				.. escape_for_gsub(table_concat(decode_search)).."])"
+			decode_repls[#decode_repls+1] = decode_translate
+		end
+	end
+
+	local codecTable = {}
+
+	local encode_pattern = "([".. escape_for_gsub(table_concat(encode_search)).."])"
+	local encode_repl = encode_translate
+
+	function codecTable:Encode(str)
+		return string_gsub(str, encode_pattern, encode_repl)
+	end
+
+	local decode_tblsize = #decode_patterns
+
+	function codecTable:Decode(str)
+		for i = 1, decode_tblsize do
+			str = string_gsub(str, decode_patterns[i], decode_repls[i])
+		end
+		return str
+	end
+	codecTable.__newindex = function() error("This table is read-only") end
+
+	return codecTable
+end
+
+local _addon_channel_encode_table
+
+function LibDeflate:EncodeForWoWAddonChannel(str)
+	if not _addon_channel_encode_table then
+		_addon_channel_encode_table = self:GetEncodeDecodeTable("\000", "\001")
+	end
+	return _addon_channel_encode_table:Encode(str)
+end
+
+function LibDeflate:DecodeForWoWAddonChannel(str)
+	if not _addon_channel_encode_table then
+		_addon_channel_encode_table = self:GetEncodeDecodeTable("\000", "\001")
+	end
+	return _addon_channel_encode_table:Decode(str)
+end
+
+-- For World of Warcraft Chat Channel Encoding
+-- implemented by Galmok of European Stormrage (Horde), galmok@gmail.com
+-- From LibCompress <https://www.wowace.com/projects/libcompress>,
+-- which is licensed under GPLv2
+-- The code has been modified by the author of LibDeflate.
+-- Following byte values are not allowed:
+-- \000, s, S, \010, \013, \124, %
+-- Because SendChatMessage will error
+-- if an UTF8 multibyte character is incomplete,
+-- all character values above 127 have to be encoded to avoid this.
+-- This costs quite a bit of bandwidth (about 13-14%)
+-- Also, because drunken status is unknown for the received
+-- , strings used with SendChatMessage should be terminated with
+-- an identifying byte value, after which the server MAY add "...hic!"
+-- or as much as it can fit(!).
+-- Pass the identifying byte as a reserved character to this function
+-- to ensure the encoding doesn't contain that value.
+-- or use this: local message, match = arg1:gsub("^(.*)\029.-$", "%1")
+-- arg1 is message from channel, \029 is the string terminator
+-- , but may be used in the encoded datastream as well. :-)
+-- This encoding will expand data anywhere from:
+-- 0% (average with pure ascii text)
+-- 53.5% (average with random data valued zero to 255)
+-- 100% (only encoding data that encodes to two bytes)
+local function GenerateWoWChatChannelEncodeTable()
+	local r = {}
+	for i = 128, 255 do
+		r[#r+1] = _byteToChar[i]
+	end
+
+	local reservedChars = "sS\000\010\013\124%"..table_concat(r)
+	return LibDeflate:GetEncodeDecodeTable(reservedChars, "\029\031", "\015\020")
+end
+
+local _chat_channel_encode_table
+
+function LibDeflate:EncodeForWoWChatChannel(str)
+	if not _chat_channel_encode_table then
+		_chat_channel_encode_table = GenerateWoWChatChannelEncodeTable()
+	end
+	return _chat_channel_encode_table:Encode(str)
+end
+
+function LibDeflate:DecodeForWoWChatChannel(str)
+	if not _chat_channel_encode_table then
+		_chat_channel_encode_table = GenerateWoWChatChannelEncodeTable()
+	end
+	return _chat_channel_encode_table:Decode(str)
 end
 
 -- For test. Don't use the functions in this table for real application.

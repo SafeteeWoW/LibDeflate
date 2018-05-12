@@ -4,6 +4,8 @@ local args = rawget(_G, "arg")
 -- UnitTests
 local lu = require("luaunit")
 
+local assert = assert
+local loadstring = loadstring or load
 local math = math
 local string = string
 local table = table
@@ -16,7 +18,12 @@ local print = print
 local tostring = tostring
 local string_char = string.char
 local string_byte = string.byte
+local string_len = string.len
+local string_sub = string.sub
 local unpack = unpack or table.unpack
+local table_insert = table.insert
+local table_concat = table.concat
+
 math.randomseed(0) -- I don't like true random tests that I cant 100% reproduce.
 
 local _byte0 = string_byte("0", 1)
@@ -147,6 +154,42 @@ local function GetRandomString(strLen)
 	return table.concat(tmp)
 end
 
+-- Get a random string with at least 256 len which includes all characters
+local function GetRandomStringComplete(strLen)
+	assert(strLen >= 256)
+	local taken = {}
+	local tmp = {}
+	for i=0, 255 do
+		local rand = math.random(1, 256-i)
+		local count = 0
+		for j=0, 255 do
+			if (not taken[j]) then
+				count = count + 1
+			end
+			if count == rand then
+				taken[j] = true
+				tmp[#tmp+1] = string_char(j)
+				break
+			end
+		end
+	end
+	for _=1, strLen-256 do
+		table_insert(tmp, math.random(1, #tmp+1), string_char(math.random(0, 255)))
+	end
+	return table_concat(tmp)
+end
+assert(GetRandomStringComplete(256):len() == 256)
+assert(GetRandomStringComplete(500):len() == 500)
+do
+	local taken = {}
+	local str = GetRandomStringComplete(256)
+	for i=1, 256 do
+		local byte = string_byte(str, i, i)
+		assert(not taken[byte])
+		taken[byte] = true
+	end
+end
+
 -- Repeatedly collect memory garbarge until memory usage no longer changes
 local function FullMemoryCollect()
 	local memoryUsed = collectgarbage("count")
@@ -232,6 +275,10 @@ local dictionary32768 = GetFileData("tests/dictionary32768.txt")
 dictionary32768 = LibDeflate:CreateDictionary(dictionary32768)
 
 local function CheckCompressAndDecompress(stringOrFileName, isFile, levels)
+	-- Init cache table in these functions, to help memory leak check in the following codes.
+	LibDeflate:EncodeForWoWAddonChannel("")
+	LibDeflate:EncodeForWoWChatChannel("")
+
 	local origin
 	if isFile then
 		origin = GetFileData(stringOrFileName)
@@ -271,6 +318,15 @@ local function CheckCompressAndDecompress(stringOrFileName, isFile, levels)
 			lu.assertEquals(math.ceil(compressBitSize/8), compressData:len(),
 				"Unexpected compress bit size")
 			WriteToFile(compressFileName, compressData)
+
+			-- Test encoding
+			local compressDataWoWAddonEncoded = LibDeflate:EncodeForWoWAddonChannel(compressData)
+			AssertLongStringEqual(LibDeflate:DecodeForWoWAddonChannel(compressDataWoWAddonEncoded), compressData,
+				"EncodeForAddonChannel fails")
+
+			local compressDataWoWChatEncoded = LibDeflate:EncodeForWoWChatChannel(compressData)
+			AssertLongStringEqual(LibDeflate:DecodeForWoWChatChannel(compressDataWoWChatEncoded), compressData,
+				"EncodeForChatChannel fails")
 
 			-- Try decompress by puff
 			local returnedStatus_puff, stdout_puff, stderr_puff = RunProgram("puff -w "
@@ -489,7 +545,6 @@ local function CheckDecompressIncludingError(compress, decompress, isZlib)
 				:format(StringForPrint(StringToHex(compress)), StringForPrint(StringToHex(d))))
 		end
 	end
-
 end
 
 local function CheckZlibDecompressIncludingError(compress, decompress)
@@ -521,6 +576,232 @@ if args and #args >= 1 and type(args[0]) == "string" then
 	end
 end
 
+-------------------------------------------------------------------------
+-- LibCompress encode code to help verity encode code in LibDeflate -----
+-------------------------------------------------------------------------
+local LibCompress = {}
+do
+	local gsub_escape_table = {
+		['\000'] = "%z",
+		[('(')] = "%(",
+		[(')')] = "%)",
+		[('.')] = "%.",
+		[('%')] = "%%",
+		[('+')] = "%+",
+		[('-')] = "%-",
+		[('*')] = "%*",
+		[('?')] = "%?",
+		[('[')] = "%[",
+		[(']')] = "%]",
+		[('^')] = "%^",
+		[('$')] = "%$"
+	}
+
+	local function escape_for_gsub(str)
+		return str:gsub("([%z%(%)%.%%%+%-%*%?%[%]%^%$])",  gsub_escape_table)
+	end
+
+	function LibCompress:GetEncodeTable(reservedChars, escapeChars, mapChars)
+		reservedChars = reservedChars or ""
+		escapeChars = escapeChars or ""
+		mapChars = mapChars or ""
+
+		-- select a default escape character
+		if escapeChars == "" then
+			return nil, "No escape characters supplied"
+		end
+
+		if #reservedChars < #mapChars then
+			return nil, "Number of reserved characters must be at least as many as the number of mapped chars"
+		end
+
+		if reservedChars == "" then
+			return nil, "No characters to encode"
+		end
+
+		-- list of characters that must be encoded
+		local encodeBytes = reservedChars..escapeChars..mapChars
+
+		-- build list of bytes not available as a suffix to a prefix byte
+		local taken = {}
+		for i = 1, string_len(encodeBytes) do
+			taken[string_sub(encodeBytes, i, i)] = true
+		end
+
+		-- allocate a table to hold encode/decode strings/functions
+		local codecTable = {}
+
+		-- the encoding can be a single gsub, but the decoding can require multiple gsubs
+		local decode_func_string = {}
+
+		local encode_search = {}
+		local encode_translate = {}
+		local encode_func
+		local decode_search = {}
+		local decode_translate = {}
+		local decode_func
+		local c, r, to, from
+		local escapeCharIndex, escapeChar = 0
+
+		-- map single byte to single byte
+		if #mapChars > 0 then
+			for i = 1, #mapChars do
+				from = string_sub(reservedChars, i, i)
+				to = string_sub(mapChars, i, i)
+				encode_translate[from] = to
+				table_insert(encode_search, from)
+				decode_translate[to] = from
+				table_insert(decode_search, to)
+			end
+			codecTable["decode_search"..tostring(escapeCharIndex)]
+				= "([".. escape_for_gsub(table_concat(decode_search)).."])"
+			codecTable["decode_translate"..tostring(escapeCharIndex)] = decode_translate
+			table_insert(decode_func_string, "str = str:gsub(self.decode_search"
+				..tostring(escapeCharIndex)..", self.decode_translate"..tostring(escapeCharIndex)..");")
+		end
+
+		-- map single byte to double-byte
+		escapeCharIndex = escapeCharIndex + 1
+		escapeChar = string_sub(escapeChars, escapeCharIndex, escapeCharIndex)
+		r = 0 -- suffix char value to the escapeChar
+		decode_search = {}
+		decode_translate = {}
+		for i = 1, string_len(encodeBytes) do
+			c = string_sub(encodeBytes, i, i)
+			if not encode_translate[c] then
+				-- this loop will update escapeChar and r
+				while r >= 256 or taken[string_char(r)] do -- Defliate patch
+				-- bug in LibCompress r81
+				-- while r < 256 and taken[string_char(r)] do
+					r = r + 1
+					if r > 255 then -- switch to next escapeChar
+						if escapeChar == "" then -- we are out of escape chars and we need more!
+							return nil, "Out of escape characters"
+						end
+
+						codecTable["decode_search"..tostring(escapeCharIndex)] = escape_for_gsub(escapeChar)
+							.."([".. escape_for_gsub(table_concat(decode_search)).."])"
+						codecTable["decode_translate"..tostring(escapeCharIndex)] = decode_translate
+						table_insert(decode_func_string, "str = str:gsub(self.decode_search"
+							..tostring(escapeCharIndex)..", self.decode_translate"..tostring(escapeCharIndex)..");")
+
+						escapeCharIndex  = escapeCharIndex + 1
+						escapeChar = string_sub(escapeChars, escapeCharIndex, escapeCharIndex)
+
+						r = 0
+						decode_search = {}
+						decode_translate = {}
+					end
+				end
+				encode_translate[c] = escapeChar..string_char(r)
+				table_insert(encode_search, c)
+				decode_translate[string_char(r)] = c
+				table_insert(decode_search, string_char(r))
+				r = r + 1
+			end
+		end
+
+		if r > 0 then
+			codecTable["decode_search"..tostring(escapeCharIndex)] =
+				escape_for_gsub(escapeChar)
+				.."([".. escape_for_gsub(table_concat(decode_search)).."])"
+			codecTable["decode_translate"..tostring(escapeCharIndex)] = decode_translate
+			table_insert(decode_func_string,
+				"str = str:gsub(self.decode_search"..tostring(escapeCharIndex)
+				..", self.decode_translate"..tostring(escapeCharIndex)..");")
+		end
+
+		-- change last line from "str = ...;" to "return ...;";
+		decode_func_string[#decode_func_string] = decode_func_string[#decode_func_string]:gsub("str = (.*);", "return %1;")
+		decode_func_string = "return function(self, str) "..table_concat(decode_func_string).." end"
+
+		encode_search = "([".. escape_for_gsub(table_concat(encode_search)).."])"
+		decode_search = escape_for_gsub(escapeChars)
+			.."([".. escape_for_gsub(table_concat(decode_search)).."])"
+
+		encode_func = assert(loadstring(
+			"return function(self, str) return str:gsub(self.encode_search, self.encode_translate); end"))()
+		decode_func = assert(loadstring(decode_func_string))()
+
+		codecTable.encode_search = encode_search
+		codecTable.encode_translate = encode_translate
+		codecTable.Encode = encode_func
+		codecTable.decode_search = decode_search
+		codecTable.decode_translate = decode_translate
+		codecTable.Decode = decode_func
+
+		codecTable.decode_func_string = decode_func_string -- to be deleted
+		return codecTable
+	end
+
+	-- Addons: Call this only once and reuse the returned table for all encodings/decodings.
+	function LibCompress:GetAddonEncodeTable(reservedChars, escapeChars, mapChars )
+		reservedChars = reservedChars or ""
+		escapeChars = escapeChars or ""
+		mapChars = mapChars or ""
+		-- Following byte values are not allowed:
+		-- \000
+		if escapeChars == "" then
+			escapeChars = "\001"
+		end
+		return self:GetEncodeTable( (reservedChars or "").."\000", escapeChars, mapChars)
+	end
+
+	-- Addons: Call this only once and reuse the returned table for all encodings/decodings.
+	function LibCompress:GetChatEncodeTable(reservedChars, escapeChars, mapChars)
+		reservedChars = reservedChars or ""
+		escapeChars = escapeChars or ""
+		mapChars = mapChars or ""
+		local r = {}
+		for i = 128, 255 do
+			table_insert(r, string_char(i))
+		end
+		reservedChars = "sS\000\010\013\124%"..table_concat(r)..(reservedChars or "")
+		if escapeChars == "" then
+			escapeChars = "\029\031"
+		end
+		if mapChars == "" then
+			mapChars = "\015\020";
+		end
+		return self:GetEncodeTable(reservedChars, escapeChars, mapChars)
+	end
+end
+
+local _libcompress_addon_encode_table = LibCompress:GetAddonEncodeTable()
+local _libcompress_chat_encode_table = LibCompress:GetChatEncodeTable()
+
+-- Check if LibDeflate's encoding works properly
+local function CheckEncodeAndDecode(str, reservedChars, escapeChars, mapChars)
+	if reservedChars then
+		local encode_decode_table_libcompress = LibCompress:GetEncodeTable(reservedChars, escapeChars, mapChars)
+		local encode_decode_table, message = LibDeflate:GetEncodeDecodeTable(reservedChars, escapeChars, mapChars)
+		if not encode_decode_table then
+			print(message)
+		end
+		local encoded_libcompress = encode_decode_table_libcompress:Encode(str)
+		local encoded = encode_decode_table:Encode(str)
+		AssertLongStringEqual(encoded, encoded_libcompress, "Encoded result does not match libcompress")
+		AssertLongStringEqual(encode_decode_table:Decode(encoded), str
+			, "Encoded str cant be decoded to origin")
+	end
+
+	local encoded_addon = LibDeflate:EncodeForWoWAddonChannel(str)
+	local encoded_addon_libcompress = _libcompress_addon_encode_table:Encode(str)
+	AssertLongStringEqual(encoded_addon, encoded_addon_libcompress
+		, "Encoded addon channel result does not match libcompress")
+	AssertLongStringEqual(LibDeflate:DecodeForWoWAddonChannel(encoded_addon), str
+		, "Encoded for addon channel str cant be decoded to origin")
+
+	local encoded_chat = LibDeflate:EncodeForWoWChatChannel(str)
+	local encoded_chat_libcompress = _libcompress_chat_encode_table:Encode(str)
+	AssertLongStringEqual(encoded_chat, encoded_chat_libcompress
+		, "Encoded chat channel result does not match libcompress")
+	AssertLongStringEqual(LibDeflate:DecodeForWoWChatChannel(encoded_chat), str
+		, "Encoded for chat channel str cant be decoded to origin")
+end
+--------------------------------------------------------------
+-- Actual Tests Start ----------------------------------------
+--------------------------------------------------------------
 TestBasicStrings = {}
 	function TestBasicStrings:testEmpty()
 		CheckCompressAndDecompressString("", "all")
@@ -1180,6 +1461,85 @@ TestPresetDict = {}
 		AssertLongStringEqual(fileData, decompressed)
 	end
 
+TestEncode = {}
+	function TestEncode:TestBasic()
+		CheckEncodeAndDecode("")
+		for i=0, 255 do
+			CheckEncodeAndDecode(string_char(i))
+		end
+
+	end
+
+	function TestEncode:TestRandom()
+		for _ = 0, 200 do
+			local str = GetRandomStringComplete(math.random(256, 1000))
+			CheckEncodeAndDecode(str)
+		end
+	end
+
+	-- Bug in LibCompress:GetEncodeTable()
+	-- version LibCompress Revision 81
+	-- Date: 2018-02-25 06:31:34 +0000 (Sun, 25 Feb 2018)
+	function TestEncode:TestLibCompressEncodeBug()
+		local reservedChars =
+		"\132\109\114\143\11\32\153\92\230\66\131\127\87\106\89\142\55\228\56\158"
+		.."\151\53\48\13\71\9\37\208\101\42\217\76\19\250\125\214\146\14\215\204"
+		.."\249\223\165\45\222\120\161\65\28\144\196\12\43\116\242\179\194\1\253"
+		.."\147\121\99\3\107\96\67\27\44\100\148\130\221\138\85\129\166\185\246"
+		.."\239\50\218\94\157\90\81\134\80\175\186\79\122\93\190\150\154\183\91"
+		.."\152\70\234\169\126\108\251\6\2\22\95\233\180\105\119\38\229\171\29\192"
+		.."\219\21\241\74\207\159\117\247\72\237\110\78\118"
+		local escapedChars = "\145\54"
+		for _ = 1, 10 do
+			local str = GetRandomStringComplete(1000)
+			CheckEncodeAndDecode(str, reservedChars, escapedChars)
+		end
+	end
+	function TestEncode:TestRandomComplete1()
+		for _ = 0, 200 do
+			local tmp = GetRandomStringComplete(256)
+			local reserved = tmp:sub(1, 10)
+			local escaped = tmp:sub(11, 11)
+			local mapped = tmp:sub(12, 12+math.random(0, 9))
+			local str = GetRandomStringComplete(math.random(256, 1000))
+			CheckEncodeAndDecode(str, reserved, escaped, mapped)
+		end
+	end
+
+	function TestEncode:TestRandomComplete2()
+		for _ = 0, 200 do
+			local tmp = GetRandomStringComplete(256)
+			local reserved = tmp:sub(1, 10)
+			local escaped = tmp:sub(11, 11)
+			local str = GetRandomStringComplete(math.random(256, 1000))
+			CheckEncodeAndDecode(str, reserved, escaped)
+		end
+	end
+
+	function TestEncode:TestRandomComplete3()
+		for _ = 0, 200 do
+			local tmp = GetRandomStringComplete(256)
+			local reserved = tmp:sub(1, 130) -- Over half chractrs escaped
+			local escaped = tmp:sub(131, 132) -- Two escape char needed.
+			local mapped = tmp:sub(133, 133+math.random(0, 20))
+			local str = GetRandomStringComplete(math.random(256, 1000))
+			CheckEncodeAndDecode(str, reserved, escaped, mapped)
+		end
+	end
+
+	function TestEncode:TestRandomComplete4()
+		for _ = 0, 200 do
+			local tmp = GetRandomStringComplete(256)
+			local reserved = tmp:sub(1, 130) -- Over half chractrs escaped
+			local escaped = tmp:sub(131, 132) -- Two escape char needed.
+			local str = GetRandomStringComplete(math.random(256, 1000))
+			CheckEncodeAndDecode(str, reserved, escaped)
+		end
+	end
+
+--------------------------------------------------------------
+-- Coverage Tests --------------------------------------------
+--------------------------------------------------------------
 local function AddToCoverageTest(suite, test)
 	assert(suite)
 	assert(type(suite[test]) == "function")
@@ -1190,13 +1550,13 @@ local function AddAllToCoverageTest(suite)
 		AddToCoverageTest(suite, k)
 	end
 end
-
 CodeCoverage = {}
 	AddAllToCoverageTest(TestBasicStrings)
 	AddAllToCoverageTest(TestMyData)
 	AddAllToCoverageTest(TestWoWData)
 	AddAllToCoverageTest(TestDecompress)
 	AddAllToCoverageTest(TestInternals)
+	AddAllToCoverageTest(TestEncode)
 	AddToCoverageTest(TestThirdPartyBig, "TestUrls10K")
 	AddToCoverageTest(TestThirdPartyBig, "Testptt5")
 	AddToCoverageTest(TestThirdPartyBig, "TestKennedyXls")
