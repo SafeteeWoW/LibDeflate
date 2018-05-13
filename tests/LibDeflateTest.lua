@@ -1,6 +1,8 @@
--- Commandline tests
+-- Run this tests at the folder where LibDeflate.lua located.
+-- lua tests/LibDeflateTest.lua
+-- Don't run two tests at the same time.
+
 local LibDeflate = require("LibDeflate")
-local args = rawget(_G, "arg")
 -- UnitTests
 local lu = require("luaunit")
 
@@ -71,12 +73,12 @@ assert(HexToString("1A") == string_char(26))
 assert(HexToString("1A 09") == string_char(26)..string_char(9))
 assert(HexToString("1A 00") == string_char(26)..string_char(0))
 
-local function HalfByteToHex(halfByte)
-	assert (halfByte >= 0 and halfByte < 16)
-	if halfByte < 10 then
-		return string_char(_byte0 + halfByte)
+local function HalfByteToHex(half_byte)
+	assert (half_byte >= 0 and half_byte < 16)
+	if half_byte < 10 then
+		return string_char(_byte0 + half_byte)
 	else
-		return string_char(_bytea + halfByte-10)
+		return string_char(_bytea + half_byte-10)
 	end
 end
 
@@ -97,7 +99,8 @@ local function StringToHex(str)
 end
 assert (StringToHex("\000"), "00")
 assert (StringToHex("\000\255"), "00 ff")
-assert (StringToHex(HexToString("05 e0 81 91 24 cb b2 2c 49 e2 0f 2e 8b 9a 47 56 9f fb fe ec d2 ff 1f"))
+assert (StringToHex(HexToString("05 e0 81 91 24 cb b2 2c 49 e2 0f 2e 8b 9a"
+	.." 47 56 9f fb fe ec d2 ff 1f"))
 	== "05 e0 81 91 24 cb b2 2c 49 e2 0f 2e 8b 9a 47 56 9f fb fe ec d2 ff 1f")
 
 -- Return a string with limited size
@@ -105,58 +108,61 @@ local function StringForPrint(str)
 	if str:len() < 101 then
 		return str
 	else
-		return str:sub(1, 101)..(" (%d more characters not shown)"):format(str:len()-101)
+		return str:sub(1, 101)..(" (%d more characters not shown)")
+			:format(str:len()-101)
 	end
 end
 
-local function OpenFile(fileName, mode)
-	local f = io.open(fileName, mode)
-	lu.assertNotNil(f, ("Cannot open the file: %s, with mode: %s"):format(fileName, mode))
+local function OpenFile(filename, mode)
+	local f = io.open(filename, mode)
+	lu.assertNotNil(f, ("Cannot open the file: %s, with mode: %s")
+		:format(filename, mode))
 	return f
 end
 
-local function GetFileData(fileName)
-	local f = OpenFile(fileName, "rb")
+local function GetFileData(filename)
+	local f = OpenFile(filename, "rb")
 	local str = f:read("*all")
 	f:close()
 	return str
 end
 
-local function GetFileSize(fileName)
-	return GetFileData(fileName):len()
+local function GetFileSize(filename)
+	return GetFileData(filename):len()
 end
 
-local function WriteToFile(fileName, data)
-	local f = io.open(fileName, "wb")
-	lu.assertNotNil(f, ("Cannot open the file: %s, with mode: %s"):format(fileName, "wb"))
+local function WriteToFile(filename, data)
+	local f = io.open(filename, "wb")
+	lu.assertNotNil(f, ("Cannot open the file: %s, with mode: %s")
+		:format(filename, "wb"))
 	f:write(data)
 	f:flush()
 	f:close()
 end
 
-local function GetLimitedRandomString(strLen)
+local function GetLimitedRandomString(strlen)
 	local randoms = {}
 	for _=1, 7 do
 		randoms[#randoms+1] = string.char(math.random(1, 255))
 	end
 	local tmp = {}
-	for _=1, strLen do
+	for _=1, strlen do
 		tmp[#tmp+1] = randoms[math.random(1, 7)]
 	end
 	return table.concat(tmp)
 end
 
-local function GetRandomString(strLen)
+local function GetRandomString(strlen)
 	local tmp = {}
-	for _=1, strLen do
+	for _=1, strlen do
 		tmp[#tmp+1] = string_char(math.random(0, 255))
 	end
 	return table.concat(tmp)
 end
 
 -- Get a random string with at least 256 len which includes all characters
-local function GetRandomStringComplete(strLen)
-	assert(strLen >= 256)
+local function GetRandomStringComplete(strlen)
+	assert(strlen >= 256)
 	local taken = {}
 	local tmp = {}
 	for i=0, 255 do
@@ -173,8 +179,9 @@ local function GetRandomStringComplete(strLen)
 			end
 		end
 	end
-	for _=1, strLen-256 do
-		table_insert(tmp, math.random(1, #tmp+1), string_char(math.random(0, 255)))
+	for _=1, strlen-256 do
+		table_insert(tmp, math.random(1, #tmp+1)
+			, string_char(math.random(0, 255)))
 	end
 	return table_concat(tmp)
 end
@@ -192,102 +199,109 @@ end
 
 -- Repeatedly collect memory garbarge until memory usage no longer changes
 local function FullMemoryCollect()
-	local memoryUsed = collectgarbage("count")
-	local lastMemoryUsed
+	local memory_used = collectgarbage("count")
+	local last_memory_used
 	local stable_count = 0
 	repeat
-		lastMemoryUsed = memoryUsed
+		last_memory_used = memory_used
 		collectgarbage("collect")
-		memoryUsed = collectgarbage("count")
+		memory_used = collectgarbage("count")
 
-		if memoryUsed >= lastMemoryUsed then
+		if memory_used >= last_memory_used then
 			stable_count = stable_count + 1
 		else
 			stable_count = 0
 		end
-	until stable_count == 10 -- Stop full memory collect until memory usage does not decrease for 10 times.
+	until stable_count == 10 
+	-- Stop full memory collect until memory does not decrease for 10 times.
 end
 
-local function RunProgram(program, inputFileName, stdoutFileName)
-	local stderrFileName = stdoutFileName..".stderr"
-	local status, _, ret = os.execute(program.." "..inputFileName.. "> "..stdoutFileName.." 2> "..stderrFileName)
-	local returnedStatus
+local function RunProgram(program, input_filename, stdout_filename)
+	local stderr_filename = stdout_filename..".stderr"
+	local status, _, ret = os.execute(program.." "..input_filename
+		.. "> "..stdout_filename.." 2> "..stderr_filename)
+	local returned_status
 	if type(status) == "number" then -- lua 5.1
-		returnedStatus = status
+		returned_status = status
 	else -- Lua 5.2/5.3
-		returnedStatus = ret
+		returned_status = ret
 		if not status and ret == 0 then
-			returnedStatus = -1    -- Lua bug on Windows when the returned value is -1, ret is 0
+			returned_status = -1
+			-- Lua bug on Windows when the returned value is -1, ret is 0
 		end
 	end
-	local stdout = GetFileData(stdoutFileName)
-	local stderr = GetFileData(stderrFileName)
-	return returnedStatus, stdout, stderr
+	local stdout = GetFileData(stdout_filename)
+	local stderr = GetFileData(stderr_filename)
+	return returned_status, stdout, stderr
 end
 
 local function AssertLongStringEqual(actual, expected, msg)
 	if actual ~= expected then
 		lu.assertNotNil(actual, ("%s actual is nil"):format(msg or ""))
 		lu.assertNotNil(expected, ("%s expected is nil"):format(msg or ""))
-		local diffIndex = 1
+		local diff_index = 1
 		for i=1, math.max(expected:len(), actual:len()) do
 			if string_byte(actual, i, i) ~= string_byte(expected, i, i) then
-				diffIndex = i
+				diff_index = i
 				break
 			end
 		end
-		local actualMsg = string.format("%s actualLen: %d, expectedLen:%d, first difference at: %d,"
-			.." actualByte: %s, expectByte: %s", msg or "", actual:len(), expected:len(), diffIndex,
-			string.byte(actual, diffIndex) or "nil",
-			string.byte(expected, diffIndex) or "nil")
-		lu.assertTrue(false, actualMsg)
+		local actual_msg = string.format(
+			"%s actualLen: %d, expectedLen:%d, first difference at: %d,"
+			.." actualByte: %s, expectByte: %s", msg or "", actual:len()
+			, expected:len(), diff_index,
+			string.byte(actual, diff_index) or "nil",
+			string.byte(expected, diff_index) or "nil")
+		lu.assertTrue(false, actual_msg)
 	end
 end
 
 local function MemCheckAndBenchmarkFunc(func, ...)
-	local memoryBefore
-	local memoryRunning
-	local memoryAfter
-	local startTime
-	local elapsedTime
+	local memory_before
+	local memory_running
+	local memory_after
+	local start_time
+	local elapsed_time
 	local ret
 	FullMemoryCollect()
-	memoryBefore =  math.floor(collectgarbage("count")*1024)
+	memory_before =  math.floor(collectgarbage("count")*1024)
 	FullMemoryCollect()
-	startTime = os.clock()
-	elapsedTime = -1
-	local repeatCount = 0
-	while elapsedTime < 0.015 do
+	start_time = os.clock()
+	elapsed_time = -1
+	local repeat_count = 0
+	while elapsed_time < 0.015 do
 		ret = {func(...)}
-		elapsedTime = os.clock() - startTime
-		repeatCount = repeatCount + 1
+		elapsed_time = os.clock() - start_time
+		repeat_count = repeat_count + 1
 	end
-	memoryRunning = math.floor(collectgarbage("count")*1024)
+	memory_running = math.floor(collectgarbage("count")*1024)
 	FullMemoryCollect()
-	memoryAfter = math.floor(collectgarbage("count")*1024)
-	local memoryUsed = memoryRunning - memoryBefore
-	local memoryLeaked = memoryAfter - memoryBefore
+	memory_after = math.floor(collectgarbage("count")*1024)
+	local memory_used = memory_running - memory_before
+	local memory_leaked = memory_after - memory_before
 
-	return memoryLeaked, memoryUsed, elapsedTime*1000/repeatCount, unpack(ret)
+	return memory_leaked, memory_used
+		, elapsed_time*1000/repeat_count, unpack(ret)
 end
 
 local dictionary32768 = GetFileData("tests/dictionary32768.txt")
 dictionary32768 = LibDeflate:CreateDictionary(dictionary32768)
 
-local function CheckCompressAndDecompress(stringOrFileName, isFile, levels)
-	-- Init cache table in these functions, to help memory leak check in the following codes.
+local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
+	-- Init cache table in these functions
+	-- , to help memory leak check in the following codes.
 	LibDeflate:EncodeForWoWAddonChannel("")
 	LibDeflate:EncodeForWoWChatChannel("")
 
 	local origin
-	if isFile then
-		origin = GetFileData(stringOrFileName)
+	if is_file then
+		origin = GetFileData(string_or_filename)
 	else
-		origin = stringOrFileName
+		origin = string_or_filename
 	end
 
 	FullMemoryCollect()
-	local totalMemoryBefore = math.floor(collectgarbage("count")*1024)
+	local total_memory_before = math.floor(collectgarbage("count")*1024)
 
 	do
 		if levels == "all" then
@@ -296,253 +310,336 @@ local function CheckCompressAndDecompress(stringOrFileName, isFile, levels)
 			levels = levels or {1}
 		end
 
-		local compressFileName
-		if isFile then
-			compressFileName = stringOrFileName..".compress"
+		local compress_filename
+		if is_file then
+			compress_filename = string_or_filename..".compress"
 		else
-			compressFileName = "tests/string.compress"
+			compress_filename = "tests/string.compress"
 		end
 
-		local decompressFileName = compressFileName..".decompress"
+		local decompress_filename = compress_filename..".decompress"
 
-		local zlibCompressFileName = compressFileName..".zlib"
-		local zlibDecompressFileName = zlibCompressFileName..".decompress"
-		local dictCompressFileName = compressFileName..".dict"
-		local dictDecompressFileName = compressFileName..".dict.decompress"
+		local zlib_compress_filename = compress_filename..".zlib"
+		local zlib_decompress_filename = zlib_compress_filename..".decompress"
+		local dict_compress_filename = compress_filename..".dict"
+		local dict_decompress_filename = compress_filename..".dict.decompress"
 
 		for _, level in ipairs(levels) do
 			-- Compress by raw deflate
-			local compressMemoryLeaked, compressMemoryUsed, compressTime,
-				compressData, compressBitSize = MemCheckAndBenchmarkFunc(LibDeflate.Compress, LibDeflate
+			local compress_memory_leaked, compress_memory_used, compress_time,
+				compress_data, compress_bitlen =
+				MemCheckAndBenchmarkFunc(LibDeflate.Compress, LibDeflate
 				, origin, level)
-			lu.assertEquals(math.ceil(compressBitSize/8), compressData:len(),
+			lu.assertEquals(math.ceil(compress_bitlen/8), compress_data:len(),
 				"Unexpected compress bit size")
-			WriteToFile(compressFileName, compressData)
+			WriteToFile(compress_filename, compress_data)
 
 			-- Test encoding
-			local compressDataWoWAddonEncoded = LibDeflate:EncodeForWoWAddonChannel(compressData)
-			AssertLongStringEqual(LibDeflate:DecodeForWoWAddonChannel(compressDataWoWAddonEncoded), compressData,
-				"EncodeForAddonChannel fails")
+			local compress_data_WoW_addon_encoded =
+				LibDeflate:EncodeForWoWAddonChannel(compress_data)
+			AssertLongStringEqual(
+				LibDeflate:DecodeForWoWAddonChannel(
+					compress_data_WoW_addon_encoded), compress_data,
+					"EncodeForAddonChannel fails")
 
-			local compressDataWoWChatEncoded = LibDeflate:EncodeForWoWChatChannel(compressData)
-			AssertLongStringEqual(LibDeflate:DecodeForWoWChatChannel(compressDataWoWChatEncoded), compressData,
-				"EncodeForChatChannel fails")
+			local compress_data_data_WoW_chat_encoded =
+				LibDeflate:EncodeForWoWChatChannel(compress_data)
+			AssertLongStringEqual(
+				LibDeflate:DecodeForWoWChatChannel(
+					compress_data_data_WoW_chat_encoded), compress_data,
+					"EncodeForChatChannel fails")
 
 			-- Try decompress by puff
-			local returnedStatus_puff, stdout_puff, stderr_puff = RunProgram("puff -w "
-				, compressFileName, decompressFileName)
-			lu.assertEquals(returnedStatus_puff, 0, "puff decompression failed with code "..returnedStatus_puff)
-			AssertLongStringEqual(stdout_puff, origin, "puff decompress result does not match origin string.")
+			local returnedStatus_puff, stdout_puff, stderr_puff = 
+				RunProgram("puff -w ", compress_filename, decompress_filename)
+			lu.assertEquals(returnedStatus_puff, 0
+				, "puff decompression failed with code "..returnedStatus_puff)
+			AssertLongStringEqual(stdout_puff, origin
+				, "puff decompress result does not match origin string.")
 
 			-- Try decompress by zdeflate
-			local returnedStatus_zdeflate, stdout_zdeflate, stderr_zdeflate = RunProgram("zdeflate -d <", compressFileName
-				, decompressFileName)
-			lu.assertEquals(returnedStatus_zdeflate, 0, "zdeflate decompression failed with msg "
-				..stderr_zdeflate)
-			AssertLongStringEqual(stdout_zdeflate, origin, "zdeflate decompress result does not match origin string.")
+			local returnedStatus_zdeflate, stdout_zdeflate, stderr_zdeflate =
+				RunProgram("zdeflate -d <", compress_filename
+					, decompress_filename)
+			lu.assertEquals(returnedStatus_zdeflate, 0
+				, "zdeflate decompression failed with msg "..stderr_zdeflate)
+			AssertLongStringEqual(stdout_zdeflate, origin
+				, "zdeflate decompress result does not match origin string.")
 
 			-- Try decompress by LibDeflate
-			local decompressMemoryLeaked, decompressMemoryUsed, decompressTime,
-				decompressData, decompressUnprocessByte = MemCheckAndBenchmarkFunc(LibDeflate.Decompress, LibDeflate
-				, compressData)
-			lu.assertEquals(decompressUnprocessByte, 0, "Unprocessed bytes after LibDeflate decompression "
-					..tostring(decompressUnprocessByte))
-			AssertLongStringEqual(decompressData, origin, "LibDeflate decompress result does not match origin string.")
+			local decompress_memory_leaked, decompress_memory_used,
+				decompress_time, decompress_data,
+				decompress_unprocess_byte =
+				MemCheckAndBenchmarkFunc(LibDeflate.Decompress, LibDeflate
+				, compress_data)
+			lu.assertEquals(decompress_unprocess_byte, 0
+				, "Unprocessed bytes after LibDeflate decompression "
+					..tostring(decompress_unprocess_byte))
+			AssertLongStringEqual(decompress_data, origin
+				, "LibDeflate decompress result does not match origin string.")
 
 			-- Compress with Zlib header instead of raw Deflate
-			local zlibCompressMemoryLeaked, zlibCompressMemoryUsed, zlibCompressTime,
-				zlibCompressData, zlibCompressBitSize = MemCheckAndBenchmarkFunc(LibDeflate.CompressZlib, LibDeflate
+			local zlib_compress_memory_leaked, zlib_compress_memory_used
+				, zlib_compress_time, zlib_compress_data, zlib_compress_bitlen =
+				MemCheckAndBenchmarkFunc(LibDeflate.CompressZlib, LibDeflate
 				, origin, level)
-			lu.assertEquals(zlibCompressBitSize/8, zlibCompressData:len(), "Unexpected zlib bit size")
+			lu.assertEquals(zlib_compress_bitlen/8, zlib_compress_data:len()
+				, "Unexpected zlib bit size")
 
+			WriteToFile(zlib_compress_filename, zlib_compress_data)
 
-			WriteToFile(zlibCompressFileName, zlibCompressData)
-
-			local zlibReturnedStatus_zdeflate, zlibStdout_zdeflate, zlibStderr_zdeflate =
-				RunProgram("zdeflate --zlib -d <", zlibCompressFileName, zlibDecompressFileName)
-			lu.assertEquals(zlibReturnedStatus_zdeflate, 0, "zdeflate fails to decompress zlib with msg "
+			local zlib_returned_status_zdeflate, zlibStdout_zdeflate
+				, zlibStderr_zdeflate =
+				RunProgram("zdeflate --zlib -d <", zlib_compress_filename
+				, zlib_decompress_filename)
+			lu.assertEquals(zlib_returned_status_zdeflate, 0
+				, "zdeflate fails to decompress zlib with msg "
 				..tostring(zlibStderr_zdeflate))
 			AssertLongStringEqual(zlibStdout_zdeflate, origin,
 				"zDeflate decompress result does not match origin zlib string.")
 
-			local zlibDecompressMemoryLeaked, zlibDecompressMemoryUsed, zlibDecompressTime,
-				zlibDecompressData, zlibDecompressUnprocessByte = MemCheckAndBenchmarkFunc(LibDeflate.DecompressZlib, LibDeflate
-				, zlibCompressData)
-			lu.assertEquals(zlibDecompressUnprocessByte, 0, "Unprocessed bytes after LibDeflate zlib decompression "
+			local zlibDecompressMemoryLeaked, zlibDecompressMemoryUsed
+				, zlibDecompressTime, zlibDecompressData
+				, zlibDecompressUnprocessByte =
+				MemCheckAndBenchmarkFunc(LibDeflate.DecompressZlib, LibDeflate
+				, zlib_compress_data)
+			lu.assertEquals(zlibDecompressUnprocessByte, 0
+				, "Unprocessed bytes after LibDeflate zlib decompression "
 					..tostring(zlibDecompressUnprocessByte))
 			AssertLongStringEqual(zlibDecompressData, origin
-				, "LibDeflate zlib decompress result does not match origin string.")
+				, "LibDeflate zlib decompress result does not"..
+				" match origin string.")
 
 
-			local dictCompressMemoryLeaked, dictCompressMemoryUsed, dictCompressTime,
-				dictCompressData, dictCompressBitSize = MemCheckAndBenchmarkFunc(LibDeflate.CompressDeflate, LibDeflate
+			local dict_compress_memory_leaked, dict_compress_memory_used
+				, dict_compress_time,
+				dict_compress_data, dictCompressBitlen =
+				MemCheckAndBenchmarkFunc(LibDeflate.CompressDeflate, LibDeflate
 				, origin, level, dictionary32768)
-			WriteToFile(dictCompressFileName, dictCompressData)
-			lu.assertEquals(math.ceil(dictCompressBitSize/8), dictCompressData:len(),
+			WriteToFile(dict_compress_filename, dict_compress_data)
+			lu.assertEquals(math.ceil(dictCompressBitlen/8)
+				, dict_compress_data:len(),
 				"Unexpected compress bit size")
-			local dictReturnedStatus_zdeflate, dictStdout_zdeflate, dictStderr_zdeflate =
-				RunProgram("zdeflate -d --dict tests/dictionary32768.txt <", dictCompressFileName, dictDecompressFileName)
-			lu.assertEquals(dictReturnedStatus_zdeflate, 0, "zdeflate fails to decompress with dict with msg "
+			local dict_returned_status_zdeflate, dict_stdout_zdeflate
+				, dictStderr_zdeflate =
+				RunProgram("zdeflate -d --dict tests/dictionary32768.txt <"
+				, dict_compress_filename, dict_decompress_filename)
+			lu.assertEquals(dict_returned_status_zdeflate, 0
+				, "zdeflate fails to decompress with dict with msg "
 				..tostring(dictStderr_zdeflate))
-			AssertLongStringEqual(dictStdout_zdeflate, origin,
-				"zdeflate decompress with dictionary result does not match origin string.")
-			local dictDecompressMemoryLeaked, dictDecompressMemoryUsed, dictDecompressTime,
-				dictDecompressData, dictDecompressUnprocessByte = MemCheckAndBenchmarkFunc(LibDeflate.DecompressDeflate, LibDeflate
-				, dictCompressData, dictionary32768)
-			lu.assertEquals(dictDecompressUnprocessByte, 0, "Unprocessed bytes after LibDeflate zlib decompression "
-					..tostring(dictDecompressUnprocessByte))
-			AssertLongStringEqual(dictDecompressData, origin,
-				"my decompress with dictionary result does not match origin string.")
+			AssertLongStringEqual(dict_stdout_zdeflate, origin,
+				"zdeflate decompress with dictionary result does not "
+				.."match origin string.")
+			local dict_decompress_memory_leaked, dict_decompress_memory_used
+				, dict_decompress_time, dict_decompress_data
+				, dict_decompress_unprocess_byte =
+				MemCheckAndBenchmarkFunc(LibDeflate.DecompressDeflate
+				, LibDeflate, dict_compress_data, dictionary32768)
+			lu.assertEquals(dict_decompress_unprocess_byte, 0
+			, "Unprocessed bytes after LibDeflate zlib decompression "
+					..tostring(dict_decompress_unprocess_byte))
+			AssertLongStringEqual(dict_decompress_data, origin,
+				"my decompress with dictionary result does not "
+				.."match origin string.")
 
 			print(
-				(">>>>> %s: %s Level: %d size: %d B\n"):format(isFile and "File" or "String",
-					stringOrFileName:sub(1, 40), level, origin:len()),
-				("CompressDeflate:   Size : %d B,\tTime: %.3f ms, Speed: %.0f KB/s, Memory: %d B,"
+				(">>>>> %s: %s Level: %d size: %d B\n")
+				:format(is_file and "File" or "String",
+					string_or_filename:sub(1, 40), level, origin:len()),
+				("CompressDeflate:   Size : %d B,\tTime: %.3f ms, "
+					.."Speed: %.0f KB/s, Memory: %d B,"
 					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
-					compressData:len(), compressTime, compressData:len()/compressTime, compressMemoryUsed,
-					compressMemoryUsed/origin:len(), compressMemoryLeaked
+					compress_data:len(), compress_time
+					, compress_data:len()/compress_time, compress_memory_used
+					, compress_memory_used/origin:len(), compress_memory_leaked
 				),
-				("CompDeflateDict:   Size : %d B,\tTime: %.3f ms, Speed: %.0f KB/s, Memory: %d B,"
+				("CompDeflateDict:   Size : %d B,\tTime: %.3f ms, "
+					.."Speed: %.0f KB/s, Memory: %d B,"
 					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
-					dictCompressData:len(), dictCompressTime, dictCompressData:len()/dictCompressTime, dictCompressMemoryUsed,
-					dictCompressMemoryUsed/origin:len(), dictCompressMemoryLeaked
+					dict_compress_data:len(), dict_compress_time
+					, dict_compress_data:len()/dict_compress_time
+					, dict_compress_memory_used
+					, dict_compress_memory_used/origin:len()
+					, dict_compress_memory_leaked
 				),
-				("DecompressDeflate: cRatio: %.2f,\tTime: %.3f ms, Speed: %.0f KB/s, Memory: %d B,"
+				("DecompressDeflate: cRatio: %.2f,\tTime: %.3f ms"
+					..", Speed: %.0f KB/s, Memory: %d B,"
 					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
-					origin:len()/compressData:len(), decompressTime, decompressData:len()/decompressTime, decompressMemoryUsed,
-					decompressMemoryUsed/origin:len(), decompressMemoryLeaked
+					origin:len()/compress_data:len(), decompress_time
+					, decompress_data:len()/decompress_time
+					, decompress_memory_used
+					, decompress_memory_used/origin:len()
+					, decompress_memory_leaked
 				),
-				("DeCompDeflateDict: cRatio : %.2f,\tTime: %.3f ms, Speed: %.0f KB/s, Memory: %d B,"
+				("DeCompDeflateDict: cRatio : %.2f,\tTime: %.3f ms"
+					..", Speed: %.0f KB/s, Memory: %d B,"
 					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
-					origin:len()/dictCompressData:len(), dictDecompressTime, dictDecompressData:len()/dictDecompressTime,
-					dictDecompressMemoryUsed,
-					dictDecompressMemoryUsed/origin:len(), dictDecompressMemoryLeaked
+					origin:len()/dict_compress_data:len()
+					, dict_decompress_time
+					, dict_decompress_data:len()/dict_decompress_time
+					, dict_decompress_memory_used
+					, dict_decompress_memory_used/origin:len()
+					, dict_decompress_memory_leaked
 				),
-				("CompressZlib:      Size : %d B,\tTime: %.3f ms, Speed: %.0f KB/s, Memory: %d B,"
+				("CompressZlib:      Size : %d B,\tTime: %.3f ms"
+					..", Speed: %.0f KB/s, Memory: %d B,"
 					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
-					zlibCompressData:len(), zlibCompressTime, zlibCompressData:len()/zlibCompressTime, zlibCompressMemoryUsed,
-					zlibCompressMemoryUsed/origin:len(), zlibCompressMemoryLeaked
+					zlib_compress_data:len(), zlib_compress_time
+					, zlib_compress_data:len()/zlib_compress_time
+					, zlib_compress_memory_used
+					,zlib_compress_memory_used/origin:len()
+					, zlib_compress_memory_leaked
 				),
-				("DecompressZlib:    cRatio: %.2f,\tTime: %.3f ms, Speed: %.0f KB/s, Memory: %d B,"
+				("DecompressZlib:    cRatio: %.2f,\tTime: %.3f ms"
+					..", Speed: %.0f KB/s, Memory: %d B,"
 					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
-					origin:len()/compressData:len(), zlibDecompressTime, zlibDecompressData:len()/zlibDecompressTime
-					, zlibDecompressMemoryUsed,zlibDecompressMemoryUsed/origin:len(), zlibDecompressMemoryLeaked
+					origin:len()/compress_data:len(), zlibDecompressTime
+					, zlibDecompressData:len()/zlibDecompressTime
+					, zlibDecompressMemoryUsed
+					, zlibDecompressMemoryUsed/origin:len()
+					, zlibDecompressMemoryLeaked
 				),
 				"\n"
 			)
 		end
 
-		-- Use all avaiable strategies of zdeflate to compress the data, and see if LibDeflate can decompress it.
-		local tmpFileName = "tests/tmp.tmp"
-		WriteToFile(tmpFileName, origin)
+		-- Use all avaiable strategies of zdeflate to compress the data
+		-- , and see if LibDeflate can decompress it.
+		local tmp_filename = "tests/tmp.tmp"
+		WriteToFile(tmp_filename, origin)
 
 		local zdeflate_level, zdeflate_strategy
-		local strategies = {"--filter", "--huffman", "--rle", "--fix", "--default"}
+		local strategies = {"--filter", "--huffman", "--rle"
+			, "--fix", "--default"}
 		local unique_compress = {}
 		local uniques_compress_count = 0
 		for level=0, 8 do
 			zdeflate_level = "-"..level
 			for j=1, #strategies do
 				zdeflate_strategy = strategies[j]
-				local status, stdout, stderr = RunProgram("zdeflate "..zdeflate_level.." "..zdeflate_strategy
-					.." < ", tmpFileName, tmpFileName..".out")
-				lu.assertEquals(status, 0, ("zdeflate cant compress the file? stderr: %s level: %s, strategy: %s")
+				local status, stdout, stderr = 
+					RunProgram("zdeflate "..zdeflate_level
+					.." "..zdeflate_strategy
+					.." < ", tmp_filename, tmp_filename..".out")
+				lu.assertEquals(status, 0
+				, ("zdeflate cant compress the file? "
+					.."stderr: %s level: %s, strategy: %s")
 					:format(stderr, zdeflate_level, zdeflate_strategy))
 				if not unique_compress[stdout] then
 					unique_compress[stdout] = true
 					uniques_compress_count = uniques_compress_count + 1
 					local decompressData = LibDeflate:Decompress(stdout)
 					AssertLongStringEqual(decompressData, origin,
-						("My decompress fail to decompress at zdeflate level: %s, strategy: %s")
+						("My decompress fail to decompress "
+						.."at zdeflate level: %s, strategy: %s")
 						:format(level, zdeflate_strategy))
 				end
 			end
 		end
 		print(
 			(">>>>> %s: %s size: %d B\n")
-				:format(isFile and "File" or "String", stringOrFileName:sub(1, 40), origin:len()),
+				:format(is_file and "File" or "String"
+				, string_or_filename:sub(1, 40), origin:len()),
 			("Full decompress coverage test ok. unique compresses: %d\n")
 				:format(uniques_compress_count),
 			"\n")
 	end
 
 	FullMemoryCollect()
-	local totalMemoryAfter = math.floor(collectgarbage("count")*1024)
+	local total_memory_after = math.floor(collectgarbage("count")*1024)
 
-	local totalMemoryDifference = totalMemoryBefore - totalMemoryAfter
+	local total_memory_difference = total_memory_before - total_memory_after
 
-	if totalMemoryDifference > 0 then
+	if total_memory_difference > 0 then
 		print(
 			(">>>>> %s: %s size: %d B\n")
-				:format(isFile and "File" or "String", stringOrFileName:sub(1, 40), origin:len()),
+				:format(is_file and "File" or "String"
+				, string_or_filename:sub(1, 40), origin:len()),
 			("Actual Memory Leak in the test: %d\n")
-				:format(totalMemoryDifference),
+				:format(total_memory_difference),
 			"\n")
-		-- ^If above "leak" is very small, it is very likely that it is false positive.
-		if not jit and totalMemoryDifference >  64 then
-			-- Lua JIT has some problems to garbage collect stuffs, so don't consider as failure.
-			lu.assertTrue(false, ("Fail the test because too many actual Memory Leak in the test: %d")
-				:format(totalMemoryDifference))
+		-- ^If above "leak" is very small
+		-- , it is very likely that it is false positive.
+		if not jit and total_memory_difference > 64 then
+			-- Lua JIT has some problems to garbage collect stuffs
+			-- , so don't consider as failure.
+			lu.assertTrue(false
+			, ("Fail the test because too many actual "
+				.."Memory Leak in the test: %d")
+				:format(total_memory_difference))
 		end
 	end
 
 	return 0
 end
 
-local function CheckDecompressIncludingError(compress, decompress, isZlib)
-	assert (isZlib == true or isZlib == nil)
+local function CheckDecompressIncludingError(compress, decompress, is_zlib)
+	assert (is_zlib == true or is_zlib == nil)
 	local d, decompress_return
-	if isZlib then
+	if is_zlib then
 		d, decompress_return = LibDeflate:DecompressZlib(compress)
 	else
-		d, decompress_return = LibDeflate:Decompress(compress)
+		d, decompress_return = LibDeflate:DecompressDeflate(compress)
 	end
 	if d ~= decompress then
-		lu.assertTrue(false, ("My decompress does not match expected result."..
-			"expected: %s, actual: %s, Returned status of decompress: %d")
-			:format(StringForPrint(StringToHex(d)), StringForPrint(StringToHex(decompress)), decompress_return))
+		lu.assertTrue(false, ("My decompress does not match expected result."
+			.."expected: %s, actual: %s, Returned status of decompress: %d")
+			:format(StringForPrint(StringToHex(d))
+			, StringForPrint(StringToHex(decompress)), decompress_return))
 	else
 		-- Check my decompress result with "puff"
-		local inputFileName = "tests/tmpFile"
-		local inputFile = io.open(inputFileName, "wb")
+		local input_filename = "tests/tmpFile"
+		local inputFile = io.open(input_filename, "wb")
 		inputFile:setvbuf("full")
 		inputFile:write(compress)
 		inputFile:flush()
 		inputFile:close()
-		local returnedStatus_puff, stdout_puff, stderr_puff = RunProgram("puff -w", inputFileName
-			, inputFileName..".decompress")
+		local returned_status_puff, stdout_puff, stderr_puff =
+			RunProgram("puff -w", input_filename
+			, input_filename..".decompress")
 		local returnedStatus_zdeflate, stdout_zdeflate, stderr_zdeflate =
-			RunProgram(isZlib and "zdeflate --zlib -d <" or "zdeflate -d <", inputFileName, inputFileName..".decompress")
+			RunProgram(is_zlib and "zdeflate --zlib -d <"
+			or "zdeflate -d <", input_filename, input_filename..".decompress")
 		if not d then
-			if not isZlib then
-				if returnedStatus_puff ~= 0 and returnedStatus_zdeflate ~= 0 then
-					print((">>>> %q cannot be decompress as expected"):format((StringForPrint(StringToHex(compress)))))
-				elseif returnedStatus_puff ~= 0 and returnedStatus_zdeflate == 0 then
+			if not is_zlib then
+				if returned_status_puff ~= 0 
+					and returnedStatus_zdeflate ~= 0 then
+					print((">>>> %q cannot be decompress as expected")
+					:format((StringForPrint(StringToHex(compress)))))
+				elseif returned_status_puff ~= 0 
+					and returnedStatus_zdeflate == 0 then
 					lu.assertTrue(false,
-					(">>>> %q puff error but not zdeflate?"):format((StringForPrint(StringToHex(compress)))))
-				elseif returnedStatus_puff == 0 and returnedStatus_zdeflate ~= 0 then
+					(">>>> %q puff error but not zdeflate?")
+					:format((StringForPrint(StringToHex(compress)))))
+				elseif returned_status_puff == 0
+					and returnedStatus_zdeflate ~= 0 then
 					lu.assertTrue(false,
-					(">>>> %q zdeflate error but not puff?"):format((StringForPrint(StringToHex(compress)))))
+					(">>>> %q zdeflate error but not puff?")
+					:format((StringForPrint(StringToHex(compress)))))
 				else
 					lu.assertTrue(false,
-					(">>>> %q my decompress error, but not puff or zdeflate"):format((StringForPrint(StringToHex(compress)))))
+					(">>>> %q my decompress error, but not puff or zdeflate")
+					:format((StringForPrint(StringToHex(compress)))))
 				end
 			else
 				if returnedStatus_zdeflate ~= 0 then
-					print((">>>> %q cannot be zlib decompress as expected"):format(StringForPrint(StringToHex(compress))))
+					print((">>>> %q cannot be zlib decompress as expected")
+					:format(StringForPrint(StringToHex(compress))))
 				else
 					lu.assertTrue(false,
-					(">>>> %q my decompress error, but not zdeflate"):format((StringForPrint(StringToHex(compress)))))
+					(">>>> %q my decompress error, but not zdeflate")
+					:format((StringForPrint(StringToHex(compress)))))
 				end
 			end
 
 		else
 			AssertLongStringEqual(d, stdout_zdeflate)
-			if not isZlib then
+			if not is_zlib then
 				AssertLongStringEqual(d, stdout_puff)
 			end
 			print((">>>> %q is decompressed to %q as expected")
-				:format(StringForPrint(StringToHex(compress)), StringForPrint(StringToHex(d))))
+				:format(StringForPrint(StringToHex(compress))
+				, StringForPrint(StringToHex(d))))
 		end
 	end
 end
@@ -560,19 +657,21 @@ local function CheckCompressAndDecompressFile(inputFileName, levels)
 end
 
 -- Commandline
-if args and #args >= 1 and type(args[0]) == "string" then
-	if #args >= 2 and args[1] == "-o" then
+local arg = _G.arg
+if arg and #arg >= 1 and type(arg[0]) == "string" then
+	if #arg >= 2 and arg[1] == "-o" then
 	-- For testing purpose, check if the file can be opened by lua
-		local input = args[2]
+		local input = arg[2]
 		local inputFile = io.open(input, "rb")
 		if not inputFile then
 			os.exit(1)
 		end
 		inputFile.close()
 		os.exit(0)
-	elseif #args >= 3 and args[1] == "-c" then
-	-- For testing purpose, check the if a file can be correctly compress and decompress to origin
-		os.exit(CheckCompressAndDecompressFile(args[2], "all", 0, args[3])) -- TODO
+	elseif #arg >= 3 and arg[1] == "-c" then
+	-- For testing purpose
+	-- , check the if a file can be correctly compress and decompress to origin
+		os.exit(CheckCompressAndDecompressFile(arg[2], "all", 0, arg[3]))-- TODO
 	end
 end
 
@@ -612,7 +711,8 @@ do
 		end
 
 		if #reservedChars < #mapChars then
-			return nil, "Number of reserved characters must be at least as many as the number of mapped chars"
+			return nil, "Number of reserved characters must be at least "
+				.."as many as the number of mapped chars"
 		end
 
 		if reservedChars == "" then
@@ -631,7 +731,8 @@ do
 		-- allocate a table to hold encode/decode strings/functions
 		local codecTable = {}
 
-		-- the encoding can be a single gsub, but the decoding can require multiple gsubs
+		-- the encoding can be a single gsub,
+		-- but the decoding can require multiple gsubs
 		local decode_func_string = {}
 
 		local encode_search = {}
@@ -655,9 +756,11 @@ do
 			end
 			codecTable["decode_search"..tostring(escapeCharIndex)]
 				= "([".. escape_for_gsub(table_concat(decode_search)).."])"
-			codecTable["decode_translate"..tostring(escapeCharIndex)] = decode_translate
+			codecTable["decode_translate"..tostring(escapeCharIndex)] =
+				decode_translate
 			table_insert(decode_func_string, "str = str:gsub(self.decode_search"
-				..tostring(escapeCharIndex)..", self.decode_translate"..tostring(escapeCharIndex)..");")
+				..tostring(escapeCharIndex)..", self.decode_translate"
+				..tostring(escapeCharIndex)..");")
 		end
 
 		-- map single byte to double-byte
@@ -675,18 +778,26 @@ do
 				-- while r < 256 and taken[string_char(r)] do
 					r = r + 1
 					if r > 255 then -- switch to next escapeChar
-						if escapeChar == "" then -- we are out of escape chars and we need more!
+						if escapeChar == "" then
+							-- we are out of escape chars and we need more!
 							return nil, "Out of escape characters"
 						end
 
-						codecTable["decode_search"..tostring(escapeCharIndex)] = escape_for_gsub(escapeChar)
-							.."([".. escape_for_gsub(table_concat(decode_search)).."])"
-						codecTable["decode_translate"..tostring(escapeCharIndex)] = decode_translate
-						table_insert(decode_func_string, "str = str:gsub(self.decode_search"
-							..tostring(escapeCharIndex)..", self.decode_translate"..tostring(escapeCharIndex)..");")
+						codecTable["decode_search"..tostring(escapeCharIndex)] =
+							escape_for_gsub(escapeChar)
+							.."([".. 
+							escape_for_gsub(table_concat(decode_search)).."])"
+						codecTable["decode_translate"
+							..tostring(escapeCharIndex)] = decode_translate
+						table_insert(decode_func_string,
+							"str = str:gsub(self.decode_search"
+							..tostring(escapeCharIndex)
+							..", self.decode_translate"
+							..tostring(escapeCharIndex)..");")
 
 						escapeCharIndex  = escapeCharIndex + 1
-						escapeChar = string_sub(escapeChars, escapeCharIndex, escapeCharIndex)
+						escapeChar = string_sub(escapeChars
+							, escapeCharIndex, escapeCharIndex)
 
 						r = 0
 						decode_search = {}
@@ -705,22 +816,29 @@ do
 			codecTable["decode_search"..tostring(escapeCharIndex)] =
 				escape_for_gsub(escapeChar)
 				.."([".. escape_for_gsub(table_concat(decode_search)).."])"
-			codecTable["decode_translate"..tostring(escapeCharIndex)] = decode_translate
+			codecTable["decode_translate"..tostring(escapeCharIndex)] = 
+				decode_translate
 			table_insert(decode_func_string,
 				"str = str:gsub(self.decode_search"..tostring(escapeCharIndex)
 				..", self.decode_translate"..tostring(escapeCharIndex)..");")
 		end
 
 		-- change last line from "str = ...;" to "return ...;";
-		decode_func_string[#decode_func_string] = decode_func_string[#decode_func_string]:gsub("str = (.*);", "return %1;")
-		decode_func_string = "return function(self, str) "..table_concat(decode_func_string).." end"
+		decode_func_string[#decode_func_string] =
+			decode_func_string[#decode_func_string]
+			:gsub("str = (.*);", "return %1;")
+		decode_func_string = "return function(self, str) "
+			..table_concat(decode_func_string).." end"
 
-		encode_search = "([".. escape_for_gsub(table_concat(encode_search)).."])"
+		encode_search = "(["
+			.. escape_for_gsub(table_concat(encode_search)).."])"
 		decode_search = escape_for_gsub(escapeChars)
 			.."([".. escape_for_gsub(table_concat(decode_search)).."])"
 
 		encode_func = assert(loadstring(
-			"return function(self, str) return str:gsub(self.encode_search, self.encode_translate); end"))()
+			"return function(self, str) "
+			.."return str:gsub(self.encode_search, "
+			.."self.encode_translate); end"))()
 		decode_func = assert(loadstring(decode_func_string))()
 
 		codecTable.encode_search = encode_search
@@ -734,8 +852,10 @@ do
 		return codecTable
 	end
 
-	-- Addons: Call this only once and reuse the returned table for all encodings/decodings.
-	function LibCompress:GetAddonEncodeTable(reservedChars, escapeChars, mapChars )
+	-- Addons: Call this only once and reuse the returned
+	-- table for all encodings/decodings.
+	function LibCompress:GetAddonEncodeTable(reservedChars
+		, escapeChars, mapChars )
 		reservedChars = reservedChars or ""
 		escapeChars = escapeChars or ""
 		mapChars = mapChars or ""
@@ -744,11 +864,14 @@ do
 		if escapeChars == "" then
 			escapeChars = "\001"
 		end
-		return self:GetEncodeTable( (reservedChars or "").."\000", escapeChars, mapChars)
+		return self:GetEncodeTable( (reservedChars or "").."\000"
+			, escapeChars, mapChars)
 	end
 
-	-- Addons: Call this only once and reuse the returned table for all encodings/decodings.
-	function LibCompress:GetChatEncodeTable(reservedChars, escapeChars, mapChars)
+	-- Addons: Call this only once and reuse the returned
+	-- table for all encodings/decodings.
+	function LibCompress:GetChatEncodeTable(reservedChars
+		, escapeChars, mapChars)
 		reservedChars = reservedChars or ""
 		escapeChars = escapeChars or ""
 		mapChars = mapChars or ""
@@ -756,7 +879,8 @@ do
 		for i = 128, 255 do
 			table_insert(r, string_char(i))
 		end
-		reservedChars = "sS\000\010\013\124%"..table_concat(r)..(reservedChars or "")
+		reservedChars = "sS\000\010\013\124%"
+			..table_concat(r)..(reservedChars or "")
 		if escapeChars == "" then
 			escapeChars = "\029\031"
 		end
@@ -771,26 +895,33 @@ local _libcompress_addon_encode_table = LibCompress:GetAddonEncodeTable()
 local _libcompress_chat_encode_table = LibCompress:GetChatEncodeTable()
 
 -- Check if LibDeflate's encoding works properly
-local function CheckEncodeAndDecode(str, reservedChars, escapeChars, mapChars)
-	if reservedChars then
-		local encode_decode_table_libcompress = LibCompress:GetEncodeTable(reservedChars, escapeChars, mapChars)
-		local encode_decode_table, message = LibDeflate:GetEncodeDecodeTable(reservedChars, escapeChars, mapChars)
+local function CheckEncodeAndDecode(str, reserved_chars, escape_chars
+	, map_chars)
+	if reserved_chars then
+		local encode_decode_table_libcompress =
+			LibCompress:GetEncodeTable(reserved_chars
+			, escape_chars, map_chars)
+		local encode_decode_table, message =
+			LibDeflate:GetEncodeDecodeTable(reserved_chars
+			, escape_chars, map_chars)
 		if not encode_decode_table then
 			print(message)
 		end
 		local encoded_libcompress = encode_decode_table_libcompress:Encode(str)
 		local encoded = encode_decode_table:Encode(str)
-		AssertLongStringEqual(encoded, encoded_libcompress, "Encoded result does not match libcompress")
+		AssertLongStringEqual(encoded, encoded_libcompress
+			, "Encoded result does not match libcompress")
 		AssertLongStringEqual(encode_decode_table:Decode(encoded), str
 			, "Encoded str cant be decoded to origin")
 	end
 
 	local encoded_addon = LibDeflate:EncodeForWoWAddonChannel(str)
-	local encoded_addon_libcompress = _libcompress_addon_encode_table:Encode(str)
+	local encoded_addon_libcompress =
+		_libcompress_addon_encode_table:Encode(str)
 	AssertLongStringEqual(encoded_addon, encoded_addon_libcompress
 		, "Encoded addon channel result does not match libcompress")
-	AssertLongStringEqual(LibDeflate:DecodeForWoWAddonChannel(encoded_addon), str
-		, "Encoded for addon channel str cant be decoded to origin")
+	AssertLongStringEqual(LibDeflate:DecodeForWoWAddonChannel(encoded_addon)
+		, str, "Encoded for addon channel str cant be decoded to origin")
 
 	local encoded_chat = LibDeflate:EncodeForWoWChatChannel(str)
 	local encoded_chat_libcompress = _libcompress_chat_encode_table:Encode(str)
@@ -799,6 +930,7 @@ local function CheckEncodeAndDecode(str, reservedChars, escapeChars, mapChars)
 	AssertLongStringEqual(LibDeflate:DecodeForWoWChatChannel(encoded_chat), str
 		, "Encoded for chat channel str cant be decoded to origin")
 end
+
 --------------------------------------------------------------
 -- Actual Tests Start ----------------------------------------
 --------------------------------------------------------------
@@ -1439,18 +1571,18 @@ TestPresetDict = {}
 		dict = table.concat(dict).."00"
 		print(dict:len())
 		--]]
-		dict = [[ilvl::::::::110:::1517:3336:3528:3337]]
+		local dict = [[ilvl::::::::110:::1517:3336:3528:3337]]
 		local fileData = GetFileData("tests/data/itemStrings.txt")
 		local dictionary = LibDeflate:CreateDictionary(dict)
 		print("dictLen", dict:len())
 		for i=1, dict:len() do
-			assert(dictionary.strTable[i] == string_byte(dict, i, i))
+			assert(dictionary.string_table[i] == string_byte(dict, i, i))
 		end
 		for i=1, dict:len()-2 do
 			local hash = string_byte(dict, i, i)*65536+string_byte(dict, i+1, i+1)*256+string_byte(dict, i+2, i+2)
-			assert(dictionary.hashTables[hash])
+			assert(dictionary.hash_tables[hash])
 		end
-		assert(dictionary.strLen == dict:len())
+		assert(dictionary.strlen == dict:len())
 		assert(dictionary)
 
 		local compress = LibDeflate:Compress(fileData, 7, dictionary)
