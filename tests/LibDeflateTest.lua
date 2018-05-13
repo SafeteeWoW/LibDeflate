@@ -1013,11 +1013,13 @@ TestThirdPartyMedium = {}
 	end
 
 	function TestThirdPartyMedium:TestRandomChunks()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/random_chunks", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/random_chunks"
+			, "all")
 	end
 
 	function TestThirdPartyMedium:TestGrammerLsp()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/grammar.lsp", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/grammar.lsp"
+			, "all")
 	end
 
 	function TestThirdPartyMedium:TestXargs1()
@@ -1025,7 +1027,8 @@ TestThirdPartyMedium = {}
 	end
 
 	function TestThirdPartyMedium:TestRandomOrg10KBin()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/random_org_10k.bin", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/random_org_10k.bin"
+			, "all")
 	end
 
 	function TestThirdPartyMedium:TestCpHtml()
@@ -1033,15 +1036,18 @@ TestThirdPartyMedium = {}
 	end
 
 	function TestThirdPartyMedium:TestBadData1Snappy()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/baddata1.snappy", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/baddata1.snappy"
+			, "all")
 	end
 
 	function TestThirdPartyMedium:TestBadData2Snappy()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/baddata2.snappy", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/baddata2.snappy"
+			, "all")
 	end
 
 	function TestThirdPartyMedium:TestBadData3Snappy()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/baddata3.snappy", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/baddata3.snappy"
+			, "all")
 	end
 
 	function TestThirdPartyMedium:TestSum()
@@ -1120,63 +1126,82 @@ Test_64K = {}
 -- > 64K
 TestThirdPartyBig = {}
 	function TestThirdPartyBig:TestBackward65536()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/backward65536", "all")
+		CheckCompressAndDecompressFile("tests/data/3rdparty/backward65536"
+			, "all")
 	end
 	function TestThirdPartyBig:TestHTML()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/html", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/html"
+			, {1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestPaper100kPdf()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/paper-100k.pdf", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/paper-100k.pdf"
+			, {1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestGeoProtodata()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/geo.protodata", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/geo.protodata"
+			, {1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestFireworksJpeg()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/fireworks.jpeg", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/fireworks.jpeg"
+			, {1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestAsyoulik()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/asyoulik.txt", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/asyoulik.txt"
+			, {1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestCompressedRepeated()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/compressed_repeated", {1,2,3,4,5})
+		CheckCompressAndDecompressFile(
+			"tests/data/3rdparty/compressed_repeated", {1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestAlice29()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/alice29.txt", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/alice29.txt"
+			, {1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestQuickfox_repeated()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/quickfox_repeated", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/quickfox_repeated"
+			, {1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestKppknGtb()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/kppkn.gtb", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/kppkn.gtb"
+			, {1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestZeros()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/zeros", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/zeros"
+			, {1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestMapsdatazrh()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/mapsdatazrh", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/mapsdatazrh"
+			, {1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestHtml_x_4()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/html_x_4", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/html_x_4"
+			, {1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestLcet10()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/lcet10.txt", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/lcet10.txt"
+			, {1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestPlrabn12()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/plrabn12.txt", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/plrabn12.txt"
+			, {1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestUrls10K()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/urls.10K", {1,2,3,4,5})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/urls.10K"
+			, {1,2,3,4,5})
 	end
 	function TestThirdPartyBig:Testptt5()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/ptt5", {1,2,3,4})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/ptt5"
+			, {1,2,3,4})
 	end
 	function TestThirdPartyBig:TestKennedyXls()
-		CheckCompressAndDecompressFile("tests/data/3rdparty/kennedy.xls", {1,2,3,4})
+		CheckCompressAndDecompressFile("tests/data/3rdparty/kennedy.xls"
+			, {1,2,3,4})
 	end
 
 TestWoWData = {}
 	function TestWoWData:TestWarlockWeakAuras()
-		CheckCompressAndDecompressFile("tests/data/warlockWeakAuras.txt", "all")
+		CheckCompressAndDecompressFile("tests/data/warlockWeakAuras.txt"
+			, "all")
 	end
 
 TestDecompress = {}
@@ -1201,7 +1226,8 @@ TestDecompress = {}
 			t[i] = "a"
 		end
 		local str = table.concat(t)
-		CheckDecompressIncludingError("\000\255\255\000\000"..str.."\001\255\255\000\000"..str, str..str)
+		CheckDecompressIncludingError("\000\255\255\000\000"..str
+			.."\001\255\255\000\000"..str, str..str)
 	end
 	function TestDecompress:TestStore4()
 		-- 0101 00fe ff31
@@ -1219,7 +1245,8 @@ TestDecompress = {}
 			local str = GetLimitedRandomString(size)
 			CheckDecompressIncludingError("\001"..string.char(size%256)
 				..string.char((size-size%256)/256)
-				..string.char(255-size%256)..string.char(255-(size-size%256)/256)..str, str)
+				..string.char(255-size%256)
+				..string.char(255-(size-size%256)/256)..str, str)
 		end
 	end
 	function TestDecompress:TestFix1()
@@ -1234,7 +1261,8 @@ TestDecompress = {}
 			t[i] = "a"
 		end
 		local str = table.concat(t)
-		CheckDecompressIncludingError("\050\004\000\255\255\000\000"..str.."\001\255\255\000\000"..str, "1"..str..str)
+		CheckDecompressIncludingError("\050\004\000\255\255\000\000"
+			..str.."\001\255\255\000\000"..str, "1"..str..str)
 	end
 	function TestDecompress:TestIncomplete()
 		-- Additonal 1 byte after the end of compression data
@@ -1257,27 +1285,34 @@ TestDecompress = {}
 		CheckDecompressIncludingError("\002", nil)
 		CheckDecompressIncludingError("\004", nil)
 		CheckDecompressIncludingError(HexToString("00 01 00 fe ff"), nil)
-		CheckDecompressIncludingError(HexToString("04 80 49 92 24 49 92 24 0f b4 ff ff c3 04"), nil)
+		CheckDecompressIncludingError(
+			HexToString("04 80 49 92 24 49 92 24 0f b4 ff ff c3 04"), nil)
 	end
 	function TestDecompress:TestPuffReturn245()
-		CheckDecompressIncludingError(HexToString("0c c0 81 00 00 00 00 00 90 ff 6b 04"), nil)
+		CheckDecompressIncludingError(HexToString(
+			"0c c0 81 00 00 00 00 00 90 ff 6b 04"), nil)
 	end
 	function TestDecompress:TestPuffReturn246()
 		CheckDecompressIncludingError(HexToString("1a 07"), nil)
 		CheckDecompressIncludingError(HexToString("02 7e ff ff"), nil)
-		CheckDecompressIncludingError(HexToString("04 c0 81 08 00 00 00 00 20 7f eb 0b 00 00"), nil)
+		CheckDecompressIncludingError(HexToString(
+			"04 c0 81 08 00 00 00 00 20 7f eb 0b 00 00"), nil)
 	end
 	function TestDecompress:TestPuffReturn247()
-		CheckDecompressIncludingError(HexToString("04 00 24 e9 ff 6d"), nil)
+		CheckDecompressIncludingError(HexToString(
+			"04 00 24 e9 ff 6d"), nil)
 	end
 	function TestDecompress:TestPuffReturn248()
-		CheckDecompressIncludingError(HexToString("04 80 49 92 24 49 92 24 0f b4 ff ff c3 84"), nil)
+		CheckDecompressIncludingError(HexToString(
+			"04 80 49 92 24 49 92 24 0f b4 ff ff c3 84"), nil)
 	end
 	function TestDecompress:TestPuffReturn249()
-		CheckDecompressIncludingError(HexToString("04 80 49 92 24 49 92 24 71 ff ff 93 11 00"), nil)
+		CheckDecompressIncludingError(HexToString(
+			"04 80 49 92 24 49 92 24 71 ff ff 93 11 00"), nil)
 	end
 	function TestDecompress:TestPuffReturn250()
-		CheckDecompressIncludingError(HexToString("04 00 24 e9 ff ff"), nil)
+		CheckDecompressIncludingError(HexToString(
+			"04 00 24 e9 ff ff"), nil)
 	end
 	function TestDecompress:TestPuffReturn251()
 		CheckDecompressIncludingError(HexToString("04 00 24 49"), nil)
@@ -1294,112 +1329,173 @@ TestDecompress = {}
 	function TestDecompress:TestZlibCoverSupport()
 		CheckDecompressIncludingError(HexToString("63 00"), nil)
 		CheckDecompressIncludingError(HexToString("63 18 05"), nil)
-		CheckDecompressIncludingError(HexToString("63 18 68 30 d0 0 0"), ("\000"):rep(257))
+		CheckDecompressIncludingError(
+			HexToString("63 18 68 30 d0 0 0"), ("\000"):rep(257))
 		CheckDecompressIncludingError(HexToString("3 00"), "")
 		CheckDecompressIncludingError("", nil)
 		CheckDecompressIncludingError("", nil, true)
 	end
 	function TestDecompress:TestZlibCoverWrap()
-		CheckZlibDecompressIncludingError(HexToString("77 85"), nil) -- Bad zlib header
-		CheckZlibDecompressIncludingError(HexToString("70 85"), nil) -- Bad zlib header
-		CheckZlibDecompressIncludingError(HexToString("88 9c"), nil) -- Bad window size
-		CheckZlibDecompressIncludingError(HexToString("f8 9c"), nil) -- Bad window size
-		CheckZlibDecompressIncludingError(HexToString("78 90"), nil) -- Bad zlib header check
-		CheckZlibDecompressIncludingError(HexToString("78 9c 63 00 00 00 01 00 01"), "\000") -- check Adler32
-		CheckZlibDecompressIncludingError(HexToString("78 9c 63 00 00 00 01 00"), nil) -- Adler32 incomplete
-		CheckZlibDecompressIncludingError(HexToString("78 9c 63 00 00 00 01 00 02"), nil) -- wrong Adler32
-		CheckZlibDecompressIncludingError(HexToString("78 9c 63 0"), nil) -- no Adler32
+		CheckZlibDecompressIncludingError(
+			HexToString("77 85"), nil) -- Bad zlib header
+		CheckZlibDecompressIncludingError(
+			HexToString("70 85"), nil) -- Bad zlib header
+		CheckZlibDecompressIncludingError(
+			HexToString("88 9c"), nil) -- Bad window size
+		CheckZlibDecompressIncludingError(
+			HexToString("f8 9c"), nil) -- Bad window size
+		CheckZlibDecompressIncludingError(
+			HexToString("78 90"), nil) -- Bad zlib header check
+		CheckZlibDecompressIncludingError(
+			HexToString("78 9c 63 00 00 00 01 00 01"), "\000") -- check Adler32
+		CheckZlibDecompressIncludingError(
+			HexToString("78 9c 63 00 00 00 01 00"), nil) -- Adler32 incomplete
+		CheckZlibDecompressIncludingError(
+			HexToString("78 9c 63 00 00 00 01 00 02"), nil) -- wrong Adler32
+		CheckZlibDecompressIncludingError(
+			HexToString("78 9c 63 0"), nil) -- no Adler32
 	end
 	function TestDecompress:TestZlibCoverInflate()
-		CheckDecompressIncludingError(HexToString("0 0 0 0 0"), nil) -- invalid store block length
-		CheckDecompressIncludingError(HexToString("3 0"), "", nil) -- Fixed block
-		CheckDecompressIncludingError(HexToString("6"), nil) -- Invalid block type
-		CheckDecompressIncludingError(HexToString("1 1 0 fe ff 0"), "\000") -- Stored block
-		CheckDecompressIncludingError(HexToString("fc 0 0"), nil) -- Too many length or distance symbols
-		CheckDecompressIncludingError(HexToString("4 0 fe ff"), nil) -- Invalid code lengths set
-		CheckDecompressIncludingError(HexToString("4 0 24 49 0"), nil) -- Invalid bit length repeat
-		CheckDecompressIncludingError(HexToString("4 0 24 e9 ff ff"), nil) -- Invalid bit length repeat
-		CheckDecompressIncludingError(HexToString("4 0 24 e9 ff 6d"), nil) -- Invalid code: missing end of block
+		CheckDecompressIncludingError(
+			HexToString("0 0 0 0 0"), nil) -- invalid store block length
+		CheckDecompressIncludingError(
+			HexToString("3 0"), "", nil) -- Fixed block
+		CheckDecompressIncludingError(
+			HexToString("6"), nil) -- Invalid block type
+		CheckDecompressIncludingError(
+			HexToString("1 1 0 fe ff 0"), "\000") -- Stored block
+		CheckDecompressIncludingError(
+			HexToString("fc 0 0"), nil) -- Too many length or distance symbols
+		CheckDecompressIncludingError(
+			HexToString("4 0 fe ff"), nil) -- Invalid code lengths set
+		CheckDecompressIncludingError(
+			HexToString("4 0 24 49 0"), nil) -- Invalid bit length repeat
+		CheckDecompressIncludingError(
+			HexToString("4 0 24 e9 ff ff"), nil) -- Invalid bit length repeat
+		CheckDecompressIncludingError(
+			HexToString("4 0 24 e9 ff 6d"), nil) -- Invalid code: missing end of block
 		-- Invalid literal/lengths set
-		CheckDecompressIncludingError(HexToString("4 80 49 92 24 49 92 24 71 ff ff 93 11 0"), nil)
-		CheckDecompressIncludingError(HexToString("4 80 49 92 24 49 92 24 71 ff ff 93 11 0"), nil)
+		CheckDecompressIncludingError(
+			HexToString("4 80 49 92 24 49 92 24 71 ff ff 93 11 0"), nil)
+		CheckDecompressIncludingError(
+			HexToString("4 80 49 92 24 49 92 24 71 ff ff 93 11 0"), nil)
 		-- Invalid distance set
-		CheckDecompressIncludingError(HexToString("4 80 49 92 24 49 92 24 f b4 ff ff c3 84"), nil)
+		CheckDecompressIncludingError(
+			HexToString("4 80 49 92 24 49 92 24 f b4 ff ff c3 84"), nil)
 		-- Invalid literal/length code
-		CheckDecompressIncludingError(HexToString("4 c0 81 8 0 0 0 0 20 7f eb b 0 0"), nil)
-		CheckDecompressIncludingError(HexToString("2 7e ff ff"), nil) -- Invalid distance code
-		CheckDecompressIncludingError(HexToString("c c0 81 0 0 0 0 0 90 ff 6b 4 0"), nil) -- Invalid distance too far
-		CheckDecompressIncludingError(HexToString("1f 8b 8 0 0 0 0 0 0 0 3 0 0 0 0 1"), nil) -- incorrect data check
-		CheckDecompressIncludingError(HexToString("1f 8b 8 0 0 0 0 0 0 0 3 0 0 0 0 0 0 0 0 1"), nil) --incorrect length check
-		CheckDecompressIncludingError(HexToString("5 c0 21 d 0 0 0 80 b0 fe 6d 2f 91 6c"), "") -- pull 17
+		CheckDecompressIncludingError(
+			HexToString("4 c0 81 8 0 0 0 0 20 7f eb b 0 0"), nil)
+		CheckDecompressIncludingError(
+			HexToString("2 7e ff ff"), nil) -- Invalid distance code
+		-- Invalid distance too far
+		CheckDecompressIncludingError(
+			HexToString("c c0 81 0 0 0 0 0 90 ff 6b 4 0"), nil)
+		-- incorrect data check
+		CheckDecompressIncludingError(
+			HexToString("1f 8b 8 0 0 0 0 0 0 0 3 0 0 0 0 1"), nil)
+		-- incorrect length check
+		CheckDecompressIncludingError(
+			HexToString("1f 8b 8 0 0 0 0 0 0 0 3 0 0 0 0 0 0 0 0 1"), nil)
+		-- pull 17
+		CheckDecompressIncludingError(
+			HexToString("5 c0 21 d 0 0 0 80 b0 fe 6d 2f 91 6c"), "")
 		-- long code
-		CheckDecompressIncludingError(HexToString("05 e0 81 91 24 cb b2 2c 49 e2 0f 2e 8b 9a 47 56 9f fb fe ec d2 ff 1f"), "")
+		CheckDecompressIncludingError(
+		HexToString(
+		"05 e0 81 91 24 cb b2 2c 49 e2 0f 2e 8b 9a 47 56 9f fb fe ec d2 ff 1f")
+		, "")
 		-- extra length
-		CheckDecompressIncludingError(HexToString("ed c0 1 1 0 0 0 40 20 ff 57 1b 42 2c 4f"), ("\000"):rep(516))
+		CheckDecompressIncludingError(
+			HexToString("ed c0 1 1 0 0 0 40 20 ff 57 1b 42 2c 4f")
+			, ("\000"):rep(516))
 		-- long distance and extra
-		CheckDecompressIncludingError(HexToString("ed cf c1 b1 2c 47 10 c4 30 fa 6f 35 1d 1 82 59 3d fb be 2e 2a fc f c")
+		CheckDecompressIncludingError(
+		HexToString(
+		"ed cf c1 b1 2c 47 10 c4 30 fa 6f 35 1d 1 82 59 3d fb be 2e 2a fc f c")
 			, ("\000"):rep(518))
 		-- Window end
-		CheckDecompressIncludingError(HexToString("ed c0 81 0 0 0 0 80 a0 fd a9 17 a9 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0")
+		CheckDecompressIncludingError(
+		HexToString(
+		"ed c0 81 0 0 0 0 80 a0 fd a9 17 a9 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0")
 			, nil)
 		-- inflate_fast TYPE return
 		CheckDecompressIncludingError(HexToString("2 8 20 80 0 3 0"), "")
 		-- Window wrap
-		CheckDecompressIncludingError(HexToString("63 18 5 40 c 0"), ("\000"):rep(262))
+		CheckDecompressIncludingError(HexToString("63 18 5 40 c 0")
+			, ("\000"):rep(262))
 	end
 	function TestDecompress:TestZlibCoverFast()
 		-- fast length extra bits
 		CheckDecompressIncludingError(
-			HexToString("e5 e0 81 ad 6d cb b2 2c c9 01 1e 59 63 ae 7d ee fb 4d fd b5 35 41 68"), nil)
+		HexToString(
+		"e5 e0 81 ad 6d cb b2 2c c9 01 1e 59 63 ae 7d ee fb 4d fd b5 35 41 68")
+		, nil)
 		-- fast distance extra bits
 		CheckDecompressIncludingError(
-			HexToString("25 fd 81 b5 6d 59 b6 6a 49 ea af 35 6 34 eb 8c b9 f6 b9 1e ef 67 49"), nil)
-		CheckDecompressIncludingError(HexToString("3 7e 0 0 0 0 0"), nil) -- Fast invalid distance code
-		CheckDecompressIncludingError(HexToString("1b 7 0 0 0 0 0"), nil) -- Fast literal/length code
+		HexToString(
+		"25 fd 81 b5 6d 59 b6 6a 49 ea af 35 6 34 eb 8c b9 f6 b9 1e ef 67 49"
+		, nil))
+		 -- Fast invalid distance code
+		CheckDecompressIncludingError(HexToString("3 7e 0 0 0 0 0"), nil)
+		-- Fast literal/length code
+		CheckDecompressIncludingError(HexToString("1b 7 0 0 0 0 0"), nil)
 		-- fast 2nd level codes and too far back
 		CheckDecompressIncludingError(
-			HexToString("d c7 1 ae eb 38 c 4 41 a0 87 72 de df fb 1f b8 36 b1 38 5d ff ff 0"), nil)
+		HexToString(
+		"d c7 1 ae eb 38 c 4 41 a0 87 72 de df fb 1f b8 36 b1 38 5d ff ff 0")
+		, nil)
 		-- Very common case
 		CheckDecompressIncludingError(
-			HexToString("63 18 5 8c 10 8 0 0 0 0"), ("\000"):rep(258)..("\000\001"):rep(4))
+			HexToString("63 18 5 8c 10 8 0 0 0 0")
+			, ("\000"):rep(258)..("\000\001"):rep(4))
 		-- Continous and wrap aroudn window
 		CheckDecompressIncludingError(
 			HexToString("63 60 60 18 c9 0 8 18 18 18 26 c0 28 0 29 0 0 0")
 			, ("\000"):rep(261)..("\144")..("\000"):rep(6)..("\144\000"))
 		-- Copy direct from output
-		CheckDecompressIncludingError(HexToString("63 0 3 0 0 0 0 0"), ("\000"):rep(6))
+		CheckDecompressIncludingError(
+			HexToString("63 0 3 0 0 0 0 0"), ("\000"):rep(6))
 	end
 	function TestDecompress:TestAdditionalCoverage()
-		CheckZlibDecompressIncludingError(HexToString("78"), nil) -- no zlib FLG
-		CheckDecompressIncludingError(HexToString("1"), nil) -- Stored block no len
-		CheckDecompressIncludingError(HexToString("1 1 0"), nil) -- Stored block no len comp
-		CheckDecompressIncludingError(HexToString("1 1 0 ff ff 0"), nil) -- Stored block not one's complement
-		CheckDecompressIncludingError(HexToString("1 1 0 fe fe 0"), nil) -- Stored block not one's complement
-		CheckDecompressIncludingError(HexToString("1 34 43 cb bc")..("\000"):rep(17204), ("\000"):rep(17204)) -- Stored block
+		-- no zlib FLG
+		CheckZlibDecompressIncludingError(HexToString("78"), nil)
+		-- Stored block no len
+		CheckDecompressIncludingError(HexToString("1"), nil)
+		-- Stored block no len comp
+		CheckDecompressIncludingError(HexToString("1 1 0"), nil)
+		-- Stored block not one's complement
+		CheckDecompressIncludingError(HexToString("1 1 0 ff ff 0"), nil)
+		-- Stored block not one's complement
+		CheckDecompressIncludingError(HexToString("1 1 0 fe fe 0"), nil)
+		CheckDecompressIncludingError(
+			HexToString("1 34 43 cb bc")..("\000"):rep(17204)
+			, ("\000"):rep(17204)) -- Stored block
 		-- Stored block with 1 less byte
-		CheckDecompressIncludingError(HexToString("1 34 43 cb bc")..("\000"):rep(17203), nil)
-		CheckDecompressIncludingError(HexToString("1 34 43 cb bc")..("\000"):rep(17202), nil)
+		CheckDecompressIncludingError(
+			HexToString("1 34 43 cb bc")..("\000"):rep(17203), nil)
+		CheckDecompressIncludingError(
+			HexToString("1 34 43 cb bc")..("\000"):rep(17202), nil)
 	end
 
 TestInternals = {}
 	-- Test from puff
 	function TestInternals:TestLoadString()
-		local loadStrToTable = LibDeflate.internals.loadStrToTable
+		local LoadStringToTable = LibDeflate.internals.LoadStringToTable
 		local tmp
 		for _=1, 50 do
 			local t = {}
-			local strLen = math.random(0, 1000)
-			local str = GetLimitedRandomString(strLen)
+			local strlen = math.random(0, 1000)
+			local str = GetLimitedRandomString(strlen)
 			local uncorruped_data = {}
-			for i=1, strLen do
+			for i=1, strlen do
 				uncorruped_data[i] = math.random(1, 12345)
 				t[i] = uncorruped_data[i]
 			end
 			local start
 			local stop
-			if strLen >= 1 then
-				start = math.random(1, strLen)
-				stop = math.random(1, strLen)
+			if strlen >= 1 then
+				start = math.random(1, strlen)
+				stop = math.random(1, strlen)
 			else
 				start = 1
 				stop = 0
@@ -1409,13 +1505,15 @@ TestInternals = {}
 				start = stop
 				stop = tmp
 			end
-			local offset = math.random(0, strLen)
-			loadStrToTable(str, t, start, stop, offset)
+			local offset = math.random(0, strlen)
+			LoadStringToTable(str, t, start, stop, offset)
 			for i=-1000, 2000 do
 				if i < start-offset or i > stop-offset then
-					lu.assertEquals(t[i], uncorruped_data[i], "loadStr corrupts unintended location")
+					lu.assertEquals(t[i], uncorruped_data[i]
+						, "loadStr corrupts unintended location")
 				else
-					lu.assertEquals(t[i], string_byte(str, i+offset), ("loadStr gives wrong data!, start=%d, stop=%d, i=%d")
+					lu.assertEquals(t[i], string_byte(str, i+offset)
+					, ("loadStr gives wrong data!, start=%d, stop=%d, i=%d")
 						:format(start, stop, i))
 				end
 			end
@@ -1423,21 +1521,24 @@ TestInternals = {}
 	end
 
 	function TestInternals:TestSimpleRandom()
-		local compressEmpty = LibDeflate:Compress("")
-		lu.assertEquals(LibDeflate:Decompress(compressEmpty), "", "My decompress does not match origin for empty string.")
+		local compress_empty = LibDeflate:Compress("")
+		lu.assertEquals(LibDeflate:Decompress(compress_empty)
+			, "", "My decompress does not match origin for empty string.")
 		for _=1, 50 do
 			local tmp
-			local strLen = math.random(0, 1000)
-			local str = GetLimitedRandomString(strLen)
+			local strlen = math.random(0, 1000)
+			local str = GetLimitedRandomString(strlen)
 			local level = (math.random() < 0.5) and (math.random(1, 8)) or nil
 			local expected = str
 			local compress = LibDeflate:Compress(str, level)
-			local _, actual = pcall(function() return LibDeflate:Decompress(compress) end)
+			local _, actual = pcall(function() return LibDeflate
+				:Decompress(compress) end)
 			if expected ~= actual then
 				local strDumpFile = io.open("fail_random.tmp", "wb")
 				if (strDumpFile) then
 					strDumpFile:write(str)
-					print(("Failed test has been dumped to fail_random.txt, with level=%s"):
+					print(("Failed test has been dumped to fail_random.tmp,"
+						.. "with level=%s"):
 						format(tostring(level)))
 					strDumpFile:close()
 					if type(actual) == "string" then
@@ -1472,10 +1573,15 @@ TestInternals = {}
 		lu.assertEquals(LibDeflate:Adler32("1234567890abcefghi"), 0x29A30537)
 		lu.assertEquals(LibDeflate:Adler32("1234567890abcefghij"), 0x2F4405A1)
 		lu.assertEquals(LibDeflate:Adler32("1234567890abcefghijk"), 0x3550060C)
-		lu.assertEquals(LibDeflate:Adler32("1234567890abcefghijkl"), 0x3BC80678)
-		lu.assertEquals(LibDeflate:Adler32("1234567890abcefghijklm"), 0x42AD06E5)
-		lu.assertEquals(LibDeflate:Adler32("1234567890abcefghijklmn"), 0x4A000753)
-		lu.assertEquals(LibDeflate:Adler32("1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0x8C40150C)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abcefghijkl")
+			, 0x3BC80678)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abcefghijklm")
+			, 0x42AD06E5)
+		lu.assertEquals(LibDeflate:Adler32("1234567890abcefghijklmn")
+			, 0x4A000753)
+		lu.assertEquals(LibDeflate:Adler32(
+			"1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+			, 0x8C40150C)
 		local adler32Test = GetFileData("tests/data/adler32Test.txt")
 		lu.assertEquals(LibDeflate:Adler32(adler32Test), 0x5D9BAF5D)
 		local adler32Test2 = GetFileData("tests/data/adler32Test2.txt")
@@ -1493,17 +1599,22 @@ TestInternals = {}
 			_G[LIBSTUB_MAJOR] = LibStub
 			LibStub.minor = LIBSTUB_MINOR
 			function LibStub:NewLibrary(major, minor)
-				assert(type(major) == "string", "Bad argument #2 to `NewLibrary' (string expected)")
-				minor = assert(tonumber(string.match(minor, "%d+")), "Minor version must either be a number or contain a number.")
+				assert(type(major) ==
+					"string"
+					, "Bad argument #2 to `NewLibrary' (string expected)")
+				minor = assert(tonumber(string.match(minor, "%d+"))
+				, "Minor version must either be a number or contain a number.")
 
 				local oldminor = self.minors[major]
 				if oldminor and oldminor >= minor then return nil end
-				self.minors[major], self.libs[major] = minor, self.libs[major] or {}
+				self.minors[major], self.libs[major] = 
+					minor, self.libs[major] or {}
 				return self.libs[major], oldminor
 			end
 			function LibStub:GetLibrary(major, silent)
 				if not self.libs[major] and not silent then
-					error(("Cannot find a library instance of %q."):format(tostring(major)), 2)
+					error(("Cannot find a library instance of %q.")
+					:format(tostring(major)), 2)
 				end
 				return self.libs[major], self.minors[major]
 			end
@@ -1515,48 +1626,64 @@ TestInternals = {}
 		lu.assertNotNil(LibStub, "LibStub not in global?")
 		local MAJOR = "LibDeflate"
 		CheckCompressAndDecompressString("aaabbbcccddddddcccbbbaaa", "all")
-		lu.assertNotNil(package.loaded["LibDeflate"], "LibDeflate is not loaded")
+		lu.assertNotNil(package.loaded["LibDeflate"]
+			, "LibDeflate is not loaded")
 		package.loaded["LibDeflate"] = nil
-		-- Not sure if luaconv can recognize code in dofile(), let's just use require
+		-- Not sure if luaconv can recognize code in dofile()
+		-- let's just use require
 		LibDeflate = require("LibDeflate")
-		lu.assertNotNil(package.loaded["LibDeflate"], "LibDeflate is not loaded")
+		lu.assertNotNil(package.loaded["LibDeflate"]
+			, "LibDeflate is not loaded")
 		lu.assertNotNil(LibDeflate, "LibStub does not return LibDeflate")
-		lu.assertEquals(LibStub:GetLibrary(MAJOR, true), LibDeflate, "Cant find LibDeflate in LibStub.")
+		lu.assertEquals(LibStub:GetLibrary(MAJOR, true), LibDeflate
+			, "Cant find LibDeflate in LibStub.")
 		CheckCompressAndDecompressString("aaabbbcccddddddcccbbbaaa", "all")
 		------------------------------------------------------
 		FullMemoryCollect()
 		local memory1 = math.floor(collectgarbage("collect")*1024)
-		lu.assertNotNil(package.loaded["LibDeflate"], "LibDeflate is not loaded")
+		lu.assertNotNil(package.loaded["LibDeflate"]
+			, "LibDeflate is not loaded")
 		package.loaded["LibDeflate"] = nil
-		-- Not sure if luaconv can recognize code in dofile(), let's just use require
+		-- Not sure if luaconv can recognize code in dofile()
+		-- let's just use require
 		local LibDeflateTmp = require("LibDeflate")
-		lu.assertNotNil(package.loaded["LibDeflate"], "LibDeflate is not loaded")
-		lu.assertEquals(LibDeflateTmp, LibDeflate, "LibStub unexpectedly recreates the library.")
+		lu.assertNotNil(package.loaded["LibDeflate"]
+			, "LibDeflate is not loaded")
+		lu.assertEquals(LibDeflateTmp, LibDeflate
+			, "LibStub unexpectedly recreates the library.")
 		lu.assertNotNil(LibDeflate, "LibStub does not return LibDeflate")
-		lu.assertEquals(LibStub:GetLibrary(MAJOR, true), LibDeflate, "Cant find LibDeflate in LibStub.")
+		lu.assertEquals(LibStub:GetLibrary(MAJOR, true), LibDeflate
+			, "Cant find LibDeflate in LibStub.")
 		CheckCompressAndDecompressString("aaabbbcccddddddcccbbbaaa", "all")
 		FullMemoryCollect()
 		local memory2 = math.floor(collectgarbage("collect")*1024)
 		if not jit then
-			lu.assertTrue((memory2 - memory1 <= 32), ("Too much Memory leak after LibStub without update: %d")
+			lu.assertTrue((memory2 - memory1 <= 32)
+			, ("Too much Memory leak after LibStub without update: %d")
 				:format(memory2-memory1))
 		end
 		----------------------------------------------------
 		LibStub.minors[MAJOR] = -1000
 		FullMemoryCollect()
 		local memory3 = math.floor(collectgarbage("collect")*1024)
-		lu.assertNotNil(package.loaded["LibDeflate"], "LibDeflate is not loaded")
+		lu.assertNotNil(package.loaded["LibDeflate"]
+			, "LibDeflate is not loaded")
 		package.loaded["LibDeflate"] = nil
-		-- Not sure if luaconv can recognize code in dofile(), let's just use require
+		-- Not sure if luaconv can recognize code in dofile()
+		-- let's just use require
 		LibDeflateTmp = require("LibDeflate")
-		lu.assertNotNil(package.loaded["LibDeflate"], "LibDeflate is not loaded")
+		lu.assertNotNil(package.loaded["LibDeflate"]
+			, "LibDeflate is not loaded")
 		CheckCompressAndDecompressString("aaabbbcccddddddcccbbbaaa", "all")
 		FullMemoryCollect()
 		local memory4 = math.floor(collectgarbage("collect")*1024)
-		lu.assertEquals(LibDeflateTmp, LibDeflate, "LibStub unexpectedly recreates the library.")
-		lu.assertTrue(LibStub.minors[MAJOR] > -1000, "LibDeflate is not updated.")
+		lu.assertEquals(LibDeflateTmp, LibDeflate
+			, "LibStub unexpectedly recreates the library.")
+		lu.assertTrue(LibStub.minors[MAJOR] > -1000
+			, "LibDeflate is not updated.")
 		if not jit then
-			lu.assertTrue((memory4 - memory3 <= 100), ("Too much Memory leak after LibStub update: %d")
+			lu.assertTrue((memory4 - memory3 <= 100)
+				, ("Too much Memory leak after LibStub update: %d")
 				:format(memory4-memory3))
 		end
 	end
@@ -1579,7 +1706,9 @@ TestPresetDict = {}
 			assert(dictionary.string_table[i] == string_byte(dict, i, i))
 		end
 		for i=1, dict:len()-2 do
-			local hash = string_byte(dict, i, i)*65536+string_byte(dict, i+1, i+1)*256+string_byte(dict, i+2, i+2)
+			local hash = string_byte(dict, i, i)*65536
+				+ string_byte(dict, i+1, i+1)*256
+				+ string_byte(dict, i+2, i+2)
 			assert(dictionary.hash_tables[hash])
 		end
 		assert(dictionary.strlen == dict:len())
@@ -1614,13 +1743,14 @@ TestEncode = {}
 	-- Date: 2018-02-25 06:31:34 +0000 (Sun, 25 Feb 2018)
 	function TestEncode:TestLibCompressEncodeBug()
 		local reservedChars =
-		"\132\109\114\143\11\32\153\92\230\66\131\127\87\106\89\142\55\228\56\158"
-		.."\151\53\48\13\71\9\37\208\101\42\217\76\19\250\125\214\146\14\215\204"
-		.."\249\223\165\45\222\120\161\65\28\144\196\12\43\116\242\179\194\1\253"
-		.."\147\121\99\3\107\96\67\27\44\100\148\130\221\138\85\129\166\185\246"
-		.."\239\50\218\94\157\90\81\134\80\175\186\79\122\93\190\150\154\183\91"
-		.."\152\70\234\169\126\108\251\6\2\22\95\233\180\105\119\38\229\171\29\192"
-		.."\219\21\241\74\207\159\117\247\72\237\110\78\118"
+		"\132\109\114\143\11\32\153\92\230\66\131\127\87\106\89\142\55\228\56"
+		.."\158\151\53\48\13\71\9\37\208\101\42\217\76\19\250\125\214\146\14"
+		.."\215\204\249\223\165\45\222\120\161\65\28\144\196\12\43\116\242\179"
+		.."\194\1\253\147\121\99\3\107\96\67\27\44\100\148\130\221\138\85\129"
+		.."\166\185\246\239\50\218\94\157\90\81\134\80\175\186\79\122\93\190"
+		.."\150\154\183\91\152\70\234\169\126\108\251\6\2\22\95\233\180\105"
+		.."\119\38\229\171\29\192\219\21\241\74\207\159\117\247\72\237\110"
+		.."\78\118"
 		local escapedChars = "\145\54"
 		for _ = 1, 10 do
 			local str = GetRandomStringComplete(1000)
@@ -1675,7 +1805,8 @@ TestEncode = {}
 local function AddToCoverageTest(suite, test)
 	assert(suite)
 	assert(type(suite[test]) == "function")
-	CodeCoverage[test] = function(_, ...) return suite[test](_G[suite], ...) end
+	CodeCoverage[test] = function(_, ...) 
+		return suite[test](_G[suite], ...) end
 end
 local function AddAllToCoverageTest(suite)
 	for k, _ in pairs(suite) do

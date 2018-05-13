@@ -806,7 +806,7 @@ end
 -- @param end str[index] will be the last character to be loaded
 -- @param offset str[index] will be loaded into t[index+offset]
 -- @return t
-local function loadStrToTable(str, t, start, stop, offset)
+local function LoadStringToTable(str, t, start, stop, offset)
 	local i = start - offset
 	while i <= stop - 15 - offset do
 		t[i], t[i+1], t[i+2], t[i+3], t[i+4], t[i+5], t[i+6], t[i+7], t[i+8],
@@ -1421,7 +1421,7 @@ local function Deflate(WriteBits, WriteString, Flush, str, level, dictionary)
 		end
 
 		-- GetBlockLZ77 needs block_start to block_end+3 to be loaded.
-		loadStrToTable(str, string_table, block_start, block_end + 3, offset)
+		LoadStringToTable(str, string_table, block_start, block_end + 3, offset)
 
 		if block_start == 1 and dictionary then
 			local dict_string_table = dictionary.string_table
@@ -2444,7 +2444,7 @@ end
 -- For test. Don't use the functions in this table for real application.
 -- Stuffs in this table is subject to change.
 LibDeflate.internals = {
-	loadStrToTable = loadStrToTable,
+	LoadStringToTable = LoadStringToTable,
 }
 
 return LibDeflate
