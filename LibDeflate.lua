@@ -112,7 +112,7 @@ local _compression_level_config = {
 	[5] = {true, 8,	16,	32,	32}, -- level 5, similar to zlib level 5
 	[6] = {true, 8,	16,	128, 128}, -- level 6, similar to zlib level 6
 	[7] = {true, 8,	32,	128, 256}, -- (SLOW) level 7, similar to zlib level 7
-	[8] = {true, 32, 128, 258,1024} ,-- (SLOW) level 8, similar to zlib level 8
+	[8] = {true, 32, 128, 258, 1024} , --(SLOW) level 8,similar to zlib level 8
 	[9] = {true, 32, 258, 258, 4096},
 		-- (VERY SLOW) level 9, similar to zlib level 9
 }
@@ -160,7 +160,10 @@ local table_concat = table.concat
 local table_sort = table.sort
 local type = type
 
--- Converts i to 2 to power of i, (0<=i<=31)
+-- Converts i to 2^i, (0<=i<=31)
+-- This is used to implement bit left shift and bit right shift.
+-- "x >> y" in C:   "(x-x%_pow2[y])/_pow2[y]" in Lua
+-- "x << y" in C:   "x*_pow2[y]" in Lua
 local _pow2 = {}
 
 -- Converts any byte to a character, (0<=byte<=255)
@@ -171,6 +174,9 @@ local _byte_to_char = {}
 -- For example, decimal number 6 with bits length 5 is binary 00110
 -- It's reverse is binary 01100,
 -- which is decimal 12 and 12 == _reverseBitsTbl[5][6]
+-- 1<=len<=9, 0<=val<=2^len-1
+-- The reason for 1<=len<=9 is that the max of min bitlen of huffman code
+-- of a huffman alphabet is 9?
 local _reverse_bits_tbl = {}
 
 -- Convert a LZ77 length (3<=len<=258) to
@@ -228,63 +234,75 @@ local _hclen_code_order = {16, 17, 18,
 -- The following tables are used by fixed deflate block.
 -- The value of these tables are assigned at the bottom of the source.
 
--- The huffman code of the literal/LZ77_length deflate codes.
+-- The huffman code of the literal/LZ77_length deflate codes,
+-- in fixed deflate block.
 local _fix_block_literal_huffman_code
 
--- Convert huffman code of the literal/LZ77_length to deflate codes.
+-- Convert huffman code of the literal/LZ77_length to deflate codes,
+-- in fixed deflate block.
 local _fix_block_literal_huffman_to_deflate_code
 
--- The bit length of the huffman code of literal/LZ77_length deflate codes.
+-- The bit length of the huffman code of literal/LZ77_length deflate codes,
+-- in fixed deflate block.
 local _fix_block_literal_huffman_bitlen
 
--- The count of each bit length of the literal/LZ77_length deflate codes.
+-- The count of each bit length of the literal/LZ77_length deflate codes,
+-- in fixed deflate block.
 local _fix_block_literal_huffman_bitlen_count
 
--- The huffman code of the distance deflate codes.
+-- The huffman code of the distance deflate codes,
+-- in fixed deflate block.
 local _fix_block_dist_huffman_code
 
--- Convert huffman code of the distance to deflate codes.
+-- Convert huffman code of the distance to deflate codes,
+-- in fixed deflate block.
 local _fix_block_dist_huffman_to_deflate_code
 
--- The bit length of the huffman code of the distance deflate codes.
+-- The bit length of the huffman code of the distance deflate codes,
+-- in fixed deflate block.
 local _fix_block_dist_huffman_bitlen
 
 -- The count of each bit length of the huffman code of 
--- the distance deflate codes.
+-- the distance deflate codes,
+-- in fixed deflate block.
 local _fix_block_dist_huffman_bitlen_count
 
-for i=0, 255 do
+for i = 0, 255 do
 	_byte_to_char[i] = string_char(i)
 end
 
 do
 	local pow = 1
-	for i=0, 31 do
+	for i = 0, 31 do
 		_pow2[i] = pow
-		pow = pow*2
+		pow = pow * 2
 	end
 end
 
-for i=1, 9 do
+for i = 1, 9 do
 	_reverse_bits_tbl[i] = {}
 	for j=0, _pow2[i+1]-1 do
-		local res = 0
-		local code = j
-		for _=1, i do
-			res = res - res%2 + (((res%2==1) or (code % 2) == 1) and 1 or 0) -- res | (code%2)
-			code = (code-code%2)/2
-			res = res*2
+		local reverse = 0
+		local value = j
+		for _ = 1, i do
+			-- The following line is equivalent to "res | (code %2)" in C.
+			reverse = reverse - reverse%2 
+				+ (((reverse%2==1) or (value % 2) == 1) and 1 or 0)
+			value = (value-value%2)/2
+			reverse = reverse * 2
 		end
-		_reverse_bits_tbl[i][j] = (res-res%2)/2
+		_reverse_bits_tbl[i][j] = (reverse-reverse%2)/2
 	end
 end
 
+-- The source code is written according to the pattern in the numbers
+-- in RFC1951 Page10.
 do
 	local a = 18
 	local b = 16
 	local c = 265
-	local bitsLen = 1
-	for len=3, 258 do
+	local bitlen = 1
+	for len = 3, 258 do
 		if len <= 10 then
 			_length_to_deflate_code[len] = len + 254
 			_length_to_deflate_extra_bitlen[len] = 0
@@ -296,17 +314,18 @@ do
 				a = a + b
 				b = b * 2
 				c = c + 4
-				bitsLen = bitsLen + 1
+				bitlen = bitlen + 1
 			end
 			local t = len-a-1+b/2
 			_length_to_deflate_code[len] = (t-(t%(b/8)))/(b/8) + c
-			_length_to_deflate_extra_bitlen[len] = bitsLen
+			_length_to_deflate_extra_bitlen[len] = bitlen
 			_length_to_deflate_extra_bits[len] = t % (b/8)
 		end
 	end
 end
 
-
+-- The source code is written according to the pattern in the numbers
+-- in RFC1951 Page11.
 do
 	_dist256_to_deflate_code[1] = 0
 	_dist256_to_deflate_code[2] = 1
@@ -316,137 +335,176 @@ do
 	local a = 3
 	local b = 4
 	local code = 2
-	local bitsLen = 0
-	for dist=3, 256 do
+	local bitlen = 0
+	for dist = 3, 256 do
 		if dist > b then
 			a = a * 2
 			b = b * 2
 			code = code + 2
-			bitsLen = bitsLen + 1
+			bitlen = bitlen + 1
 		end
 		_dist256_to_deflate_code[dist] = (dist <= a) and code or (code+1)
-		_dist256_to_deflate_extra_bitlen[dist] = (bitsLen < 0) and 0 or bitsLen
+		_dist256_to_deflate_extra_bitlen[dist] = (bitlen < 0) and 0 or bitlen
 		if b >= 8 then
 			_dist256_to_deflate_extra_bits[dist] = (dist-b/2-1) % (b/4)
 		end
 	end
 end
 
+--[[
+	Create an empty writer to easily write stuffs as the unit of bits.
+	Return values:
+	1. WriteBits(code, bitlen):
+	2. WriteString(str):
+	3. Flush(full_flush):
+--]]
 local function CreateWriter()
-	local bufferSize = 0
+	local buffer_size = 0
 	local cache = 0
-	local cacheBitRemaining = 0
+	local cache_bitlen = 0
 	local buffer = {}
 
-	local function WriteBits(code, bitLength)
-		cache = cache + code * _pow2[cacheBitRemaining]
-		cacheBitRemaining = bitLength + cacheBitRemaining
-		if cacheBitRemaining >= 32 then
-			-- we have at least 4 bytes to store; bulk it
-			buffer[bufferSize+1] = _byte_to_char[cache % 256]
-			buffer[bufferSize+2] = _byte_to_char[((cache-cache%256)/256 % 256)]
-			buffer[bufferSize+3] = _byte_to_char[((cache-cache%65536)/65536 % 256)]
-			buffer[bufferSize+4] = _byte_to_char[((cache-cache%16777216)/16777216 % 256)]
-			bufferSize = bufferSize + 4
-			local rShiftMask = _pow2[32 - cacheBitRemaining + bitLength]
-			cache = (code - code%rShiftMask)/rShiftMask
-			cacheBitRemaining = cacheBitRemaining - 32
+	-- Write bits with value "value" and bit length of "bitlen" into writer.
+	-- @param value: The value being written
+	-- @param bitlen: The bit length of "value"
+	-- @return nil
+	local function WriteBits(value, bitlen)
+		cache = cache + value * _pow2[cache_bitlen]
+		cache_bitlen = cache_bitlen + bitlen
+
+		-- Only bulk to buffer every 4 bytes. This is quicker.
+		if cache_bitlen >= 32 then
+			buffer[buffer_size+1] = _byte_to_char[cache % 256]
+			buffer[buffer_size+2] =
+				_byte_to_char[((cache-cache%256)/256 % 256)]
+			buffer[buffer_size+3] =
+				_byte_to_char[((cache-cache%65536)/65536 % 256)]
+			buffer[buffer_size+4] =
+				_byte_to_char[((cache-cache%16777216)/16777216 % 256)]
+			buffer_size = buffer_size + 4
+			local rshift_mask = _pow2[32 - cache_bitlen + bitlen]
+			cache = (value - value%rshift_mask)/rshift_mask
+			cache_bitlen = cache_bitlen - 32
 		end
 	end
 
-	local function Flush(fullFlush)
+	-- Write the entire string into the writer.
+	-- @param str The string being written
+	-- @return nil
+	local function WriteString(str)
+		for _ = 1, cache_bitlen, 8 do
+			buffer_size = buffer_size + 1
+			buffer[buffer_size] = string_char(cache % 256)
+			cache = (cache-cache%256)/256
+		end
+		cache_bitlen = 0
+		buffer_size = buffer_size + 1
+		buffer[buffer_size] = str
+	end
+
+	-- Flush current stuffs in the writer and return it.
+	-- This operation will free most of the memory.
+	-- @param full_flush If true, also flush "cache" into the output,
+	-- with last byte padded with some bits if cache_bitlen is
+	-- not a multiple of 8.
+	-- @return All stuffs in the writer, excluding bits in "cache"
+	-- variable, as a string.
+	-- @return The number of bits stored in the writer.
+	local function FlushWriter(full_flush)
 		local ret
-		if fullFlush then
-			local paddingBit = (8-cacheBitRemaining%8)%8
-			if cacheBitRemaining > 0 then
-				for _=1, cacheBitRemaining, 8 do
-					bufferSize = bufferSize + 1
-					buffer[bufferSize] = string_char(cache % 256)
+		if full_flush then
+			-- Full flush, also output cache.
+			-- Need to pad some bits if cache_bitlen is not multiple of 8.
+			local padding_bitlen = (8-cache_bitlen%8)%8
+			if cache_bitlen > 0 then
+				for _ = 1, cache_bitlen, 8 do
+					buffer_size = buffer_size + 1
+					buffer[buffer_size] = string_char(cache % 256)
 					cache = (cache-cache%256)/256
 				end
 				cache = 0
-				cacheBitRemaining = 0
+				cache_bitlen = 0
 			end
 			ret = table_concat(buffer)
 			buffer = {ret}
-			bufferSize = 1
-			return ret, ret:len()*8-paddingBit
+			buffer_size = 1
+			return ret, ret:len()*8-padding_bitlen
 		else
+			-- Not full flush
+			-- This operation is mainly used to free memory,
+			-- not for return value.
 			ret = table_concat(buffer)
 			buffer = {ret}
-			bufferSize = 1
-			return ret, ret:len()*8+cacheBitRemaining
+			buffer_size = 1
+			return ret, ret:len()*8+cache_bitlen
 		end
 	end
 
-	local function WriteString(str)
-		assert(cacheBitRemaining%8==0)
-		for _=1, cacheBitRemaining, 8 do
-			bufferSize = bufferSize + 1
-			buffer[bufferSize] = string_char(cache % 256)
-			cache = (cache-cache%256)/256
-		end
-		cacheBitRemaining = 0
-		bufferSize = bufferSize + 1
-		buffer[bufferSize] = str
-	end
-
-	return WriteBits, Flush, WriteString
+	return WriteBits, WriteString, FlushWriter
 end
 
---- Push an element into a max heap
--- Assume element is a table and we compare it using its first value table[1]
-local function MinHeapPush(heap, e, heapSize)
-	heapSize = heapSize + 1
-	heap[heapSize] = e
+-- Push an element into a max heap
+-- @param heap A max heap whose max element is at index 1.
+-- @param e The element to be pushed. Assume element "e" is a table
+--  and comparison is done via its first entry e[1]
+-- @param heap_size current number of elements in the heap.
+--  NOTE: There may be some garbage stored in
+--  heap[heap_size+1], heap[heap_size+2], etc..
+-- @return nil
+local function MinHeapPush(heap, e, heap_size)
+	heap_size = heap_size + 1
+	heap[heap_size] = e
 	local value = e[1]
-	local pos = heapSize
-	local parentPos = (pos-pos%2)/2
+	local pos = heap_size
+	local parent_pos = (pos-pos%2)/2
 
-	while (parentPos >= 1 and heap[parentPos][1] > value) do
-		local t = heap[parentPos]
-		heap[parentPos] = e
+	while (parent_pos >= 1 and heap[parent_pos][1] > value) do
+		local t = heap[parent_pos]
+		heap[parent_pos] = e
 		heap[pos] = t
-		pos = parentPos
-		parentPos = (parentPos-parentPos%2)/2
+		pos = parent_pos
+		parent_pos = (parent_pos-parent_pos%2)/2
 	end
 end
 
---- Pop an element from a max heap
--- Assume element is a table and we compare it using its first value table[1]
--- Note: This function does not change table size
-local function MinHeapPop(heap, heapSize)
+-- Pop an element from a max heap
+-- @param heap A max heap whose max element is at index 1.
+-- @param heap_size current number of elements in the heap.
+-- @return the poped element
+-- Note: This function does not change table size of "heap" to save CPU time.
+local function MinHeapPop(heap, heap_size)
 	local top = heap[1]
-	local e = heap[heapSize]
+	local e = heap[heap_size]
 	local value = e[1]
 	heap[1] = e
-	heap[heapSize] = top
-	heapSize = heapSize - 1
+	heap[heap_size] = top
+	heap_size = heap_size - 1
 
 	local pos = 1
-	local leftChildPos = pos*2
-	local rightChildPos = leftChildPos + 1
+	local left_child_pos = pos * 2
+	local right_child_pos = left_child_pos + 1
 
-	while (leftChildPos <= heapSize) do
-		local leftChild = heap[leftChildPos]
-		if (rightChildPos <= heapSize and heap[rightChildPos][1] < leftChild[1]) then
-			local rightChild = heap[rightChildPos]
-			if rightChild[1] < value then
-				heap[rightChildPos] = e
-				heap[pos] = rightChild
-				pos = rightChildPos
-				leftChildPos = pos*2
-				rightChildPos = leftChildPos + 1
+	while (left_child_pos <= heap_size) do
+		local left_child = heap[left_child_pos]
+		if (right_child_pos <= heap_size
+			and heap[right_child_pos][1] < left_child[1]) then
+			local right_child = heap[right_child_pos]
+			if right_child[1] < value then
+				heap[right_child_pos] = e
+				heap[pos] = right_child
+				pos = right_child_pos
+				left_child_pos = pos * 2
+				right_child_pos = left_child_pos + 1
 			else
 				break
 			end
 		else
-			if leftChild[1] < value then
-				heap[leftChildPos] = e
-				heap[pos] = leftChild
-				pos = leftChildPos
-				leftChildPos = pos*2
-				rightChildPos = leftChildPos + 1
+			if left_child[1] < value then
+				heap[left_child_pos] = e
+				heap[pos] = left_child
+				pos = left_child_pos
+				left_child_pos = pos * 2
+				right_child_pos = left_child_pos + 1
 			else
 				break
 			end
@@ -456,48 +514,79 @@ local function MinHeapPop(heap, heapSize)
 	return top
 end
 
-local function GetHuffmanCodeFromBitLength(bitLengthCount, symbolBitLength, maxSymbol, maxBitLength)
-	local code = 0
-	local nextCode = {}
-	local symbolCode = {}
-	for bitLength = 1, maxBitLength do
-		code = (code+(bitLengthCount[bitLength-1] or 0))*2
-		nextCode[bitLength] = code
+-- Deflate defines a special huffman tree, which is unique once the bit length
+-- of huffman code of all symbols are known.
+-- @param bitlen_count Number of symbols with a specific bitlen
+-- @param symbol_bitlen The bit length of a symbol
+-- @param max_symbol The max symbol among all symbols,
+--		which is (number of symbols - 1)
+-- @param max_bitlen The max huffman bit length among all symbols.
+-- @return The huffman code of all symbols.
+local function GetHuffmanCodeFromBitlen(bitlen_count, symbol_bitlen
+		, max_symbol, max_bitlen)
+	local huffman_code = 0
+	local next_code = {}
+	local symbol_huffman_code = {}
+	for bitlen = 1, max_bitlen do
+		huffman_code = (huffman_code+(bitlen_count[bitlen-1] or 0))*2
+		next_code[bitlen] = huffman_code
 	end
-	for symbol = 0, maxSymbol do
-		local len = symbolBitLength[symbol]
-		if len then
-			code = nextCode[len]
-			nextCode[len] = code + 1
+	for symbol = 0, max_symbol do
+		local bitlen = symbol_bitlen[symbol]
+		if bitlen then
+			huffman_code = next_code[bitlen]
+			next_code[bitlen] = huffman_code + 1
 
-			-- Reverse the bits of "code"
-			local res = 0
-			for _=1, len do
-				res = res - res%2 + (((res%2==1) or (code % 2) == 1) and 1 or 0) -- res | (code%2)
-				code = (code-code%2)/2
-				res = res*2
+			-- Reverse the bits of huffman code,
+			-- because most signifant bits of huffman code
+			-- is stored first into the compressed data.
+			-- @see RFC1951 Page5 Section 3.1.1
+			if bitlen <= 9 then -- Have cached reverse for small bitlen.
+				symbol_huffman_code[symbol] = 
+					_reverse_bits_tbl[bitlen][huffman_code]
+			else
+				local reverse = 0
+				for _ = 1, bitlen do
+					reverse = reverse - reverse%2 
+						+ (((reverse%2==1) 
+							or (huffman_code % 2) == 1) and 1 or 0)
+					huffman_code = (huffman_code-huffman_code%2)/2
+					reverse = reverse*2
+				end
+				symbol_huffman_code[symbol] = (reverse-reverse%2)/2
 			end
-			symbolCode[symbol] = (res-res%2)/2 -- Bit reverse of the variable "code"
 		end
 	end
-	return symbolCode
+	return symbol_huffman_code
 end
 
+-- A helper function to sort heap elements
+-- a[1], b[1] is the huffman frequency
+-- a[2], b[2] is the symbol value.
 local function SortByFirstThenSecond(a, b)
 	return a[1] < b[1] or
 		(a[1] == b[1] and a[2] < b[2])
-	 -- This is important so our result is stable regardless of interpreter implementation.
 end
 
---@treturn {table, table} symbol length table and symbol code table
-local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol)
-	local heapSize
-	local maxNonZeroLenSym = -1
+-- Calculate the huffman bit length and huffman code.
+-- @param symbol_count: A table whose table key is the symbol, and table value
+--		is the symbol frenquency (nil means 0 frequency).
+-- @param max_bitlen: See description of return value.
+-- @param max_symbol: The maximum symbol
+-- @return a table whose key is the symbol, and the value is the huffman bit
+--		bit length. We guarantee that all bit length <= max_bitlen.
+--		For 0<=symbol<=max_symbol, table value could be nil if the frequency
+--		of the symbol is 0 or nil.
+-- @return a table whose key is the symbol, and the value is the huffman code.
+-- @return a number indicating the maximum symbol whose bitlen is not 0.
+local function GetHuffmanBitlenAndCode(symbol_count, max_bitlen, max_symbol)
+	local heap_size
+	local max_non_zero_bitlen_symbol = -1
 	local leafs = {}
 	local heap = {}
-	local symbolBitLength = {}
-	local symbolCode = {}
-	local bitLengthCount = {}
+	local symbol_bitlen = {}
+	local symbol_code = {}
+	local bitlen_count = {}
 
 	--[[
 		tree[1]: weight, temporarily used as parent and bitLengths
@@ -505,164 +594,199 @@ local function GetHuffmanBitLengthAndCode(symCount, maxBitLength, maxSymbol)
 		tree[3]: left child
 		tree[4]: right child
 	--]]
-	local uniqueSymbols = 0
-	for symbol, count in pairs(symCount) do
-		uniqueSymbols = uniqueSymbols + 1
-		leafs[uniqueSymbols] = {count, symbol}
+	local number_unique_symbols = 0
+	for symbol, count in pairs(symbol_count) do
+		number_unique_symbols = number_unique_symbols + 1
+		leafs[number_unique_symbols] = {count, symbol}
 	end
 
-	if (uniqueSymbols == 0) then
+	if (number_unique_symbols == 0) then
+		-- no code.
 		return {}, {}, -1
-	elseif (uniqueSymbols == 1) then -- Special case
-		local sym = leafs[1][2]
-		symbolBitLength[sym] = 1
-		symbolCode[sym] = 0
-		return symbolBitLength, symbolCode, sym
+	elseif (number_unique_symbols == 1) then
+		-- Only one code. In this case, its huffman code
+		-- needs to be assigned as 0, and bit length is 1.
+		-- This is the only case that the return result
+		-- represents an imcomplete huffman tree.
+		local symbol = leafs[1][2]
+		symbol_bitlen[symbol] = 1
+		symbol_code[symbol] = 0
+		return symbol_bitlen, symbol_code, symbol
 	else
 		table_sort(leafs, SortByFirstThenSecond)
-		heapSize = uniqueSymbols
-		for i=1, heapSize do
+		heap_size = number_unique_symbols
+		for i = 1, heap_size do
 			heap[i] = leafs[i]
 		end
 
-		while (heapSize > 1) do
-			local leftChild = MinHeapPop(heap, heapSize) -- Note: pop does not change table size
-			heapSize = heapSize - 1
-			local rightChild = MinHeapPop(heap, heapSize)
-			heapSize = heapSize - 1
-			local newNode = {leftChild[1]+rightChild[1], -1, leftChild, rightChild}
-			MinHeapPush(heap, newNode, heapSize)
-			heapSize = heapSize + 1
+		while (heap_size > 1) do
+			-- Note: pop does not change table size of heap
+			local leftChild = MinHeapPop(heap, heap_size) 
+			heap_size = heap_size - 1
+			local rightChild = MinHeapPop(heap, heap_size)
+			heap_size = heap_size - 1
+			local newNode =
+				{leftChild[1]+rightChild[1], -1, leftChild, rightChild}
+			MinHeapPush(heap, newNode, heap_size)
+			heap_size = heap_size + 1
 		end
 
-		local overflow = 0 -- Number of leafs whose bit length is greater than 15.
-		-- Deflate does not allow any bit length greater than 15.
+		-- Number of leafs whose bit length is greater than max_len.
+		local number_bitlen_overflow = 0
 
 		-- Calculate bit length of all nodes
 		local fifo = {heap[1], 0, 0, 0} -- preallocate some spaces.
-		local fifoSize = 1
+		local fifo_size = 1
 		local index = 1
 		heap[1][1] = 0
-		while (index <= fifoSize) do -- Breath first search
+		while (index <= fifo_size) do -- Breath first search
 			local e = fifo[index]
-			local bitLength = e[1]
-			local sym = e[2]
-			local leftChild = e[3]
-			local rightChild = e[4]
-			if leftChild then
-				fifoSize = fifoSize + 1
-				fifo[fifoSize] = leftChild
-				leftChild[1] = bitLength + 1
+			local bitlen = e[1]
+			local symbol = e[2]
+			local left_child = e[3]
+			local right_child = e[4]
+			if left_child then
+				fifo_size = fifo_size + 1
+				fifo[fifo_size] = left_child
+				left_child[1] = bitlen + 1
 			end
-			if rightChild then
-				fifoSize = fifoSize + 1
-				fifo[fifoSize] = rightChild
-				rightChild[1] = bitLength + 1
+			if right_child then
+				fifo_size = fifo_size + 1
+				fifo[fifo_size] = right_child
+				right_child[1] = bitlen + 1
 			end
 			index = index + 1
 
-			if (bitLength > maxBitLength) then
-				overflow = overflow + 1
-				bitLength = maxBitLength
+			if (bitlen > max_bitlen) then
+				number_bitlen_overflow = number_bitlen_overflow + 1
+				bitlen = max_bitlen
 			end
-			if sym >= 0 then
-				symbolBitLength[sym] = bitLength
-				maxNonZeroLenSym = (sym > maxNonZeroLenSym) and sym or maxNonZeroLenSym
-				bitLengthCount[bitLength] = (bitLengthCount[bitLength] or 0) + 1
+			if symbol >= 0 then
+				symbol_bitlen[symbol] = bitlen
+				max_non_zero_bitlen_symbol =
+					(symbol > max_non_zero_bitlen_symbol)
+					and symbol or max_non_zero_bitlen_symbol
+				bitlen_count[bitlen] = (bitlen_count[bitlen] or 0) + 1
 			end
 		end
 
-		-- Resolve overflow (Huffman tree with any nodes bit length greater than 15)
-		-- See ZLib/trees.c:gen_bitlen(s, desc)
-		if (overflow > 0) then
-			-- Update bitLengthCount
+		-- Resolve bit length overflow
+		-- @see ZLib/trees.c:gen_bitlen(s, desc), for reference
+		if (number_bitlen_overflow > 0) then
 			repeat
-				local bitLength = maxBitLength - 1
-				while ((bitLengthCount[bitLength] or 0) == 0) do
-					bitLength = bitLength - 1
+				local bitlen = max_bitlen - 1
+				while ((bitlen_count[bitlen] or 0) == 0) do
+					bitlen = bitlen - 1
 				end
-				bitLengthCount[bitLength] = bitLengthCount[bitLength] - 1 -- move one leaf down the tree
+				-- move one leaf down the tree
+				bitlen_count[bitlen] = bitlen_count[bitlen] - 1
 				-- move one overflow item as its brother
-				bitLengthCount[bitLength+1] = (bitLengthCount[bitLength+1] or 0) + 2
-				bitLengthCount[maxBitLength] = bitLengthCount[maxBitLength] - 1
-				overflow = overflow - 2
-			until (overflow <= 0)
+				bitlen_count[bitlen+1] = (bitlen_count[bitlen+1] or 0) + 2
+				bitlen_count[max_bitlen] = bitlen_count[max_bitlen] - 1
+				number_bitlen_overflow = number_bitlen_overflow - 2
+			until (number_bitlen_overflow <= 0)
 
-			-- Update symbolBitLength
 			index = 1
-			for bitLength = maxBitLength, 1, -1 do
-				local n = bitLengthCount[bitLength] or 0
+			for bitlen = max_bitlen, 1, -1 do
+				local n = bitlen_count[bitlen] or 0
 				while (n > 0) do
-					local sym = leafs[index][2]
-					symbolBitLength[sym] = bitLength
-					maxNonZeroLenSym = (sym > maxNonZeroLenSym) and sym or maxNonZeroLenSym
+					local symbol = leafs[index][2]
+					symbol_bitlen[symbol] = bitlen
+					max_non_zero_bitlen_symbol = 
+						(symbol > max_non_zero_bitlen_symbol) 
+						and symbol or max_non_zero_bitlen_symbol
 					n = n - 1
 					index = index + 1
 				end
 			end
 		end
 
-		symbolCode = GetHuffmanCodeFromBitLength(bitLengthCount, symbolBitLength, maxSymbol, maxBitLength)
-		return symbolBitLength, symbolCode, maxNonZeroLenSym
+		symbol_code = GetHuffmanCodeFromBitlen(bitlen_count, symbol_bitlen,
+				max_symbol, max_bitlen)
+		return symbol_bitlen, symbol_code, max_non_zero_bitlen_symbol
 	end
 end
 
-local function RunLengthEncodeHuffmanLens(lcodeLens, maxNonZeroLenlCode, dcodeLens, maxNonZeroLendCode)
-	local rleCodesTblLen = 0
-	local rleCodes = {}
-	local rleCodesCount = {}
-	local rleExtraBitsTblLen = 0
-	local rleExtraBits = {}
+-- Calculate the first huffman header in the dynamic huffman block
+-- @see RFC1951 Page 12
+-- @param lcode_bitlen: The huffman bit length of literal/LZ77_length.
+-- @param max_non_zero_bitlen_lcode: The maximum literal/LZ77_length symbol
+--		whose huffman bit length is not zero.
+-- @param dcode_bitlen: The huffman bit length of LZ77 distance.
+-- @param max_non_zero_bitlen_dcode: The maximum LZ77 distance symbol
+--		whose huffman bit length is not zero.
+-- @return The run length encoded codes.
+-- @return The extra bits. One entry for each rle code that needs extra bits.
+--		(code == 16 or 17 or 18).
+-- @return The count of appearance of each rle codes.
+local function RunLengthEncodeHuffmanBitlen(
+		lcode_bitlen,
+		max_non_zero_bitlen_lcode,
+		dcode_bitlen,
+		max_non_zero_bitlen_dcode)
+	local rle_code_tblsize = 0
+	local rle_code = {}
+	local rle_code_count = {}
+	local rle_extra_bits_tblsize = 0
+	local rle_extra_bits = {}
 	local prev = nil
 	local count = 0
-	maxNonZeroLendCode = (maxNonZeroLendCode < 0) and 0 or maxNonZeroLendCode
-	local maxCode = maxNonZeroLenlCode+maxNonZeroLendCode+1
 
-	for code = 0, maxCode+1 do
-		local len = (code <= maxNonZeroLenlCode) and (lcodeLens[code] or 0) or
-			((code <= maxCode) and (dcodeLens[code-maxNonZeroLenlCode-1] or 0) or nil)
+	-- If there is no distance code, assume one distance code of bit length 0.
+	-- RFC1951: One distance code of zero bits means that
+	-- there are no distance codes used at all (the data is all literals).
+	max_non_zero_bitlen_dcode = (max_non_zero_bitlen_dcode < 0)
+			and 0 or max_non_zero_bitlen_dcode
+	local max_code = max_non_zero_bitlen_lcode+max_non_zero_bitlen_dcode+1
+
+	for code = 0, max_code+1 do
+		local len = (code <= max_non_zero_bitlen_lcode)
+			and (lcode_bitlen[code] or 0)
+			or ((code <= max_code)
+			and (dcode_bitlen[code-max_non_zero_bitlen_lcode-1] or 0) or nil)
 		if len == prev then
 			count = count + 1
 			if len ~= 0 and count == 6 then
-				rleCodesTblLen = rleCodesTblLen + 1
-				rleCodes[rleCodesTblLen] = 16
-				rleExtraBitsTblLen = rleExtraBitsTblLen + 1
-				rleExtraBits[rleExtraBitsTblLen] = 3
-				rleCodesCount[16] = (rleCodesCount[16] or 0) + 1
+				rle_code_tblsize = rle_code_tblsize + 1
+				rle_code[rle_code_tblsize] = 16
+				rle_extra_bits_tblsize = rle_extra_bits_tblsize + 1
+				rle_extra_bits[rle_extra_bits_tblsize] = 3
+				rle_code_count[16] = (rle_code_count[16] or 0) + 1
 				count = 0
 			elseif len == 0 and count == 138 then
-				rleCodesTblLen = rleCodesTblLen + 1
-				rleCodes[rleCodesTblLen] = 18
-				rleExtraBitsTblLen = rleExtraBitsTblLen + 1
-				rleExtraBits[rleExtraBitsTblLen] = 127
-				rleCodesCount[18] = (rleCodesCount[18] or 0) + 1
+				rle_code_tblsize = rle_code_tblsize + 1
+				rle_code[rle_code_tblsize] = 18
+				rle_extra_bits_tblsize = rle_extra_bits_tblsize + 1
+				rle_extra_bits[rle_extra_bits_tblsize] = 127
+				rle_code_count[18] = (rle_code_count[18] or 0) + 1
 				count = 0
 			end
 		else
 			if count == 1 then
-				rleCodesTblLen = rleCodesTblLen + 1
-				rleCodes[rleCodesTblLen] = prev
-				rleCodesCount[prev] = (rleCodesCount[prev] or 0) + 1
+				rle_code_tblsize = rle_code_tblsize + 1
+				rle_code[rle_code_tblsize] = prev
+				rle_code_count[prev] = (rle_code_count[prev] or 0) + 1
 			elseif count == 2 then
-				rleCodesTblLen = rleCodesTblLen + 1
-				rleCodes[rleCodesTblLen] = prev
-				rleCodesTblLen = rleCodesTblLen + 1
-				rleCodes[rleCodesTblLen] = prev
-				rleCodesCount[prev] = (rleCodesCount[prev] or 0) + 2
+				rle_code_tblsize = rle_code_tblsize + 1
+				rle_code[rle_code_tblsize] = prev
+				rle_code_tblsize = rle_code_tblsize + 1
+				rle_code[rle_code_tblsize] = prev
+				rle_code_count[prev] = (rle_code_count[prev] or 0) + 2
 			elseif count >= 3 then
-				rleCodesTblLen = rleCodesTblLen + 1
+				rle_code_tblsize = rle_code_tblsize + 1
 				local rleCode = (prev ~= 0) and 16 or (count <= 10 and 17 or 18)
-				rleCodes[rleCodesTblLen] = rleCode
-				rleCodesCount[rleCode] = (rleCodesCount[rleCode] or 0) + 1
-				rleExtraBitsTblLen = rleExtraBitsTblLen + 1
-				rleExtraBits[rleExtraBitsTblLen] = (count <= 10) and (count - 3) or (count - 11)
+				rle_code[rle_code_tblsize] = rleCode
+				rle_code_count[rleCode] = (rle_code_count[rleCode] or 0) + 1
+				rle_extra_bits_tblsize = rle_extra_bits_tblsize + 1
+				rle_extra_bits[rle_extra_bits_tblsize] =
+					(count <= 10) and (count - 3) or (count - 11)
 			end
 
 			prev = len
 			if len and len ~= 0 then
-				rleCodesTblLen = rleCodesTblLen + 1
-				rleCodes[rleCodesTblLen] = len
-				rleCodesCount[len] = (rleCodesCount[len] or 0) + 1
+				rle_code_tblsize = rle_code_tblsize + 1
+				rle_code[rle_code_tblsize] = len
+				rle_code_count[len] = (rle_code_count[len] or 0) + 1
 				count = 0
 			else
 				count = 1
@@ -670,108 +794,172 @@ local function RunLengthEncodeHuffmanLens(lcodeLens, maxNonZeroLenlCode, dcodeLe
 		end
 	end
 
-	return rleCodes, rleExtraBits, rleCodesTblLen, rleCodesCount
+	return rle_code, rle_extra_bits, rle_code_count
 end
 
+-- Load the string into a table, in order to speed up LZ77.
+-- Loop unrolled 16 times to speed this function up.
+-- @param str The string to be loaded.
+-- @param t The load destination
+-- @param start str[index] will be the first character to be loaded.
+-- @param end str[index] will be the last character to be loaded
+-- @param offset str[index] will be loaded into t[index+offset]
+-- @return t
 local function loadStrToTable(str, t, start, stop, offset)
-	local i=start-offset
-	while i <= stop - 15-offset do
-		t[i], t[i+1], t[i+2], t[i+3], t[i+4], t[i+5], t[i+6], t[i+7],
-			t[i+8], t[i+9], t[i+10], t[i+11], t[i+12], t[i+13], t[i+14], t[i+15] = string_byte(str, i+offset, i+15+offset)
+	local i = start - offset
+	while i <= stop - 15 - offset do
+		t[i], t[i+1], t[i+2], t[i+3], t[i+4], t[i+5], t[i+6], t[i+7], t[i+8],
+		t[i+9], t[i+10], t[i+11], t[i+12], t[i+13], t[i+14], t[i+15] = 
+			string_byte(str, i + offset, i + 15 + offset)
 		i = i + 16
 	end
-	while (i <= stop-offset) do
-		t[i] = string_byte(str, i+offset, i+offset)
+	while (i <= stop - offset) do
+		t[i] = string_byte(str, i + offset, i + offset)
 		i = i + 1
 	end
 	return t
 end
 
-local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockEnd, offset, dictionary)
+-- Do LZ77 process. This function uses the majority of the CPU time.
+-- @see zlib/deflate.c:deflate_fast(), zlib/deflate.c:deflate_slow()
+-- @see https://github.com/madler/zlib/blob/master/doc/algorithm.txt
+-- This function uses the algorithms used above. You should read the
+-- algorithm.txt above to understand what is the hash function and the
+-- lazy evaluation.
+--
+-- The special optimization used here is hash functions used here.
+-- The hash function is just the multiplication of the three consective
+-- characters. So if the hash matches, it guarantees 3 characters are matched.
+-- This optimization can be implemented because Lua table is a hash table.
+--
+-- @param level integer that describes compression level.
+-- @param string_table table that stores the value of string to be compressed.
+--			The index of this table starts from 1. 
+--			The caller needs to make sure all values needed by this function
+--			are loaded.
+--			Assume "str" is the origin input string into the compressor
+--			str[block_start]..str[block_end+3] needs to be loaded into
+--			string_table[block_start-offset]..string_table[block_end-offset]
+--			If dictionary is presented, the last 258 bytes of the dictionary
+--			needs to be loaded into sing_table[-257..0]
+--			(See more in the description of offset.)
+-- @param hash_tables. The table key is the hash value (0<=hash<=16777216=256^3)
+--			The table value is an array0 that stores the indexes of the
+--			input data string to be compressed, such that
+--			hash == str[index]*str[index+1]*str[index+2]
+--			Indexes are ordered in this array.
+-- @param block_start The indexes of the input data string to be compressed.
+--				that starts the LZ77 block.
+-- @param block_end The indexes of the input data string to be compressed.
+--				that stores the LZ77 block.
+-- @param offset str[index] is stored in string_table[index-offset],
+--			This offset is mainly an optimization to limit the index
+--			of string_table, so lua can access this table quicker.
+-- @param dictionary TODO
+-- @return literal/LZ77_length deflate codes.
+-- @return the extra bits of literal/LZ77_length deflate codes.
+-- @return the count of each literal/LZ77 deflate code.
+-- @return LZ77 distance deflate codes.
+-- @return the extra bits of LZ77 distance deflate codes.
+-- @return the count of each LZ77 distance deflate code.
+local function CompressBlockLZ77(level, string_table, hash_tables, block_start,
+		block_end, offset, dictionary)
 	if not level then
 		level = 5
 	end
 
 	local config = _compression_level_config[level]
-	local config_use_lazy, config_good_prev_length, config_max_lazy_match, config_nice_length
-		, config_max_hash_chain = config[1], config[2], config[3], config[4], config[5]
+	local config_use_lazy
+		, config_good_prev_length
+		, config_max_lazy_match
+		, config_nice_length
+		, config_max_hash_chain = 
+			config[1], config[2], config[3], config[4], config[5]
 
-	local config_max_insert_length = (not config_use_lazy) and config_max_lazy_match or 2147483646
-	local config_good_hash_chain = (config_max_hash_chain-config_max_hash_chain%4/4)
+	local config_max_insert_length = (not config_use_lazy)
+		and config_max_lazy_match or 2147483646
+	local config_good_hash_chain =
+		(config_max_hash_chain-config_max_hash_chain%4/4)
 
 	local hash
 
+	local dict_hash_tables
+	local dict_string_table
+	local dict_string_len = 0
 
-	local dictHashTables
-	local dictStrTable
-	local dictStrLen = 0
 	if dictionary then
-		dictHashTables = dictionary.hashTables
-		dictStrTable = dictionary.strTable
-		dictStrLen = dictionary.strLen
-		assert(blockStart == 1)
-		if blockEnd >= blockStart and dictStrLen >= 2 then
-			hash = dictStrTable[dictStrLen-1]*65536+dictStrTable[dictStrLen]*256+strTable[1]
-			local t = hashTables[hash] or {-1}
-			if #t == 1 then hashTables[hash] = t else t[#t+1] = -1 end
+		dict_hash_tables = dictionary.hashTables
+		dict_string_table = dictionary.strTable
+		dict_string_len = dictionary.strLen
+		assert(block_start == 1)
+		if block_end >= block_start and dict_string_len >= 2 then
+			hash = dict_string_table[dict_string_len-1]*65536
+				+ dict_string_table[dict_string_len]*256 + string_table[1]
+			local t = hash_tables[hash] or {-1}
+			if #t == 1 then hash_tables[hash] = t else t[#t+1] = -1 end
 		end
-		if blockEnd >= blockStart+1 and dictStrLen >= 1 then
-			hash = dictStrTable[dictStrLen]*65536+strTable[1]*256+strTable[2]
-			local t = hashTables[hash] or {0}
-			if #t == 1 then hashTables[hash] = t else t[#t+1] = 0 end
+		if block_end >= block_start+1 and dict_string_len >= 1 then
+			hash = dict_string_table[dict_string_len]*65536
+				+ string_table[1]*256 + string_table[2]
+			local t = hash_tables[hash] or {0}
+			if #t == 1 then hash_tables[hash] = t else t[#t+1] = 0 end
 		end
 	end
 
-	hash = (strTable[blockStart-offset] or 0)*256 + (strTable[blockStart+1-offset] or 0)
+	hash = (string_table[block_start-offset] or 0)*256
+		+ (string_table[block_start+1-offset] or 0)
 
-	-- Only hold max of 64KB string in the strTable at one time.
-	-- When we have read half of it, wipe the first 32KB bytes of the strTable and load the next 32KB.
-	-- Don't bother this if the input string is shorter than 64KB.
-	-- This is to set a cap on memory, so we don't run out of memory when the file is large.
-	local lCodes = {}
-	local lCodeTblSize = 0
-	local lCodesCount = {}
-	local dCodes = {}
-	local dCodeTblSize = 0
-	local dCodesCount = {}
+	local lcodes = {}
+	local lcode_tblsize = 0
+	local lcodes_count = {}
+	local dcodes = {}
+	local dcodes_tblsize = 0
+	local dcodes_count = {}
 
-	local lExtraBits = {}
-	local lExtraBitTblSize = 0
-	local dExtraBits = {}
-	local dExtraBitTblSize = 0
+	local lextra_bits = {}
+	local lextra_bits_tblsize = 0
+	local dextra_bits = {}
+	local dextra_bits_tblsize = 0
 
-	local matchAvailable = false
-	local prevLen
-	local prevDist
-	local curLen = 0
-	local curDist = 0
+	local match_available = false
+	local prev_len
+	local prev_dist
+	local cur_len = 0
+	local cur_dist = 0
 
-	local index = blockStart
-	local indexEnd = blockEnd + (config_use_lazy and 1 or 0)
-	while (index <= indexEnd) do
-		local strTableIndex = index - offset
-		prevLen = curLen
-		prevDist = curDist
-		curLen = 0
+	local index = block_start
+	local index_end = block_end + (config_use_lazy and 1 or 0)
 
-		hash = (hash*256+(strTable[strTableIndex+2] or 0))%16777216
+	-- the zlib source code writes separate code for lazy evaluation and
+	-- not lazy evaluation, which is easier to understand.
+	-- I put them together, so it is a bit harder to understand.
+	-- because I think this is easier for me to maintain it.
+	while (index <= index_end) do
+		local string_table_index = index - offset
+		prev_len = cur_len
+		prev_dist = cur_dist
+		cur_len = 0
 
-		local hashChain = hashTables[hash]
-		if not hashChain then
-			hashChain = {}
-			hashTables[hash] = hashChain
+		hash = (hash*256+(string_table[string_table_index+2] or 0))%16777216
+
+		local hash_chain = hash_tables[hash]
+		if not hash_chain then
+			hash_chain = {}
+			hash_tables[hash] = hash_chain
 		end
-		local chainSize = #hashChain
+		local chainSize = #hash_chain
 
-		if (index+2 <= blockEnd and (not config_use_lazy or prevLen < config_max_lazy_match)) then
+		if (index + 2 <= block_end
+			and (not config_use_lazy or prev_len < config_max_lazy_match)) then
 			local i = chainSize
-			local curChain = hashChain
-			if i == 0 and dictHashTables then
-				curChain = dictHashTables[hash]
+			local curChain = hash_chain
+			if i == 0 and dict_hash_tables then
+				curChain = dict_hash_tables[hash]
 				i = curChain and #curChain or 0
 			end
-			local depth = (config_use_lazy and prevLen >= config_good_prev_length) and
-				config_good_hash_chain or config_max_hash_chain
+			local depth =
+				(config_use_lazy and prev_len >= config_good_prev_length)
+				and config_good_hash_chain or config_max_hash_chain
 
 			while i >= 1 and depth > 0 do
 				local prev = curChain[i]
@@ -782,59 +970,59 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 				if prev < index then
 					local j = 3
 
-					if prev >= -257 then -- TODO: Check boundary
+					if prev >= -257 then
 						local prevStrTableIndex = prev-offset
-						while (j < 258 and index + j < blockEnd) do
-							if (strTable[prevStrTableIndex+j] == strTable[strTableIndex+j]) then
+						while (j < 258 and index + j < block_end) do
+							if (string_table[prevStrTableIndex+j] == string_table[string_table_index+j]) then
 								j = j + 1
 							else
 								break
 							end
 						end
 					else
-						local prevStrTableIndex = dictStrLen+prev
-						while (j < 258 and index + j < blockEnd) do
-							if (dictStrTable[prevStrTableIndex+j] == strTable[strTableIndex+j]) then
+						local prevStrTableIndex = dict_string_len+prev
+						while (j < 258 and index + j < block_end) do
+							if (dict_string_table[prevStrTableIndex+j] == string_table[string_table_index+j]) then
 								j = j + 1
 							else
 								break
 							end
 						end
 					end
-					if j > curLen then
-						curLen = j
-						curDist = index - prev
+					if j > cur_len then
+						cur_len = j
+						cur_dist = index - prev
 					end
-					if curLen >= config_nice_length then
+					if cur_len >= config_nice_length then
 						break
 					end
 				end
 
 				i = i - 1
 				depth = depth - 1
-				if i == 0 and prev > 0 and dictHashTables then
-					curChain = dictHashTables[hash]
+				if i == 0 and prev > 0 and dict_hash_tables then
+					curChain = dict_hash_tables[hash]
 					i = curChain and #curChain or 0
 				end
 			end
 		end
 
-		if index <= blockEnd then
-			hashChain[chainSize+1] = index
+		if index <= block_end then
+			hash_chain[chainSize+1] = index
 		end
 
 		if not config_use_lazy then
-			prevLen, prevDist = curLen, curDist
+			prev_len, prev_dist = cur_len, cur_dist
 		end
-		if ((not config_use_lazy or matchAvailable) and (prevLen > 3 or (prevLen == 3 and prevDist < 4096))
-		and curLen <= prevLen )then
-			local code = _length_to_deflate_code[prevLen]
-			local lenExtraBitsLength = _length_to_deflate_extra_bitlen[prevLen]
+		if ((not config_use_lazy or match_available) and (prev_len > 3 or (prev_len == 3 and prev_dist < 4096))
+		and cur_len <= prev_len )then
+			local code = _length_to_deflate_code[prev_len]
+			local lenExtraBitsLength = _length_to_deflate_extra_bitlen[prev_len]
 			local distCode, distExtraBitsLength, distExtraBits
-			if prevDist <= 256 then
-				distCode = _dist256_to_deflate_code[prevDist]
-				distExtraBits = _dist256_to_deflate_extra_bits[prevDist]
-				distExtraBitsLength =  _dist256_to_deflate_extra_bitlen[prevDist]
+			if prev_dist <= 256 then
+				distCode = _dist256_to_deflate_code[prev_dist]
+				distExtraBits = _dist256_to_deflate_extra_bits[prev_dist]
+				distExtraBitsLength =  _dist256_to_deflate_extra_bitlen[prev_dist]
 			else
 				distCode = 16
 				distExtraBitsLength = 7
@@ -842,11 +1030,11 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 				local b = 512
 
 				while true do
-					if prevDist <= a then
-						distExtraBits = (prevDist-(b/2)-1) % (b/4)
+					if prev_dist <= a then
+						distExtraBits = (prev_dist-(b/2)-1) % (b/4)
 						break
-					elseif prevDist <= b then
-						distExtraBits = (prevDist-(b/2)-1) % (b/4)
+					elseif prev_dist <= b then
+						distExtraBits = (prev_dist-(b/2)-1) % (b/4)
 						distCode = distCode + 1
 						break
 					else
@@ -857,64 +1045,64 @@ local function CompressBlockLZ77(level, strTable, hashTables, blockStart, blockE
 					end
 				end
 			end
-			lCodeTblSize = lCodeTblSize + 1
-			lCodes[lCodeTblSize] = code
-			lCodesCount[code] = (lCodesCount[code] or 0) + 1
+			lcode_tblsize = lcode_tblsize + 1
+			lcodes[lcode_tblsize] = code
+			lcodes_count[code] = (lcodes_count[code] or 0) + 1
 
-			dCodeTblSize = dCodeTblSize + 1
-			dCodes[dCodeTblSize] = distCode
-			dCodesCount[distCode] = (dCodesCount[distCode] or 0) + 1
+			dcodes_tblsize = dcodes_tblsize + 1
+			dcodes[dcodes_tblsize] = distCode
+			dcodes_count[distCode] = (dcodes_count[distCode] or 0) + 1
 
 			if lenExtraBitsLength > 0 then
-				local lenExtraBits = _length_to_deflate_extra_bits[prevLen]
-				lExtraBitTblSize = lExtraBitTblSize + 1
-				lExtraBits[lExtraBitTblSize] = lenExtraBits
+				local lenExtraBits = _length_to_deflate_extra_bits[prev_len]
+				lextra_bits_tblsize = lextra_bits_tblsize + 1
+				lextra_bits[lextra_bits_tblsize] = lenExtraBits
 			end
 			if distExtraBitsLength > 0 then
-				dExtraBitTblSize = dExtraBitTblSize + 1
-				dExtraBits[dExtraBitTblSize] = distExtraBits
+				dextra_bits_tblsize = dextra_bits_tblsize + 1
+				dextra_bits[dextra_bits_tblsize] = distExtraBits
 			end
 
-			for i=index+1, index+prevLen-(config_use_lazy and 2 or 1) do
-				hash = (hash*256+(strTable[i-offset+2] or 0))%16777216
-				if prevLen <= config_max_insert_length then
-					hashChain = hashTables[hash]
-					if not hashChain then
-						hashChain = {}
-						hashTables[hash] = hashChain
+			for i=index+1, index+prev_len-(config_use_lazy and 2 or 1) do
+				hash = (hash*256+(string_table[i-offset+2] or 0))%16777216
+				if prev_len <= config_max_insert_length then
+					hash_chain = hash_tables[hash]
+					if not hash_chain then
+						hash_chain = {}
+						hash_tables[hash] = hash_chain
 					end
-					hashChain[#hashChain+1] = i
+					hash_chain[#hash_chain+1] = i
 				end
 			end
-			index = index + prevLen - (config_use_lazy and 1 or 0)
-			matchAvailable = false
-		elseif (not config_use_lazy) or matchAvailable then
-			local code = strTable[config_use_lazy and (strTableIndex-1) or strTableIndex]
-			lCodeTblSize = lCodeTblSize + 1
-			lCodes[lCodeTblSize] = code
-			lCodesCount[code] = (lCodesCount[code] or 0) + 1
+			index = index + prev_len - (config_use_lazy and 1 or 0)
+			match_available = false
+		elseif (not config_use_lazy) or match_available then
+			local code = string_table[config_use_lazy and (string_table_index-1) or string_table_index]
+			lcode_tblsize = lcode_tblsize + 1
+			lcodes[lcode_tblsize] = code
+			lcodes_count[code] = (lcodes_count[code] or 0) + 1
 			index = index + 1
 		else
-			matchAvailable = true
+			match_available = true
 			index = index + 1
 		end
 	end
 
-	lCodeTblSize = lCodeTblSize + 1
-	lCodes[lCodeTblSize] = 256
-	lCodesCount[256] = (lCodesCount[256] or 0) + 1
+	lcode_tblsize = lcode_tblsize + 1
+	lcodes[lcode_tblsize] = 256
+	lcodes_count[256] = (lcodes_count[256] or 0) + 1
 
-	return lCodes, lExtraBits, lCodesCount, dCodes, dExtraBits, dCodesCount
+	return lcodes, lextra_bits, lcodes_count, dcodes, dextra_bits, dcodes_count
 end
 
 local function GetBlockDynamicHuffmanHeader(lCodesCount, dCodesCount)
-	local lCodeLens, lCodeCodes, maxNonZeroLenlCode = GetHuffmanBitLengthAndCode(lCodesCount, 15, 285)
-	local dCodeLens, dCodeCodes, maxNonZeroLendCode = GetHuffmanBitLengthAndCode(dCodesCount, 15, 29)
+	local lCodeLens, lCodeCodes, maxNonZeroLenlCode = GetHuffmanBitlenAndCode(lCodesCount, 15, 285)
+	local dCodeLens, dCodeCodes, maxNonZeroLendCode = GetHuffmanBitlenAndCode(dCodesCount, 15, 29)
 
-	local rleCodes, rleExtraBits, _, rleCodesCount =
-		RunLengthEncodeHuffmanLens(lCodeLens, maxNonZeroLenlCode, dCodeLens, maxNonZeroLendCode)
+	local rleCodes, rleExtraBits, rleCodesCount =
+		RunLengthEncodeHuffmanBitlen(lCodeLens, maxNonZeroLenlCode, dCodeLens, maxNonZeroLendCode)
 
-	local codeLensCodeLens, codeLensCodeCodes = GetHuffmanBitLengthAndCode(rleCodesCount, 7, 18)
+	local codeLensCodeLens, codeLensCodeCodes = GetHuffmanBitlenAndCode(rleCodesCount, 7, 18)
 
 	local HCLEN = 0
 	for i=1, 19 do
@@ -1243,7 +1431,7 @@ function LibDeflate:CompressDeflate(str, level, dictionary)
 	assert(type(str)=="string")
 	assert(type(level)=="nil" or (type(level)=="number" and level >= 1 and level <= 9))
 
-	local WriteBits, Flush, WriteString = CreateWriter()
+	local WriteBits, WriteString, Flush = CreateWriter()
 
 	Deflate(WriteBits, Flush, WriteString, str, level, dictionary)
 	local result, totalBitSize = Flush(true)
@@ -1254,7 +1442,7 @@ function LibDeflate:CompressZlib(str, level, dictionary)
 	assert(type(str)=="string")
 	assert(type(level)=="nil" or (type(level)=="number" and level >= 1 and level <= 9))
 
-	local WriteBits, Flush, WriteString = CreateWriter()
+	local WriteBits, WriteString, Flush = CreateWriter()
 
 	local CM = 8 -- Compression method
 	local CINFO = 7 --Window Size = 32K
@@ -1894,8 +2082,8 @@ do
 	status, _fix_block_dist_huffman_bitlen_count, _fix_block_dist_huffman_to_deflate_code = ConstructInflateHuffman(_fix_block_dist_huffman_bitlen, 32, 5)
 	assert(status == 0)
 
-	_fix_block_literal_huffman_code = GetHuffmanCodeFromBitLength(_fix_block_literal_huffman_bitlen_count, _fix_block_literal_huffman_bitlen, 287, 9)
-	_fix_block_dist_huffman_code = GetHuffmanCodeFromBitLength(_fix_block_dist_huffman_bitlen_count, _fix_block_dist_huffman_bitlen, 31, 5)
+	_fix_block_literal_huffman_code = GetHuffmanCodeFromBitlen(_fix_block_literal_huffman_bitlen_count, _fix_block_literal_huffman_bitlen, 287, 9)
+	_fix_block_dist_huffman_code = GetHuffmanCodeFromBitlen(_fix_block_dist_huffman_bitlen_count, _fix_block_dist_huffman_bitlen, 31, 5)
 end
 
 
