@@ -1427,8 +1427,7 @@ local function Deflate(WriteBits, WriteString, Flush, str, level, dictionary)
 			local dict_string_table = dictionary.string_table
 			local dict_strlen = dictionary.strlen
 			for i=0, (-dict_strlen+1)<-257 and -257 or (-dict_strlen+1), -1 do
-				local dictChar = dict_string_table[dict_strlen+i]
-				string_table[i] = dictChar
+				string_table[i] = dict_string_table[dict_strlen+i]
 			end
 		end
 		local lcodes, lextra_bits, lcodes_counts, dcodes, dextra_bits
@@ -1523,7 +1522,8 @@ end
 
 function LibDeflate:CompressDeflate(str, level, dictionary)
 	assert(type(str)=="string")
-	assert(type(level)=="nil" or (type(level)=="number" and level >= 1 and level <= 9))
+	assert(type(level)=="nil" or (type(level)=="number"
+		and level >= 1 and level <= 9))
 
 	local WriteBits, WriteString, Flush = CreateWriter()
 
@@ -1534,7 +1534,8 @@ end
 
 function LibDeflate:CompressZlib(str, level, dictionary)
 	assert(type(str)=="string")
-	assert(type(level)=="nil" or (type(level)=="number" and level >= 1 and level <= 9))
+	assert(type(level)=="nil" or (type(level)=="number"
+		and level >= 1 and level <= 9))
 
 	local WriteBits, WriteString, Flush = CreateWriter()
 
@@ -1547,7 +1548,8 @@ function LibDeflate:CompressZlib(str, level, dictionary)
 	local FLEVEL = 2 -- Default compression
 	local FLG = FLEVEL*64+FDIST*32
 	local FCHECK = (31-(CMF*256+FLG)%31)
-	-- The FCHECK value must be such that CMF and FLG, when viewed as a 16-bit unsigned integer stored
+	-- The FCHECK value must be such that CMF and FLG,
+	-- when viewed as a 16-bit unsigned integer stored
 	-- in MSB order (CMF*256 + FLG), is a multiple of 31.
 	FLG = FLG + FCHECK
 	assert((CMF*256+FLG)%31 == 0)
@@ -1740,9 +1742,18 @@ local function CreateReader(input_string)
 	return ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary
 end
 
+-- Get the stuffs needed to decode huffman codes
+-- @see puff.c:construct(...)
+-- @param huffman_bitlen The huffman bit length of the huffman codes.
+-- @param max_symbol The maximum symbol
+-- @param max_bitlen The min huffman bit length of all codes
+-- @return zero or positive for success, negative for failure.
+-- @return The count of each huffman bit length.
+-- @return A table to convert huffman codes to deflate codes.
+-- @return The minimum huffman bit length.
 local function GetHuffmanForDecode(huffman_bitlen, max_symbol, max_bitlen)
 	local huffman_bitlen_count = {}
-	local min_bitlen = 15
+	local min_bitlen = max_bitlen
 	for symbol = 0, max_symbol do
 		local bitlen = huffman_bitlen[symbol] or 0
 		min_bitlen = (bitlen > 0 and bitlen < min_bitlen)
@@ -1784,58 +1795,80 @@ local function GetHuffmanForDecode(huffman_bitlen, max_symbol, max_bitlen)
 	return left, huffman_bitlen_count, huffman_symbol, min_bitlen
 end
 
-local function DecodeUntilEndOfBlock(state, litHuffmanLen, litHuffmanSym, litMinLen
-	, distHuffmanLen, distHuffmanSym, distMinLen)
-	local buffer, bufferSize, ReadBits, Decode, ReaderBitsLeft, result =
-		state.buffer, state.bufferSize, state.ReadBits, state.Decode, state.ReaderBitsLeft, state.result
+-- Decode a fixed or dynamic huffman blocks, excluding last block identifier
+-- and block type identifer.
+-- @see puff.c:codes()
+-- @param state decompression state that will be modified by this function.
+--	Lots of stuffs in the state.
+-- @param ... Read the source code
+-- @return 0 if success, netative value otherwise.
+local function DecodeUntilEndOfBlock(state, lcodes_huffman_bitlen
+	, lcodes_huffman_symbol, lcodes_huffman_min_bitlen
+	, dcodes_huffman_bitlen, dcodes_huffman_symbol
+	, dcodes_huffman_min_bitlen)
+	local buffer, buffer_size, ReadBits, Decode, ReaderBitsLeft, result =
+		state.buffer, state.buffer_size, state.ReadBits, state.Decode
+		, state.ReaderBitsLeft, state.result
 	local dictionary = state.dictionary
-	local dictStrTable
-	local dictStrLen
+	local dict_string_table
+	local dict_strlen
 
-	local bufferEnd = 1
-	if dictionary and not buffer[0] then -- TODO: explain not buffer[0]
-		dictStrTable = dictionary.string_table
-		dictStrLen = dictionary.strlen
-		bufferEnd = -dictStrLen + 1
-		for i=0, (-dictStrLen+1)<-257 and -257 or (-dictStrLen+1), -1 do
-			local dictChar = _byte_to_char[dictStrTable[dictStrLen+i]]
-			buffer[i] = dictChar
+	local buffer_end = 1
+	if dictionary and not buffer[0] then
+		-- If there is a dictionary, copy the last 258 bytes into
+		-- the string_table to make the copy in the main loop quicker.
+		-- This is done only once per decompression.
+		dict_string_table = dictionary.string_table
+		dict_strlen = dictionary.strlen
+		buffer_end = -dict_strlen + 1
+		for i=0, (-dict_strlen+1)<-257 and -257 or (-dict_strlen+1), -1 do
+			buffer[i] = _byte_to_char[dict_string_table[dict_strlen+i]]
 		end
 	end
 
 	repeat
-		local symbol = Decode(litHuffmanLen, litHuffmanSym, litMinLen)
+		local symbol = Decode(lcodes_huffman_bitlen
+			, lcodes_huffman_symbol, lcodes_huffman_min_bitlen)
 		if symbol < 0 or symbol > 285 then
-			return -10 -- invalid literal/length or distance code in fixed or dynamic block
+		-- invalid literal/length or distance code in fixed or dynamic block
+			return -10
 		elseif symbol < 256 then -- Literal
-			bufferSize = bufferSize + 1
-			buffer[bufferSize] = _byte_to_char[symbol]
+			buffer_size = buffer_size + 1
+			buffer[buffer_size] = _byte_to_char[symbol]
 		elseif symbol > 256 then -- Length code
 			symbol = symbol - 256
 			local length = _literal_deflate_code_to_base_len[symbol]
-			length = (symbol >= 8) and (length + ReadBits(_literal_deflate_code_to_extra_bitlen[symbol])) or length
-			symbol = Decode(distHuffmanLen, distHuffmanSym, distMinLen)
+			length = (symbol >= 8)
+				 and (length 
+				 	+ ReadBits(_literal_deflate_code_to_extra_bitlen[symbol]))
+				 	or length
+			symbol = Decode(dcodes_huffman_bitlen, dcodes_huffman_symbol
+				, dcodes_huffman_min_bitlen)
 			if symbol < 0 or symbol > 29 then
-				return -10 -- invalid literal/length or distance code in fixed or dynamic block
+			-- invalid literal/length or distance code in fixed or dynamic block
+				return -10
 			end
 			local dist = _dist_deflate_code_to_base_dist[symbol]
-			dist = (dist > 4) and (dist + ReadBits(_dist_deflate_code_to_extra_bitlen[symbol])) or dist
+			dist = (dist > 4) and (dist
+				+ ReadBits(_dist_deflate_code_to_extra_bitlen[symbol])) or dist
 
-			local charBufferIndex = bufferSize-dist+1
-			if charBufferIndex < bufferEnd then
-				return -11 -- distance is too far back in fixed or dynamic block
+			local charBufferIndex = buffer_size-dist+1
+			if charBufferIndex < buffer_end then
+			-- distance is too far back in fixed or dynamic block
+				return -11
 			end
 			if charBufferIndex >= -257 then
 				for _=1, length do
-					bufferSize = bufferSize + 1
-					buffer[bufferSize] = buffer[charBufferIndex]
+					buffer_size = buffer_size + 1
+					buffer[buffer_size] = buffer[charBufferIndex]
 					charBufferIndex = charBufferIndex + 1
 				end
 			else
-				charBufferIndex = dictStrLen + charBufferIndex
+				charBufferIndex = dict_strlen + charBufferIndex
 				for _=1, length do
-					bufferSize = bufferSize + 1
-					buffer[bufferSize] = _byte_to_char[dictStrTable[charBufferIndex]]
+					buffer_size = buffer_size + 1
+					buffer[buffer_size] = 
+					_byte_to_char[dict_string_table[charBufferIndex]]
 					charBufferIndex = charBufferIndex + 1
 				end
 			end
@@ -1845,18 +1878,19 @@ local function DecodeUntilEndOfBlock(state, litHuffmanLen, litHuffmanSym, litMin
 			return 2 -- available inflate data did not terminate
 		end
 
-		if bufferSize >= 65536 then
+		if buffer_size >= 65536 then
 			result = result..table_concat(buffer, "", 1, 32768)
-			for i=32769, bufferSize do
+			for i=32769, buffer_size do
 				buffer[i-32768] = buffer[i]
 			end
-			bufferSize = bufferSize - 32768
-			buffer[bufferSize+1] = nil
-			-- NOTE: buffer[32769..end] and buffer[-257..0] are not cleared. This is why "bufferSize" variable is needed.
+			buffer_size = buffer_size - 32768
+			buffer[buffer_size+1] = nil
+			-- NOTE: buffer[32769..end] and buffer[-257..0] are not cleared. 
+			-- This is why "buffer_size" variable is needed.
 		end
 	until symbol == 256
 
-	state.bufferSize = bufferSize
+	state.buffer_size = buffer_size
 	state.result = result
 
 	return 0
@@ -1864,8 +1898,9 @@ end
 
 -- TODO: Actually test store block
 local function DecompressStoreBlock(state)
-	local buffer, bufferSize, ReadBits, ReadBytes, ReaderBitsLeft, SkipToByteBoundary, result =
-		state.buffer, state.bufferSize, state.ReadBits, state.ReadBytes, state.ReaderBitsLeft,
+	local buffer, buffer_size, ReadBits, ReadBytes, ReaderBitsLeft
+		, SkipToByteBoundary, result =
+		state.buffer, state.buffer_size, state.ReadBits, state.ReadBytes, state.ReaderBitsLeft,
 		state.SkipToByteBoundary, state.result
 
 	SkipToByteBoundary()
@@ -1886,20 +1921,20 @@ local function DecompressStoreBlock(state)
 	end
 
 	-- Note that ReadBytes will skip to the next byte boundary first.
-	bufferSize = ReadBytes(len, buffer, bufferSize)
-	if bufferSize < 0 then
+	buffer_size = ReadBytes(len, buffer, buffer_size)
+	if buffer_size < 0 then
 		return 2 -- available inflate data did not terminate
 	end
-	if bufferSize >= 65536 then
+	if buffer_size >= 65536 then
 		result = result..table_concat(buffer, "", 1, 32768)
-		for i=32769, bufferSize do
+		for i=32769, buffer_size do
 			buffer[i-32768] = buffer[i]
 		end
-		bufferSize = bufferSize - 32768
-		buffer[bufferSize+1] = nil
+		buffer_size = buffer_size - 32768
+		buffer[buffer_size+1] = nil
 	end
 	state.result = result
-	state.bufferSize = bufferSize
+	state.buffer_size = buffer_size
 	return 0
 end
 
@@ -2026,12 +2061,14 @@ local function Inflate(state)
 		end
 	end
 
-	state.result = state.result..table_concat(state.buffer, "", 1, state.bufferSize)
+	state.result = state.result..table_concat(state.buffer, ""
+		, 1, state.buffer_size)
 	return state.result
 end
 
 local function CreateInflateState(str, dictionary)
-	local ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary = CreateReader(str)
+	local ReadBits, ReadBytes, Decode, ReaderBitsLeft
+		, SkipToByteBoundary = CreateReader(str)
 	local state =
 	{
 		ReadBits = ReadBits,
@@ -2039,7 +2076,7 @@ local function CreateInflateState(str, dictionary)
 		Decode = Decode,
 		ReaderBitsLeft = ReaderBitsLeft,
 		SkipToByteBoundary = SkipToByteBoundary,
-		bufferSize = 0,
+		buffer_size = 0,
 		buffer = {},
 		result = "",
 		dictionary = dictionary,
@@ -2107,7 +2144,8 @@ function LibDeflate:DecompressZlib(str, dictionary)
 		return nil, 2 -- available inflate data did not terminate
 	end
 
-	local adler32_expected = adler_byte0*16777216+adler_byte1*65536+adler_byte2*256+adler_byte3
+	local adler32_expected = adler_byte0*16777216
+		+adler_byte1*65536+adler_byte2*256+adler_byte3
 	local adler32_actual = self:Adler32(result)
 	if adler32_expected ~= adler32_actual then
 		return nil, -15 -- TODO Adler32 checksum does not match
@@ -2122,14 +2160,30 @@ function LibDeflate:Decompress(str, dictionary)
 	return self:DecompressDeflate(str, dictionary)
 end
 
+--[[
+	Calculate the Adlder32 value of the string.
+	@see RFC1950 page 9 for reference code of Adler32
+	This function is loop unrolled by better performance.
+
+	Here is the minimum code:
+
+	local a = 1
+	local b = 0
+	for i=1, #str do
+		local s = string.byte(str, i, i)
+		a = (a+s)%65521
+		b = (b+a)%65521
+	end
+	return b*65536+a
+--]]
 function LibDeflate:Adler32(str)
 	assert(type(str) == "string")
-	local strLen = #str
+	local strlen = #str
 
 	local i = 1
 	local a = 1
 	local b = 0
-	while i <= strLen - 15 do
+	while i <= strlen - 15 do
 		local x1, x2, x3, x4, x5, x6, x7, x8,
 			x9, x10, x11, x12, x13, x14, x15, x16 = string_byte(str, i, i+15)
 		b = (b+16*a+16*x1+15*x2+14*x3+13*x4+12*x5+11*x6+10*x7+9*x8+8*x9
@@ -2137,7 +2191,7 @@ function LibDeflate:Adler32(str)
 		a = (a+x1+x2+x3+x4+x5+x6+x7+x8+x9+x10+x11+x12+x13+x14+x15+x16)%65521
 		i =  i + 16
 	end
-	while (i <= strLen) do
+	while (i <= strlen) do
 		local x = string_byte(str, i, i)
 		a = (a + x) % 65521
 		b = (b + a) % 65521
@@ -2156,7 +2210,7 @@ function LibDeflate:CreateDictionary(str)
 	dictionary.strlen = strlen
 	dictionary.hash_tables = {}
 	local string_table = dictionary.string_table
-	local hashTables = dictionary.hash_tables
+	local hash_tables = dictionary.hash_tables
 	string_table[1] = string_byte(str, 1, 1)
 	string_table[2] = string_byte(str, 2, 2)
 	if strlen >= 3 then
@@ -2169,28 +2223,28 @@ function LibDeflate:CreateDictionary(str)
 			string_table[i+4] = x3
 			string_table[i+5] = x4
 			hash = (hash*256+x1)%16777216
-			local t = hashTables[hash] or {i-strlen}
-			if #t == 1 then hashTables[hash] = t else t[#t+1] = i-strlen end
+			local t = hash_tables[hash] or {i-strlen}
+			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
 			i =  i + 1
 			hash = (hash*256+x2)%16777216
-			t = hashTables[hash] or {i-strlen}
-			if #t == 1 then hashTables[hash] = t else t[#t+1] = i-strlen end
+			t = hash_tables[hash] or {i-strlen}
+			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
 			i =  i + 1
 			hash = (hash*256+x3)%16777216
-			t = hashTables[hash] or {i-strlen}
-			if #t == 1 then hashTables[hash] = t else t[#t+1] = i-strlen end
+			t = hash_tables[hash] or {i-strlen}
+			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
 			i =  i + 1
 			hash = (hash*256+x4)%16777216
-			t = hashTables[hash] or {i-strlen}
-			if #t == 1 then hashTables[hash] = t else t[#t+1] = i-strlen end
+			t = hash_tables[hash] or {i-strlen}
+			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
 			i = i + 1
 		end
 		while i <= strlen - 2 do
 			local x = string_byte(str, i+2)
 			string_table[i+2] = x
 			hash = (hash*256+x)%16777216
-			local t = hashTables[hash] or {i-strlen}
-			if #t == 1 then hashTables[hash] = t else t[#t+1] = i-strlen end
+			local t = hash_tables[hash] or {i-strlen}
+			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
 			i = i + 1
 		end
 	end
@@ -2241,36 +2295,12 @@ end
 --------------------------------------------------------------------------------
 -- Prefix encoding algorithm
 -- implemented by Galmok of European Stormrage (Horde), galmok@gmail.com
--- From LibCompress <https://www.wowace.com/projects/libcompress>, which is licensed under GPLv2
+-- From LibCompress <https://www.wowace.com/projects/libcompress>,
+-- which is licensed under GPLv2
 -- The code has been modified by the author of LibDeflate.
 -----------------------------------------------------------------------
-
---[[
-	Howto: Encode and Decode:
-
-	3 functions are supplied, 2 of them are variants of the first.
-	They return a table with functions to encode and decode text.
-
-	table, msg = LibCompress:GetEncodeDecodeTable(reservedChars, escapeChars,  mapChars)
-
-		reservedChars: The characters in this string will not appear in the encoded data.
-		escapeChars: A string of characters used as escape-characters (don't supply more than needed). #escapeChars >= 1
-		mapChars: First characters in reservedChars maps to first characters in mapChars.  (#mapChars <= #reservedChars)
-
-	return value:
-		table
-			if nil then msg holds an error message, otherwise use like this:
-
-			encoded_message = table:Encode(message)
-			message = table:Decode(encoded_message)
-
-	GetAddonEncodeTable: Sets up encoding for the addon channel (\000 is encoded)
-	GetChatEncodeTable: Sets up encoding for the chat channel (many bytes encoded, see the function for details)
-
-	Except for the mapped characters, all encoding will be with 1 escape character followed by 1 suffix, i.e. 2 bytes.
---]]
--- to be able to match any requested byte value, the search string must be preprocessed
--- characters to escape with %:
+-- to be able to match any requested byte value, the search 
+-- string must be preprocessed characters to escape with %:
 -- ( ) . % + - * ? [ ] ^ $
 -- "illegal" byte values:
 -- 0 is replaces %z
@@ -2294,30 +2324,57 @@ local function escape_for_gsub(str)
 	return str:gsub("([%z%(%)%.%%%+%-%*%?%[%]%^%$])",  _gsub_escape_table)
 end
 
-function LibDeflate:GetEncodeDecodeTable(reservedChars, escapeChars, mapChars)
-	reservedChars = reservedChars or ""
-	escapeChars = escapeChars or ""
-	mapChars = mapChars or ""
+--[[
+Howto: Encode and Decode:
+
+3 functions are supplied, 2 of them are variants of the first.
+They return a table with functions to encode and decode text.
+
+table, msg = LibDeflate:GetEncodeDecodeTable(reserved_chars, escape_chars
+	, map_chars)
+
+	reserved_chars: The characters in this string will not appear 
+		in the encoded data.
+	escape_chars: A string of characters used as escape-characters 
+		(don't supply more than needed). #escape_chars >= 1
+	map_chars: First characters in reserved_chars maps to first 
+		characters in map_chars.  (#map_chars <= #reserved_chars)
+
+return value:
+	table
+		if nil then msg holds an error message, otherwise use like this:
+
+		encoded_message = table:Encode(message)
+		message = table:Decode(encoded_message)
+
+Except for the mapped characters, all encoding will be with 1 
+	escape character followed by 1 suffix, i.e. 2 bytes.
+--]]
+function LibDeflate:GetEncodeDecodeTable(reserved_chars, escape_chars
+	, map_chars)
+	reserved_chars = reserved_chars or ""
+	escape_chars = escape_chars or ""
+	map_chars = map_chars or ""
 	-- select a default escape character
-	if escapeChars == "" then
+	if escape_chars == "" then
 		return nil, "No escape characters supplied"
 	end
-	if #reservedChars < #mapChars then
+	if #reserved_chars < #map_chars then
 		return nil, "Number of reserved characters must be"
 			.." at least as many as the number of mapped chars"
 	end
-	if reservedChars == "" then
+	if reserved_chars == "" then
 		return nil, "No characters to encode"
 	end
 
-	local encodeBytes = reservedChars..escapeChars..mapChars
+	local encode_bytes = reserved_chars..escape_chars..map_chars
 	-- build list of bytes not available as a suffix to a prefix byte
 	local taken = {}
-	for i = 1, #encodeBytes do
-		local byte = string_byte(encodeBytes, i, i)
+	for i = 1, #encode_bytes do
+		local byte = string_byte(encode_bytes, i, i)
 		if taken[byte] then -- Modified by LibDeflate:
 			return nil, "There must be no duplicate characters in the"
-				.." concatenation of reservedChars, escapeChars and mapChars "
+				.." concatenation of reserved_chars, escape_chars and map_chars"
 		end
 		taken[byte] = true
 	end
@@ -2334,12 +2391,12 @@ function LibDeflate:GetEncodeDecodeTable(reservedChars, escapeChars, mapChars)
 	local encode_translate = {}
 
 	-- map single byte to single byte
-	if #mapChars > 0 then
+	if #map_chars > 0 then
 		local decode_search = {}
 		local decode_translate = {}
-		for i = 1, #mapChars do
-			local from = string_sub(reservedChars, i, i)
-			local to = string_sub(mapChars, i, i)
+		for i = 1, #map_chars do
+			local from = string_sub(reserved_chars, i, i)
+			local to = string_sub(map_chars, i, i)
 			encode_translate[from] = to
 			encode_search[#encode_search+1] = from
 			decode_translate[to] = from
@@ -2351,14 +2408,15 @@ function LibDeflate:GetEncodeDecodeTable(reservedChars, escapeChars, mapChars)
 	end
 
 	local escapeCharIndex = 1
-	local escapeChar = string_sub(escapeChars, escapeCharIndex, escapeCharIndex)
+	local escapeChar = string_sub(escape_chars
+		, escapeCharIndex, escapeCharIndex)
 	-- map single byte to double-byte
 	local r = 0 -- suffix char value to the escapeChar
 
 	local decode_search = {}
 	local decode_translate = {}
-	for i = 1, #encodeBytes do
-		local c = string_sub(encodeBytes, i, i)
+	for i = 1, #encode_bytes do
+		local c = string_sub(encode_bytes, i, i)
 		if not encode_translate[c] then
 			-- this loop will update escapeChar and r
 			while r >= 256 or taken[r] do
@@ -2372,11 +2430,13 @@ function LibDeflate:GetEncodeDecodeTable(reservedChars, escapeChars, mapChars)
 					end
 					decode_patterns[#decode_patterns+1] =
 						escape_for_gsub(escapeChar)
-						.."([".. escape_for_gsub(table_concat(decode_search)).."])"
+						.."(["
+						.. escape_for_gsub(table_concat(decode_search)).."])"
 					decode_repls[#decode_repls+1] = decode_translate
 
 					escapeCharIndex = escapeCharIndex + 1
-					escapeChar = string_sub(escapeChars, escapeCharIndex, escapeCharIndex)
+					escapeChar = string_sub(escape_chars, escapeCharIndex
+						, escapeCharIndex)
 					r = 0
 					decode_search = {}
 					decode_translate = {}
@@ -2390,7 +2450,7 @@ function LibDeflate:GetEncodeDecodeTable(reservedChars, escapeChars, mapChars)
 			decode_search[#decode_search+1] = char_r
 			r = r + 1
 		end
-		if i == #encodeBytes then
+		if i == #encode_bytes then
 			decode_patterns[#decode_patterns+1] =
 				escape_for_gsub(escapeChar).."(["
 				.. escape_for_gsub(table_concat(decode_search)).."])"
@@ -2398,26 +2458,27 @@ function LibDeflate:GetEncodeDecodeTable(reservedChars, escapeChars, mapChars)
 		end
 	end
 
-	local codecTable = {}
+	local codec_table = {}
 
-	local encode_pattern = "([".. escape_for_gsub(table_concat(encode_search)).."])"
+	local encode_pattern = "(["
+		.. escape_for_gsub(table_concat(encode_search)).."])"
 	local encode_repl = encode_translate
 
-	function codecTable:Encode(str)
+	function codec_table:Encode(str)
 		return string_gsub(str, encode_pattern, encode_repl)
 	end
 
 	local decode_tblsize = #decode_patterns
 
-	function codecTable:Decode(str)
+	function codec_table:Decode(str)
 		for i = 1, decode_tblsize do
 			str = string_gsub(str, decode_patterns[i], decode_repls[i])
 		end
 		return str
 	end
-	codecTable.__newindex = function() error("This table is read-only") end
+	codec_table.__newindex = function() error("This table is read-only") end
 
-	return codecTable
+	return codec_table
 end
 
 local _addon_channel_encode_table
@@ -2466,8 +2527,9 @@ local function GenerateWoWChatChannelEncodeTable()
 		r[#r+1] = _byte_to_char[i]
 	end
 
-	local reservedChars = "sS\000\010\013\124%"..table_concat(r)
-	return LibDeflate:GetEncodeDecodeTable(reservedChars, "\029\031", "\015\020")
+	local reserved_chars = "sS\000\010\013\124%"..table_concat(r)
+	return LibDeflate:GetEncodeDecodeTable(reserved_chars
+		, "\029\031", "\015\020")
 end
 
 local _chat_channel_encode_table
