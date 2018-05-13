@@ -1372,8 +1372,9 @@ TestDecompress = {}
 			HexToString("4 0 24 49 0"), nil) -- Invalid bit length repeat
 		CheckDecompressIncludingError(
 			HexToString("4 0 24 e9 ff ff"), nil) -- Invalid bit length repeat
+		-- Invalid code: missing end of block
 		CheckDecompressIncludingError(
-			HexToString("4 0 24 e9 ff 6d"), nil) -- Invalid code: missing end of block
+			HexToString("4 0 24 e9 ff 6d"), nil) 
 		-- Invalid literal/lengths set
 		CheckDecompressIncludingError(
 			HexToString("4 80 49 92 24 49 92 24 71 ff ff 93 11 0"), nil)

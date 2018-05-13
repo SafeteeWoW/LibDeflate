@@ -263,7 +263,7 @@ local _fix_block_dist_huffman_to_deflate_code
 -- in fixed deflate block.
 local _fix_block_dist_huffman_bitlen
 
--- The count of each bit length of the huffman code of 
+-- The count of each bit length of the huffman code of
 -- the distance deflate codes,
 -- in fixed deflate block.
 local _fix_block_dist_huffman_bitlen_count
@@ -287,7 +287,7 @@ for i = 1, 9 do
 		local value = j
 		for _ = 1, i do
 			-- The following line is equivalent to "res | (code %2)" in C.
-			reverse = reverse - reverse%2 
+			reverse = reverse - reverse%2
 				+ (((reverse%2==1) or (value % 2) == 1) and 1 or 0)
 			value = (value-value%2)/2
 			reverse = reverse * 2
@@ -543,13 +543,13 @@ local function GetHuffmanCodeFromBitlen(bitlen_counts, symbol_bitlens
 			-- is stored first into the compressed data.
 			-- @see RFC1951 Page5 Section 3.1.1
 			if bitlen <= 9 then -- Have cached reverse for small bitlen.
-				symbol_huffman_codes[symbol] = 
+				symbol_huffman_codes[symbol] =
 					_reverse_bits_tbl[bitlen][huffman_code]
 			else
 				local reverse = 0
 				for _ = 1, bitlen do
-					reverse = reverse - reverse%2 
-						+ (((reverse%2==1) 
+					reverse = reverse - reverse%2
+						+ (((reverse%2==1)
 							or (huffman_code % 2) == 1) and 1 or 0)
 					huffman_code = (huffman_code-huffman_code%2)/2
 					reverse = reverse*2
@@ -622,7 +622,7 @@ local function GetHuffmanBitlenAndCode(symbol_counts, max_bitlen, max_symbol)
 
 		while (heap_size > 1) do
 			-- Note: pop does not change table size of heap
-			local leftChild = MinHeapPop(heap, heap_size) 
+			local leftChild = MinHeapPop(heap, heap_size)
 			heap_size = heap_size - 1
 			local rightChild = MinHeapPop(heap, heap_size)
 			heap_size = heap_size - 1
@@ -693,8 +693,8 @@ local function GetHuffmanBitlenAndCode(symbol_counts, max_bitlen, max_symbol)
 				while (n > 0) do
 					local symbol = leafs[index][2]
 					symbol_bitlens[symbol] = bitlen
-					max_non_zero_bitlen_symbol = 
-						(symbol > max_non_zero_bitlen_symbol) 
+					max_non_zero_bitlen_symbol =
+						(symbol > max_non_zero_bitlen_symbol)
 						and symbol or max_non_zero_bitlen_symbol
 					n = n - 1
 					index = index + 1
@@ -810,7 +810,7 @@ local function LoadStringToTable(str, t, start, stop, offset)
 	local i = start - offset
 	while i <= stop - 15 - offset do
 		t[i], t[i+1], t[i+2], t[i+3], t[i+4], t[i+5], t[i+6], t[i+7], t[i+8],
-		t[i+9], t[i+10], t[i+11], t[i+12], t[i+13], t[i+14], t[i+15] = 
+		t[i+9], t[i+10], t[i+11], t[i+12], t[i+13], t[i+14], t[i+15] =
 			string_byte(str, i + offset, i + 15 + offset)
 		i = i + 16
 	end
@@ -835,7 +835,7 @@ end
 --
 -- @param level integer that describes compression level.
 -- @param string_table table that stores the value of string to be compressed.
---			The index of this table starts from 1. 
+--			The index of this table starts from 1.
 --			The caller needs to make sure all values needed by this function
 --			are loaded.
 --			Assume "str" is the origin input string into the compressor
@@ -874,7 +874,7 @@ local function GetBlockLZ77Result(level, string_table, hash_tables, block_start,
 		, config_good_prev_length
 		, config_max_lazy_match
 		, config_nice_length
-		, config_max_hash_chain = 
+		, config_max_hash_chain =
 			config[1], config[2], config[3], config[4], config[5]
 
 	local config_max_insert_length = (not config_use_lazy)
@@ -986,7 +986,7 @@ local function GetBlockLZ77Result(level, string_table, hash_tables, block_start,
 					if prev >= -257 then
 						local prev_table_index = prev-offset
 						while (j < 258 and index + j < block_end) do
-							if (string_table[prev_table_index+j] 
+							if (string_table[prev_table_index+j]
 								== string_table[string_table_index+j]) then
 								j = j + 1
 							else
@@ -996,7 +996,7 @@ local function GetBlockLZ77Result(level, string_table, hash_tables, block_start,
 					else
 						local prev_table_index = dict_string_len+prev
 						while (j < 258 and index + j < block_end) do
-							if (dict_string_table[prev_table_index+j] 
+							if (dict_string_table[prev_table_index+j]
 								== string_table[string_table_index+j]) then
 								j = j + 1
 							else
@@ -1025,11 +1025,11 @@ local function GetBlockLZ77Result(level, string_table, hash_tables, block_start,
 		if not config_use_lazy then
 			prev_len, prev_dist = cur_len, cur_dist
 		end
-		if ((not config_use_lazy or match_available) 
+		if ((not config_use_lazy or match_available)
 			and (prev_len > 3 or (prev_len == 3 and prev_dist < 4096))
 			and cur_len <= prev_len )then
 			local code = _length_to_deflate_code[prev_len]
-			local length_extra_bits_bitlen = 
+			local length_extra_bits_bitlen =
 				_length_to_deflate_extra_bitlen[prev_len]
 			local dist_code, dist_extra_bits_bitlen, dist_extra_bits
 			if prev_dist <= 256 then -- have cached code for small distance.
@@ -1091,7 +1091,7 @@ local function GetBlockLZ77Result(level, string_table, hash_tables, block_start,
 			index = index + prev_len - (config_use_lazy and 1 or 0)
 			match_available = false
 		elseif (not config_use_lazy) or match_available then
-			local code = string_table[config_use_lazy 
+			local code = string_table[config_use_lazy
 				and (string_table_index-1) or string_table_index]
 			lcode_tblsize = lcode_tblsize + 1
 			lcodes[lcode_tblsize] = code
@@ -1578,170 +1578,210 @@ function LibDeflate:Compress(str, level, dictionary)
 	return self:CompressDeflate(str, level, dictionary)
 end
 
-------------------------------------------------------------------------------
-------------------------------------------------------------------------------
-local function CreateReader(inputString)
-	local input = inputString
-	local inputLen = #inputString
-	local inputNextBytePos = 1
-	local cacheBitRemaining = 0
+--[[
+	Decompress code
+--]]
+
+--[[
+	Create a reader to easily reader stuffs as the unit of bits.
+	Return values:
+	1. ReadBits(bitlen)
+	2. ReadBytes(bytelen, buffer, buffer_size)
+	3. Decode(huffman_bitlen_count, huffman_symbol, min_bitlen)
+	4. ReaderBitsLeft()
+	5. SkipToByteBoundary()
+--]]
+local function CreateReader(input_string)
+	local input = input_string
+	local input_strlen = #input_string
+	local input_next_byte_pos = 1
+	local cache_bitlen = 0
 	local cache = 0
 
-	local function SkipToByteBoundary()
-		local skippedBits = cacheBitRemaining%8
-		local rShiftMask = _pow2[skippedBits]
-		cacheBitRemaining = cacheBitRemaining - skippedBits
-		cache = (cache - cache % rShiftMask) / rShiftMask
-	end
-
-	local function ReadBytes(length, buffer, bufferSize) -- Assume on the byte boundary
-		assert(cacheBitRemaining % 8 == 0)
-
-		local byteFromCache = (cacheBitRemaining/8 < length) and (cacheBitRemaining/8) or length
-		for _=1, byteFromCache do
-			local byte = cache % 256
-			bufferSize = bufferSize + 1
-			buffer[bufferSize] = string_char(byte)
-			cache = (cache - byte) / 256
-		end
-		cacheBitRemaining = cacheBitRemaining - byteFromCache*8
-		length = length - byteFromCache
-		if (inputLen - inputNextBytePos - length + 1) * 8 + cacheBitRemaining < 0 then
-			return -1 -- out of input
-		end
-		for i=inputNextBytePos, inputNextBytePos+length-1 do
-			bufferSize = bufferSize + 1
-			buffer[bufferSize] = string_sub(input, i, i)
-		end
-
-		inputNextBytePos = inputNextBytePos + length
-		return bufferSize
-	end
-
-	-- To improve speed, this function does not check if the input has been exhausted.
+	-- Read some bits.
+	-- To improve speed, this function does not
+	-- check if the input has been exhausted.
 	-- Use ReaderBitsLeft() < 0 to check it.
-	local function ReadBits(length)
-		local rShiftMask = _pow2[length]
+	-- @param bitlen the number of bits to read
+	-- @return the data is read.
+	local function ReadBits(bitlen)
+		local rshift_mask = _pow2[bitlen]
 		local code
-		if length <= cacheBitRemaining then
-			code = cache % rShiftMask
-			cache = (cache - code) / rShiftMask
-			cacheBitRemaining = cacheBitRemaining - length
+		if bitlen <= cache_bitlen then
+			code = cache % rshift_mask
+			cache = (cache - code) / rshift_mask
+			cache_bitlen = cache_bitlen - bitlen
 		else -- Whether input has been exhausted is not checked.
-			local lShiftMask = _pow2[cacheBitRemaining]
-			local byte1, byte2, byte3, byte4 = string_byte(input, inputNextBytePos, inputNextBytePos+3)
+			local lshift_mask = _pow2[cache_bitlen]
+			local byte1, byte2, byte3, byte4 = string_byte(input
+				, input_next_byte_pos, input_next_byte_pos+3)
 			-- This requires lua number to be at least double ()
-			cache = cache + ((byte1 or 0)+(byte2 or 0)*256+(byte3 or 0)*65536+(byte4 or 0)*16777216)*lShiftMask
-			inputNextBytePos = inputNextBytePos + 4
-			cacheBitRemaining = cacheBitRemaining + 32 - length
-			code = cache % rShiftMask
-			cache = (cache - code) / rShiftMask
+			cache = cache + ((byte1 or 0)+(byte2 or 0)*256
+				+ (byte3 or 0)*65536+(byte4 or 0)*16777216)*lshift_mask
+			input_next_byte_pos = input_next_byte_pos + 4
+			cache_bitlen = cache_bitlen + 32 - bitlen
+			code = cache % rshift_mask
+			cache = (cache - code) / rshift_mask
 		end
 		return code
 	end
 
-	-- To improve speed, this function does not check if the input has been exhausted.
+	-- Read some bytes from the reader.
+	-- Assume reader is on the byte boundary.
+	-- @param bytelen The number of bytes to be read.
+	-- @param buffer The byte read will be stored into this buffer.
+	-- @param buffer_size The buffer will be modified starting from 
+	--	buffer[buffer_size+1], ending at buffer[buffer_size+bytelen-1]
+	-- @return the new buffer_size
+	local function ReadBytes(bytelen, buffer, buffer_size) 
+		assert(cache_bitlen % 8 == 0)
+
+		local byte_from_cache = (cache_bitlen/8 < bytelen)
+			and (cache_bitlen/8) or bytelen
+		for _=1, byte_from_cache do
+			local byte = cache % 256
+			buffer_size = buffer_size + 1
+			buffer[buffer_size] = string_char(byte)
+			cache = (cache - byte) / 256
+		end
+		cache_bitlen = cache_bitlen - byte_from_cache*8
+		bytelen = bytelen - byte_from_cache
+		if (input_strlen - input_next_byte_pos - bytelen + 1) * 8
+			+ cache_bitlen < 0 then
+			return -1 -- out of input
+		end
+		for i=input_next_byte_pos, input_next_byte_pos+bytelen-1 do
+			buffer_size = buffer_size + 1
+			buffer[buffer_size] = string_sub(input, i, i)
+		end
+
+		input_next_byte_pos = input_next_byte_pos + bytelen
+		return buffer_size
+	end
+
+	-- Decode huffman code
+	-- To improve speed, this function does not check 
+	-- if the input has been exhausted.
 	-- Use ReaderBitsLeft() < 0 to check it.
-	local function Decode(huffmanLenCount, huffmanSymbol, minLen)
+	-- Credits for Mark Adler. This code is from puff:Decode()
+	-- @see puff:Decode(...)
+	-- @param huffman_bitlen_count
+	-- @param huffman_symbol
+	-- @param min_bitlen The minimum huffman bit length of all symbols
+	-- @return The decoded deflate code. 
+	--	Negative value is returned if decoding fails.
+	local function Decode(huffman_bitlen_count, huffman_symbol, min_bitlen)
 		local code = 0
 		local first = 0
 		local index = 0
 		local count
-		if minLen > 0 then
-			if cacheBitRemaining < 15 and input then
-				local lShiftMask = _pow2[cacheBitRemaining]
-				local byte1, byte2, byte3, byte4 = string_byte(input, inputNextBytePos, inputNextBytePos+3)
+		if min_bitlen > 0 then
+			if cache_bitlen < 15 and input then
+				local lshift_mask = _pow2[cache_bitlen]
+				local byte1, byte2, byte3, byte4 =
+					string_byte(input, input_next_byte_pos
+					, input_next_byte_pos+3)
 				-- This requires lua number to be at least double ()
-				cache = cache + ((byte1 or 0)+(byte2 or 0)*256+(byte3 or 0)*65536+(byte4 or 0)*16777216)*lShiftMask
-				inputNextBytePos = inputNextBytePos + 4
-				cacheBitRemaining = cacheBitRemaining + 32
+				cache = cache + ((byte1 or 0)+(byte2 or 0)*256
+					+(byte3 or 0)*65536+(byte4 or 0)*16777216)*lshift_mask
+				input_next_byte_pos = input_next_byte_pos + 4
+				cache_bitlen = cache_bitlen + 32
 			end
-			-- Whether input has been exhausted is not checked.
 
-			local rShiftMask = _pow2[minLen]
-			cacheBitRemaining = cacheBitRemaining - minLen
-			code = cache % rShiftMask
-			cache = (cache - code) / rShiftMask
+			local rshift_mask = _pow2[min_bitlen]
+			cache_bitlen = cache_bitlen - min_bitlen
+			code = cache % rshift_mask
+			cache = (cache - code) / rshift_mask
 			-- Reverse the bits
-			code = _reverse_bits_tbl[minLen][code]
+			code = _reverse_bits_tbl[min_bitlen][code]
 
-			count = huffmanLenCount[minLen]-- Number of codes of length len
+			count = huffman_bitlen_count[min_bitlen]
 			if code < count then
-				return huffmanSymbol[code]
+				return huffman_symbol[code]
 			end
 			index = count
-			first = count + count -- First code of length lenfirst = first + count
-			code = code + code
+			first = count * 2
+			code = code * 2
 		end
 
-		for len = minLen+1, 15 do
+		for bitlen = min_bitlen+1, 15 do
 			local bit
 			bit = cache % 2
 			cache = (cache - bit) / 2
-			cacheBitRemaining = cacheBitRemaining - 1
+			cache_bitlen = cache_bitlen - 1
 
-			code = (bit==1) and (code + 1 - code % 2) or code -- (code |= ReadBits(1)) Get next bit
-			count = huffmanLenCount[len] or 0
+			code = (bit==1) and (code + 1 - code % 2) or code
+			count = huffman_bitlen_count[bitlen] or 0
 			local diff = code - first
 			if diff < count then
-				return huffmanSymbol[index + diff]
+				return huffman_symbol[index + diff]
 			end
 			index = index + count
 			first = first + count
-			first = first + first
-			code = code + code
+			first = first * 2
+			code = code * 2
 		end
-		return -10 -- invalid literal/length or distance code in fixed or dynamic block (run out of code)
+		-- invalid literal/length or distance code
+		-- in fixed or dynamic block (run out of code)
+		return -10
 	end
 
 	local function ReaderBitsLeft()
-		return (inputLen - inputNextBytePos + 1) * 8 + cacheBitRemaining
+		return (input_strlen - input_next_byte_pos + 1) * 8 + cache_bitlen
+	end
+
+	local function SkipToByteBoundary()
+		local skipped_bitlen = cache_bitlen%8
+		local rshift_mask = _pow2[skipped_bitlen]
+		cache_bitlen = cache_bitlen - skipped_bitlen
+		cache = (cache - cache % rshift_mask) / rshift_mask
 	end
 
 	return ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary
 end
 
-local function ConstructInflateHuffman(huffmanLen, n, maxBitLength)
-	local huffmanLenCount = {}
-	local minLen = 15
-	for symbol = 0, n-1 do
-		local len = huffmanLen[symbol] or 0
-		minLen = (len > 0 and len < minLen) and len or minLen
-		huffmanLenCount[len] = (huffmanLenCount[len] or 0) + 1
+local function GetHuffmanForDecode(huffman_bitlen, max_symbol, max_bitlen)
+	local huffman_bitlen_count = {}
+	local min_bitlen = 15
+	for symbol = 0, max_symbol do
+		local bitlen = huffman_bitlen[symbol] or 0
+		min_bitlen = (bitlen > 0 and bitlen < min_bitlen)
+			and bitlen or min_bitlen
+		huffman_bitlen_count[bitlen] = (huffman_bitlen_count[bitlen] or 0) + 1
 	end
 
-	if huffmanLenCount[0] == n then -- No Codes
-		return 0, huffmanLenCount, {}, 0  -- Complete, but decode will fail
+	if huffman_bitlen_count[0] == max_symbol+1 then -- No Codes
+		return 0, huffman_bitlen_count, {}, 0 -- Complete, but decode will fail
 	end
 
 	local left = 1
-	for len = 1, maxBitLength do
+	for len = 1, max_bitlen do
 		left = left * 2
-		left = left - (huffmanLenCount[len] or 0)
+		left = left - (huffman_bitlen_count[len] or 0)
 		if left < 0 then
 			return left -- Over-subscribed, return negative
 		end
 	end
 
 	-- Generate offsets info symbol table for each length for sorting
-	local offs = {}
-	offs[1] = 0
-	for len = 1, maxBitLength-1 do
-		offs[len + 1] = offs[len] + (huffmanLenCount[len] or 0)
+	local offsets = {}
+	offsets[1] = 0
+	for len = 1, max_bitlen-1 do
+		offsets[len + 1] = offsets[len] + (huffman_bitlen_count[len] or 0)
 	end
 
-	local huffmanSymbol = {}
-	for symbol = 0, n-1 do
-		local len = huffmanLen[symbol] or 0
-		if len ~= 0 then
-			local offset = offs[len]
-			huffmanSymbol[offset] = symbol
-			offs[len] = offs[len] + 1
+	local huffman_symbol = {}
+	for symbol = 0, max_symbol do
+		local bitlen = huffman_bitlen[symbol] or 0
+		if bitlen ~= 0 then
+			local offset = offsets[bitlen]
+			huffman_symbol[offset] = symbol
+			offsets[bitlen] = offsets[bitlen] + 1
 		end
 	end
 
 	-- Return zero for complete set, positive for incomplete set.
-	return left, huffmanLenCount, huffmanSymbol, minLen
+	return left, huffman_bitlen_count, huffman_symbol, min_bitlen
 end
 
 local function DecodeUntilEndOfBlock(state, litHuffmanLen, litHuffmanSym, litMinLen
@@ -1883,7 +1923,8 @@ local function DecompressDynamicBlock(state)
 		lengthLengths[_header_code_order[index]] = ReadBits(3)
 	end
 
-	local err, lenLenHuffmanLenCount, lenLenHuffmanSym, lenLenMinLen = ConstructInflateHuffman(lengthLengths, 19, 7)
+	local err, lenLenHuffmanLenCount, lenLenHuffmanSym, lenLenMinLen = 
+		GetHuffmanForDecode(lengthLengths, 18, 7)
 	if err ~= 0 then -- Require complete code set here
 		return -4 -- dynamic block code description: code lengths codes incomplete
 	end
@@ -1943,15 +1984,18 @@ local function DecompressDynamicBlock(state)
 		return -9 -- dynamic block code description: missing end-of-block code
 	end
 
-	local litErr, litHuffmanLenCount, litHuffmanSym, litMinLen = ConstructInflateHuffman(litHuffmanLen, nLen, 15)
+	local litErr, litHuffmanLenCount, litHuffmanSym, litMinLen = 
+		GetHuffmanForDecode(litHuffmanLen, nLen-1, 15)
 	--dynamic block code description: invalid literal/length code lengths,Incomplete code ok only for single length 1 code
 	if (litErr ~=0 and (litErr < 0 or nLen ~= (litHuffmanLenCount[0] or 0)+(litHuffmanLenCount[1] or 0))) then
 		return -7
 	end
 
-	local distErr, distHuffmanLenCount, distHuffmanSym, distMinLen = ConstructInflateHuffman(distHuffmanLen, nDist, 15)
+	local distErr, distHuffmanLenCount, distHuffmanSym, distMinLen = 
+		GetHuffmanForDecode(distHuffmanLen, nDist-1, 15)
 	-- dynamic block code description: invalid distance code lengths, Incomplete code ok only for single length 1 code
-	if (distErr ~=0 and (distErr < 0 or nDist ~= (distHuffmanLenCount[0] or 0)+(distHuffmanLenCount[1] or 0))) then
+	if (distErr ~=0 and (distErr < 0 or nDist ~= (distHuffmanLenCount[0] or 0)
+		+ (distHuffmanLenCount[1] or 0))) then
 		return -8
 	end
 
@@ -2088,7 +2132,8 @@ function LibDeflate:Adler32(str)
 	while i <= strLen - 15 do
 		local x1, x2, x3, x4, x5, x6, x7, x8,
 			x9, x10, x11, x12, x13, x14, x15, x16 = string_byte(str, i, i+15)
-		b = (b+16*a+16*x1+15*x2+14*x3+13*x4+12*x5+11*x6+10*x7+9*x8+8*x9+7*x10+6*x11+5*x12+4*x13+3*x14+2*x15+x16)%65521
+		b = (b+16*a+16*x1+15*x2+14*x3+13*x4+12*x5+11*x6+10*x7+9*x8+8*x9
+			+7*x10+6*x11+5*x12+4*x13+3*x14+2*x15+x16)%65521
 		a = (a+x1+x2+x3+x4+x5+x6+x7+x8+x9+x10+x11+x12+x13+x14+x15+x16)%65521
 		i =  i + 16
 	end
@@ -2175,11 +2220,11 @@ do
 	local status
 	status, _fix_block_literal_huffman_bitlen_count
 		, _fix_block_literal_huffman_to_deflate_code =
-		ConstructInflateHuffman(_fix_block_literal_huffman_bitlen, 288, 9)
+		GetHuffmanForDecode(_fix_block_literal_huffman_bitlen, 287, 9)
 	assert(status == 0)
 	status, _fix_block_dist_huffman_bitlen_count,
 		_fix_block_dist_huffman_to_deflate_code =
-		ConstructInflateHuffman(_fix_block_dist_huffman_bitlen, 32, 5)
+		GetHuffmanForDecode(_fix_block_dist_huffman_bitlen, 31, 5)
 	assert(status == 0)
 
 	_fix_block_literal_huffman_code =
