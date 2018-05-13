@@ -110,7 +110,7 @@ int inf(FILE *source, FILE *dest, int isZlib, char* dictionary, int dictSize)
     ret = inflateInit2(&strm, isZlib?15:-15);
     if (ret != Z_OK)
         return ret;
-    if (dictionary)
+    if (dictionary && !isZlib)
         inflateSetDictionary(&strm, dictionary, dictSize);
 
     /* decompress until deflate stream ends or end of file */
@@ -124,26 +124,38 @@ int inf(FILE *source, FILE *dest, int isZlib, char* dictionary, int dictSize)
             break;
         strm.next_in = in;
 
+        int set_dictionary_zlib = 0;
         /* run inflate() on input until output buffer not full */
         do {
+            set_dictionary_zlib = 0 ;
             strm.avail_out = CHUNK;
             strm.next_out = out;
             ret = inflate(&strm, Z_NO_FLUSH);
             assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
             switch (ret) {
             case Z_NEED_DICT:
-                ret = Z_DATA_ERROR;     /* and fall through */
+                if (!dictionary)
+                    ret = Z_DATA_ERROR;     /* and fall through */
+                else {
+                    ret = inflateSetDictionary(&strm, dictionary, dictSize);
+                    if (ret == Z_OK) {
+                        set_dictionary_zlib = 1;
+                        break;
+                    } // LibDeflate: Bad problem practice
+                }
             case Z_DATA_ERROR:
             case Z_MEM_ERROR:
                 (void)inflateEnd(&strm);
                 return ret;
             }
-            have = CHUNK - strm.avail_out;
-            if (fwrite(out, 1, have, dest) != have || ferror(dest)) {
-                (void)inflateEnd(&strm);
-                return Z_ERRNO;
+            if (!set_dictionary_zlib) {
+                have = CHUNK - strm.avail_out;
+                if (fwrite(out, 1, have, dest) != have || ferror(dest)) {
+                    (void)inflateEnd(&strm);
+                    return Z_ERRNO;
+                }
             }
-        } while (strm.avail_out == 0);
+        } while (strm.avail_out == 0 || set_dictionary_zlib);
 
         /* done when inflate() says it's done */
     } while (ret != Z_STREAM_END);

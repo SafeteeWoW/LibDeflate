@@ -104,7 +104,7 @@
 	@field 5 max_chain:
 		Number. The maximum number of hash chains we look.
 --]]
-local _compression_level_config = {
+local _compression_level_configs = {
 	[1] = {false, nil, 4, 8, 4}, -- level 1, similar to zlib level 1
 	[2] = {false, nil, 5, 18, 8}, -- level 2, similar to zlib level 2
 	[3] = {false, nil, 6, 32, 32},	-- level 3, similar to zlib level 3
@@ -159,6 +159,7 @@ local string_gsub = string.gsub
 local string_sub = string.sub
 local table_concat = table.concat
 local table_sort = table.sort
+local tostring = tostring
 local type = type
 
 -- Converts i to 2^i, (0<=i<=31)
@@ -352,9 +353,83 @@ do
 	end
 end
 
+
+--- Calculate the Adlder32 value of the string.
+-- @param str the input string to calcuate its Adler32 checksum
+-- @return integer. The adler32 checksum.
+-- @see RFC1950 page 9 for reference code of Adler32
+-- This function is loop unrolled by better performance.
+--
+-- Here is the minimum code:
+--
+-- local a = 1
+-- local b = 0
+-- for i=1, #str do
+-- 		local s = string.byte(str, i, i)
+-- 		a = (a+s)%65521
+-- 		b = (b+a)%65521
+-- 		end
+-- return b*65536+a
+function LibDeflate:Adler32(str)
+	if type(str) ~= "string" then
+		error(("Usage: LibDeflate:Adler32(str):"
+			.." 'str' - string expected got '%s'."):format(type(str)), 2)
+	end
+	local strlen = #str
+
+	local i = 1
+	local a = 1
+	local b = 0
+	while i <= strlen - 15 do
+		local x1, x2, x3, x4, x5, x6, x7, x8,
+			x9, x10, x11, x12, x13, x14, x15, x16 = string_byte(str, i, i+15)
+		b = (b+16*a+16*x1+15*x2+14*x3+13*x4+12*x5+11*x6+10*x7+9*x8+8*x9
+			+7*x10+6*x11+5*x12+4*x13+3*x14+2*x15+x16)%65521
+		a = (a+x1+x2+x3+x4+x5+x6+x7+x8+x9+x10+x11+x12+x13+x14+x15+x16)%65521
+		i =  i + 16
+	end
+	while (i <= strlen) do
+		local x = string_byte(str, i, i)
+		a = (a + x) % 65521
+		b = (b + a) % 65521
+		i = i + 1
+	end
+	return b*65536+a
+end
+
 --- Create a preset dictionary
+-- **IMPORTANT**
+-- 0 < str:len() <= 32768
+--
+-- **IMPORTANT**
+-- You must call LibDeflate:VerifyDictionary(str, dictionary, adler32)
+-- after this function. Otherwise, the dictionary is not ready to use.
+--
+-- The example HOWTO create a dictionary.
+-- 1. You hardcode a constant string in your source code, which includes
+-- data that frequently appears in the beginning (First 32KB)
+-- of the compressed data.
+-- 2. You run LibDeflate:Adler32(str) to get the Adler32 value of str,
+-- 		only during the program development.
+-- 3. Then you HARDCODE the adler32 value in the source code as a constant.
+-- **IMPORTANT** DO NOT calculate this adler32 value at runtime for the
+--    	next step. DO hardcode the adler32 in the source code as a constant.
+-- 4. Each time your program starts, "dict = LibDeflate:CreateDictionary(str)"
+--		to create the dictionary.
+-- 5. Each time your program starts, then "LibDeflate:VerifyDictionary
+-- 		(str, dict, adler32)", where adler32 is the hardcoded constants
+-- 		which is not calcuated at runtime. Now "dict" is ready to use in
+-- 		compression and decompression. The purppose of VerifyDictionary() is
+-- 		to make sure you don't accidentally modify "str" during the program
+-- 		development.
+--
+-- For backward compatibilty, I suggest you DONT change your preset
+-- dictionary when update your program UNLESS YOU INTEND TO BREAK
+-- ALL COMMUNICATION BACKWARD COMPATIBILITY.
+--
 -- If you choose to use preset dictionary,
 -- COMPRESSION AND DECOMPRESSION MUST USE THE SAME DICTIONARY PRODUCED HERE.
+--
 -- This function should not be called repeatedly.
 -- Prefer to call this functionl only once.
 -- Dont store multiple copy of the dictionary, the memory usage of the
@@ -364,9 +439,7 @@ end
 -- 			You should put stuffs that frequently appears in the data to
 -- 			be compressed in the string and preferablely put more frequently
 -- 			appeared stuffed at the end of the string. Empty string is not
--- 			allowed. If the string is longer than 32768 bytes, string will
--- 			be truncated and only the last 32768 bytes will be used as the
--- 			input.
+-- 			allowed. String longer than 32768 bytes are not allowed.
 -- @return  The dictionary used for preset dictionary compression and
 -- 			decompression. Again, if you choose to use preset dictionary,
 -- 			compression and decompression must use the same dictionary.
@@ -378,10 +451,12 @@ function LibDeflate:CreateDictionary(str)
 	local strlen = #str
 	if strlen == 0 then
 		error(("Usage: LibDeflate:CreateDictionary(str):"
-			.." 'str' - Empty string is not allowede."), 2)
+			.." 'str' - Empty string is not allowed."), 2)
 	end
 	if strlen > 32768 then
-		str = str:sub(strlen-32767, strlen)
+		error(("Usage: LibDeflate:CreateDictionary(str):"
+			.." 'str' - string longer than 32768 bytes is not allowed."
+			 .."string length: %d"):format(strlen), 2)
 	end
 	local dictionary = {}
 	dictionary.string_table = {}
@@ -401,28 +476,33 @@ function LibDeflate:CreateDictionary(str)
 			string_table[i+4] = x3
 			string_table[i+5] = x4
 			hash = (hash*256+x1)%16777216
-			local t = hash_tables[hash] or {i-strlen}
-			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
-			i =  i + 1
+			local t = hash_tables[hash]
+			if not t then t = {}; hash_tables[hash] = t end
+			t[#t+1] = i-strlen
+			i = i + 1
 			hash = (hash*256+x2)%16777216
-			t = hash_tables[hash] or {i-strlen}
-			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
-			i =  i + 1
+			t = hash_tables[hash]
+			if not t then t = {}; hash_tables[hash] = t end
+			t[#t+1] = i-strlen
+			i = i + 1
 			hash = (hash*256+x3)%16777216
-			t = hash_tables[hash] or {i-strlen}
-			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
-			i =  i + 1
+			t = hash_tables[hash]
+			if not t then t = {}; hash_tables[hash] = t end
+			t[#t+1] = i-strlen
+			i = i + 1
 			hash = (hash*256+x4)%16777216
-			t = hash_tables[hash] or {i-strlen}
-			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
+			t = hash_tables[hash]
+			if not t then t = {}; hash_tables[hash] = t end
+			t[#t+1] = i-strlen
 			i = i + 1
 		end
 		while i <= strlen - 2 do
 			local x = string_byte(str, i+2)
 			string_table[i+2] = x
 			hash = (hash*256+x)%16777216
-			local t = hash_tables[hash] or {i-strlen}
-			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
+			local t = hash_tables[hash]
+			if not t then t = {}; hash_tables[hash] = t end
+			t[#t+1] = i-strlen
 			i = i + 1
 		end
 	end
@@ -431,23 +511,134 @@ end
 
 -- Check if the dictionary is valid.
 -- @param dictionary The preset dictionary for compression and decompression.
+-- @param verifying used internally in LibDeflate:VerifyDictionary()
 -- @return true if valid, false if not valid.
--- @return if not valid, the error message. if valid, nil
-local function IsValidDictionary(dictionary)
+-- @return if not valid, the error message.
+local function IsValidDictionary(dictionary, verifying)
 	if type(dictionary) ~= "table" then
 		return false, ("'dictionary' - table expected got '%s'.")
 			:format(type(dictionary))
+	end
+	if verifying ~= true and type(dictionary.adler32) ~= "number" then
+		return false, ("'dictionary' - Unverified dictionary. "
+			.."You must call LibDeflate:VerifyDictionary"
+			.."(str, dictionary, adler32) before use the dictionary."
+			.."'adler32' should be a constant which is not calculated"
+			.." at runtime, to ensure 'str' is not modified unintentionally "
+			.." during the program development.")
 	end
 	if type(dictionary.string_table) ~= "table"
 		or type(dictionary.strlen) ~= "number"
 		or dictionary.strlen <= 0
 		or dictionary.strlen > 32768
 		or dictionary.strlen ~= #dictionary.string_table
-		or type(dictionary.hash_tables) ~= "table" then
+		or type(dictionary.hash_tables) ~= "table"
+		then
 		return false, ("'dictionary' - corrupted dictionary.")
 			:format(type(dictionary))
 	end
-	return true
+	return true, ""
+end
+
+-- Check if the compression/decompression arguments is valid
+-- @param str The input string.
+-- @param check_dictionary if true, check if dictionary is valid.
+-- @param dictionary The preset dictionary for compression and decompression.
+-- @param check_configs if true, check if config is valid.
+-- @param compression_configs
+-- @return true if valid, false if not valid.
+-- @return if not valid, the error message.
+local function IsValidArguments(str,
+	check_dictionary, dictionary,
+	check_configs, configs)
+
+	if type(str) ~= "string" then
+		return false,
+			("'str' - string expected got '%s'."):format(type(str))
+	end
+	if check_dictionary then
+		local dict_valid, dict_err = IsValidDictionary(dictionary)
+		if not dict_valid then
+			return false, dict_err
+		end
+	end
+	if check_configs then
+		local type_configs = type(configs)
+		if type_configs ~= "nil" and type_configs ~= "table" then
+			return false,
+			("'configs' - nil or table expected got '%s'.")
+				:format(type(configs))
+		end
+		if type_configs == "table" then
+			for k, v in pairs(configs) do
+				if k ~= "level" then
+					return false,
+					("'configs' - expected key in the config '%s'.")
+					:format(k)
+				elseif k == "level" and not _compression_level_configs[v] then
+					return false,
+					("'configs' - invalid 'level': '%s'."):format(tostring(v))
+				end
+			end
+		end
+	end
+	return true, ""
+end
+
+-- Compare adler32 checksum.
+-- adler32 should be compared with a mod to avoid sign problem
+-- 4072834167 (unsigned) is the same adler32 as -222133129
+local function IsEqualAdler32(actual, expected)
+	return (actual % 4294967296) == (expected % 4294967296)
+end
+
+--- A checker function to make sure dictionary string is not accidentally
+-- corrupted in the programming development.
+-- dictionary won't be usable by compression or decompression until it
+-- is verified by this function.
+-- @param str the dictionary string.
+-- @param dictionary The dictionary produced by LibDeflate:CreateDictionary(str)
+-- @param The adler32 value of str. You should pass in this argument as
+-- 		a hardcoded constant, so this function does its job.
+function LibDeflate:VerifyDictionary(str, dictionary, adler32)
+	if type(str) ~= "string" then
+		error(("Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32): "
+			.."'str' - string expected got '%s'."):format(type(str)), 2)
+	end
+	if type(adler32) ~= "number" then
+		error(("Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32): "
+			.."'adler32' - number expected got '%s'.")
+			:format(type(adler32)), 2)
+	end
+	local dict_valid, dict_err = IsValidDictionary(dictionary, true)
+	if not dict_valid then
+		error("Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32): "
+			..dict_err)
+	end
+	if dictionary.strlen ~= #str then
+		error("Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32): "
+			.."str and dictionary don't match. Please check if dictionary is "
+			.."produced by LibDeflate:CreateDictionary(str)")
+	end
+	for i = 1, #str do
+		local string_table = dictionary.string_table
+		if string_table[i] ~= string_byte(str, i) then
+			error("Usage: LibDeflate:VerifyDictionary"
+			.."(str, dictionary, adler32): "
+			.."str and dictionary don't match. Please check if dictionary is "
+			.."produced by LibDeflate:CreateDictionary(str)")
+		end
+	end
+
+	local actual_adler32 = self:Adler32(str)
+	if not IsEqualAdler32(adler32, actual_adler32) then
+		error(("Usage: LibDeflate:VerifyDictionary"
+			.."(str, dictionary, adler32): "
+			.."unmatched adler32. expected: %u actual %u ."
+			.."Please check if str is modified unintentionally.")
+			:format(adler32, actual_adler32))
+	end
+	dictionary.adler32 = adler32
 end
 
 --[[
@@ -963,11 +1154,7 @@ end
 -- @return the count of each LZ77 distance deflate code.
 local function GetBlockLZ77Result(level, string_table, hash_tables, block_start,
 		block_end, offset, dictionary)
-	if not level then
-		level = 5
-	end
-
-	local config = _compression_level_config[level]
+	local config = _compression_level_configs[level]
 	local config_use_lazy
 		, config_good_prev_length
 		, config_max_lazy_match
@@ -986,6 +1173,7 @@ local function GetBlockLZ77Result(level, string_table, hash_tables, block_start,
 	local dict_string_table
 	local dict_string_len = 0
 
+	-- TODO: Carefully test this part
 	if dictionary then
 		dict_hash_tables = dictionary.hash_tables
 		dict_string_table = dictionary.string_table
@@ -994,14 +1182,16 @@ local function GetBlockLZ77Result(level, string_table, hash_tables, block_start,
 		if block_end >= block_start and dict_string_len >= 2 then
 			hash = dict_string_table[dict_string_len-1]*65536
 				+ dict_string_table[dict_string_len]*256 + string_table[1]
-			local t = hash_tables[hash] or {-1}
-			if #t == 1 then hash_tables[hash] = t else t[#t+1] = -1 end
+			local t = hash_tables[hash]
+			if not t then t = {}; hash_tables[hash] = t end
+			t[#t+1] = -1
 		end
 		if block_end >= block_start+1 and dict_string_len >= 1 then
 			hash = dict_string_table[dict_string_len]*65536
 				+ string_table[1]*256 + string_table[2]
-			local t = hash_tables[hash] or {0}
-			if #t == 1 then hash_tables[hash] = t else t[#t+1] = 0 end
+			local t = hash_tables[hash]
+			if not t then t = {}; hash_tables[hash] = t end
+			t[#t+1] = 0
 		end
 	end
 
@@ -1083,7 +1273,10 @@ local function GetBlockLZ77Result(level, string_table, hash_tables, block_start,
 
 					if prev >= -257 then
 						local prev_table_index = prev-offset
-						while (j < 258 and index + j < block_end) do
+						-- NOTE for author:
+						-- j < 258 and index + j <= block_end
+						-- This is the right condition
+						while (j < 258 and index + j <= block_end) do
 							if (string_table[prev_table_index+j]
 								== string_table[string_table_index+j]) then
 								j = j + 1
@@ -1093,7 +1286,10 @@ local function GetBlockLZ77Result(level, string_table, hash_tables, block_start,
 						end
 					else
 						local prev_table_index = dict_string_len+prev
-						while (j < 258 and index + j < block_end) do
+						-- NOTE for author:
+						-- j < 258 and index + j <= block_end
+						-- This is the right condition
+						while (j < 258 and index + j <= block_end) do
 							if (dict_string_table[prev_table_index+j]
 								== string_table[string_table_index+j]) then
 								j = j + 1
@@ -1490,7 +1686,8 @@ end
 -- 64KB, then memory cleanup won't happen.
 -- This function determines whether to use store/fixed/dynamic blocks by
 -- calculating the block size of each block type and chooses the smallest one.
-local function Deflate(WriteBits, WriteString, Flush, str, level, dictionary)
+local function Deflate(configs, WriteBits, WriteString, Flush, str
+	, dictionary)
 	local string_table = {}
 	local hash_tables = {}
 	local is_last_block = nil
@@ -1500,6 +1697,24 @@ local function Deflate(WriteBits, WriteString, Flush, str, level, dictionary)
 	local total_bitlen = select(2, Flush())
 	local strlen = #str
 	local offset
+
+	local level
+	if configs then
+		if configs.level then
+			level = configs.level
+		end
+	end
+
+	if not level then
+		if strlen < 2048 then
+			level = 7
+		elseif strlen > 65536 then
+			level = 3
+		else
+			level = 5
+		end
+	end
+
 	while not is_last_block do
 		if not block_start then
 			block_start = 1
@@ -1618,23 +1833,52 @@ local function Deflate(WriteBits, WriteString, Flush, str, level, dictionary)
 	end
 end
 
-function LibDeflate:CompressDeflate(str, level, dictionary)
-	assert(type(str)=="string")
-	assert(type(level)=="nil" or (type(level)=="number"
-		and level >= 1 and level <= 9))
-
+-- @see LibDeflate:CompressDeflate(str, configs)
+-- @see LibDeflate:CompressDeflateWithDict(str, dictionary, configs)
+local function CompressDeflateInternal(str, dictionary, configs)
 	local WriteBits, WriteString, Flush = CreateWriter()
-
-	Deflate(WriteBits, WriteString, Flush, str, level, dictionary)
+	Deflate(configs, WriteBits, WriteString, Flush, str, dictionary)
 	local result, totalBitSize = Flush(true)
 	return result, totalBitSize
 end
 
-function LibDeflate:CompressZlib(str, level, dictionary)
-	assert(type(str)=="string")
-	assert(type(level)=="nil" or (type(level)=="number"
-		and level >= 1 and level <= 9))
+--- Compress using raw deflate format.
+-- @param str the data to be compressed.
+-- @param configs The configuration table to control the compression.
+-- @see compression config table
+-- @return The compressed data
+-- @return the number of bits padded at the end of output. 0<=bitlen<8
+function LibDeflate:CompressDeflate(str, configs)
+	local arg_valid, arg_err = IsValidArguments(str, false, nil, true, configs)
+	if not arg_valid then
+		error(("Usage: LibDeflate:CompressDeflate(str, config): "
+			..arg_err), 2)
+	end
+	return CompressDeflateInternal(str, nil, configs)
+end
 
+--- Compress using raw deflate format with preset dictionary
+-- @param str the data to be compressed.
+-- @param dictionary A preset dictionary produced
+-- 			by LibDeflate:CreateDictionary()
+-- @param configs The configuration table to control the compression.
+-- @see compression config table
+-- @return The compressed data
+-- @return the number of bits padded at the end of output. 0<=bitlen<8
+function LibDeflate:CompressDeflateWithDict(str, dictionary, configs)
+	local arg_valid, arg_err = IsValidArguments(str, true, dictionary
+		, true, configs)
+	if not arg_valid then
+		error(("Usage: LibDeflate:CompressDeflateWithDict"
+			.."(str, dictionary, config): "
+			..arg_err), 2)
+	end
+	return CompressDeflateInternal(str, dictionary, configs)
+end
+
+-- @see LibDeflate:CompressZlib(str, configs)
+-- @see LibDeflate:CompressZlibWithDict(str, dictionary, configs)
+local function CompressZlibInternal(str, dictionary, configs)
 	local WriteBits, WriteString, Flush = CreateWriter()
 
 	local CM = 8 -- Compression method
@@ -1642,7 +1886,7 @@ function LibDeflate:CompressZlib(str, level, dictionary)
 	local CMF = CINFO*16+CM
 	WriteBits(CMF, 8)
 
-	local FDIST = 0 -- No dictionary
+	local FDIST = dictionary and 1 or 0
 	local FLEVEL = 2 -- Default compression
 	local FLG = FLEVEL*64+FDIST*32
 	local FCHECK = (31-(CMF*256+FLG)%31)
@@ -1650,19 +1894,37 @@ function LibDeflate:CompressZlib(str, level, dictionary)
 	-- when viewed as a 16-bit unsigned integer stored
 	-- in MSB order (CMF*256 + FLG), is a multiple of 31.
 	FLG = FLG + FCHECK
-	assert((CMF*256+FLG)%31 == 0)
 	WriteBits(FLG, 8)
 
-	Deflate(WriteBits, WriteString, Flush, str, level, dictionary)
+	if FDIST == 1 then
+		local adler32 = dictionary.adler32
+		local byte0 = adler32 % 256
+		adler32 = (adler32 - byte0) / 256
+		local byte1 = adler32 % 256
+		adler32 = (adler32 - byte1) / 256
+		local byte2 = adler32 % 256
+		adler32 = (adler32 - byte2) / 256
+		local byte3 = adler32 % 256
+		WriteBits(byte3, 8)
+		WriteBits(byte2, 8)
+		WriteBits(byte1, 8)
+		WriteBits(byte0, 8)
+	end
+
+	Deflate(configs, WriteBits, WriteString, Flush, str, dictionary)
 	Flush(true)
 
-	local adler = self:Adler32(str)
+	local adler32 = LibDeflate:Adler32(str)
 
 	-- Most significant byte first
-	local byte0 = ((adler-adler%16777216)/16777216)%256
-	local byte1 = ((adler-adler%65536)/65536)%256
-	local byte2 = ((adler-adler%256)/256)%256
-	local byte3 = adler%256
+	local byte3 = adler32%256
+	adler32 = (adler32 - byte3) / 256
+	local byte2 = adler32%256
+	adler32 = (adler32 - byte2) / 256
+	local byte1 = adler32%256
+	adler32 = (adler32 - byte1) / 256
+	local byte0 = adler32%256
+
 	WriteBits(byte0, 8)
 	WriteBits(byte1, 8)
 	WriteBits(byte2, 8)
@@ -1672,10 +1934,38 @@ function LibDeflate:CompressZlib(str, level, dictionary)
 	return result, totalBitSize
 end
 
+--- Compress using zlib format.
+-- @param str the data to be compressed.
+-- @param configs The configuration table to control the compression.
+-- @see compression config table
+-- @return The compressed data.
+-- @return the number of bits padded at the end of output. should always be 0.
+function LibDeflate:CompressZlib(str, configs)
+	local arg_valid, arg_err = IsValidArguments(str, false, nil, true, configs)
+	if not arg_valid then
+		error(("Usage: LibDeflate:CompressZlib(str, configs): "
+			..arg_err), 2)
+	end
+	return CompressZlibInternal(str, nil, configs)
+end
 
--- TODO: Deprecated.
-function LibDeflate:Compress(str, level, dictionary)
-	return self:CompressDeflate(str, level, dictionary)
+--- Compress using raw deflate format with preset dictionary
+-- @param str the data to be compressed.
+-- @param dictionary A preset dictionary produced
+-- 			by LibDeflate:CreateDictionary()
+-- @param configs The configuration table to control the compression.
+-- @see compression config table
+-- @return The compressed data
+-- @return the number of bits padded at the end of output. should always be 0.
+function LibDeflate:CompressZlibWithDict(str, dictionary, configs)
+	local arg_valid, arg_err = IsValidArguments(str, true, dictionary
+		, true, configs)
+	if not arg_valid then
+		error(("Usage: LibDeflate:CompressZlibWithDict"
+			.."(str, dictionary, configs): "
+			..arg_err), 2)
+	end
+	return CompressZlibInternal(str, dictionary, configs)
 end
 
 --[[
@@ -2264,9 +2554,25 @@ local function DecompressZlibInternal(str, dictionary)
 		return nil, -14 -- invalid header checksum
 	end
 
-	local FDIST = (FLG-FLG%32)/32 -- luacheck: ignore FDIST
-	local FLEVEL = (FLG-FLG%64)/64 -- luacheck: ignore FLEVEL
+	local FDIST = ((FLG-FLG%32)/32 % 2)
+	local FLEVEL = ((FLG-FLG%64)/64 % 4) -- luacheck: ignore FLEVEL
 
+	if FDIST == 1 then
+		if not dictionary then
+			return nil, -16 -- need dictonary, but dictionary is not provided.
+		end
+		local byte3 = ReadBits(8)
+		local byte2 = ReadBits(8)
+		local byte1 = ReadBits(8)
+		local byte0 = ReadBits(8)
+		local actual_adler32 = byte3*16777216+byte2*65536+byte1*256+byte0
+		if state.ReaderBitlenLeft() < 0 then
+			return nil, 2 -- available inflate data did not terminate
+		end
+		if not IsEqualAdler32(actual_adler32, dictionary.adler32) then
+			return nil, -17 -- dictionary adler32 does not match
+		end
+	end
 	local result, status = Inflate(state)
 	if not result then
 		return nil, status
@@ -2284,7 +2590,7 @@ local function DecompressZlibInternal(str, dictionary)
 	local adler32_expected = adler_byte0*16777216
 		+ adler_byte1*65536 + adler_byte2*256 + adler_byte3
 	local adler32_actual = LibDeflate:Adler32(result)
-	if adler32_expected ~= adler32_actual then
+	if not IsEqualAdler32(adler32_expected, adler32_actual) then
 		return nil, -15 -- Adler32 checksum does not match
 	end
 
@@ -2301,9 +2607,10 @@ end
 -- 	free to check if this is zero.)
 -- 	Undefined value if fails.
 function LibDeflate:DecompressDeflate(str)
-	if type(str) ~= "string" then
+	local arg_valid, arg_err = IsValidArguments(str)
+	if not arg_valid then
 		error(("Usage: LibDeflate:DecompressDeflate(str): "
-			.."'str' - string expected got '%s'."):format(type(str)), 2)
+			..arg_err), 2)
 	end
 	return DecompressDeflateInternal(str)
 end
@@ -2321,14 +2628,10 @@ end
 -- 	free to check if this is zero.)
 -- 	Undefined value if fails.
 function LibDeflate:DecompressDeflateWithDict(str, dictionary)
-	if type(str) ~= "string" then
+	local arg_valid, arg_err = IsValidArguments(str, true, dictionary)
+	if not arg_valid then
 		error(("Usage: LibDeflate:DecompressDeflateWithDict(str, dictionary): "
-			.."'str' - string expected got '%s'."):format(type(str)), 2)
-	end
-	local dict_valid, dict_err = IsValidDictionary(dictionary)
-	if not dict_valid then
-		error(("Usage: LibDeflate:DecompressDeflateWithDict(str, dictionary): "
-			..dict_err), 2)
+			..arg_err), 2)
 	end
 	return DecompressDeflateInternal(str, dictionary)
 end
@@ -2341,9 +2644,10 @@ end
 -- 	free to check if this is zero.)
 -- 	Undefined value if fails.
 function LibDeflate:DecompressZlib(str)
-	if type(str) ~= "string" then
+	local arg_valid, arg_err = IsValidArguments(str)
+	if not arg_valid then
 		error(("Usage: LibDeflate:DecompressZlib(str): "
-			.."'str' - string expected got '%s'."):format(type(str)), 2)
+			..arg_err), 2)
 	end
 	return DecompressZlibInternal(str)
 end
@@ -2360,59 +2664,13 @@ end
 -- 	are appended after the compressed data, if you think that's an error, feel
 -- 	free to check if this is zero.)
 -- 	Undefined value if fails.
-function LibDeflate:DecompressDeflateWithDict(str, dictionary)
-	if type(str) ~= "string" then
-		error(("Usage: LibDeflate:DecompressZlibWithDict(str): "
-			.."'str' - string expected got '%s'."):format(type(str)), 2)
-	end
-	local dict_valid, dict_err = IsValidDictionary(dictionary)
-	if not dict_valid then
+function LibDeflate:DecompressZlibWithDict(str, dictionary)
+	local arg_valid, arg_err = IsValidArguments(str, true, dictionary)
+	if not arg_valid then
 		error(("Usage: LibDeflate:DecompressZlibWithDict(str, dictionary): "
-			..dict_err), 2)
+			..arg_err), 2)
 	end
-	return DecompressDeflateInternal(str, dictionary)
-end
-
---[[--
-	Calculate the Adlder32 value of the string.
-	@param str the input string to calcuate its Adler32 checksum
-	@return integer. The adler32 checksum.
-	@see RFC1950 page 9 for reference code of Adler32
-	This function is loop unrolled by better performance.
-
-	Here is the minimum code:
-
-	local a = 1
-	local b = 0
-	for i=1, #str do
-		local s = string.byte(str, i, i)
-		a = (a+s)%65521
-		b = (b+a)%65521
-	end
-	return b*65536+a
---]]
-function LibDeflate:Adler32(str)
-	assert(type(str) == "string")
-	local strlen = #str
-
-	local i = 1
-	local a = 1
-	local b = 0
-	while i <= strlen - 15 do
-		local x1, x2, x3, x4, x5, x6, x7, x8,
-			x9, x10, x11, x12, x13, x14, x15, x16 = string_byte(str, i, i+15)
-		b = (b+16*a+16*x1+15*x2+14*x3+13*x4+12*x5+11*x6+10*x7+9*x8+8*x9
-			+7*x10+6*x11+5*x12+4*x13+3*x14+2*x15+x16)%65521
-		a = (a+x1+x2+x3+x4+x5+x6+x7+x8+x9+x10+x11+x12+x13+x14+x15+x16)%65521
-		i =  i + 16
-	end
-	while (i <= strlen) do
-		local x = string_byte(str, i, i)
-		a = (a + x) % 65521
-		b = (b + a) % 65521
-		i = i + 1
-	end
-	return b*65536+a
+	return DecompressZlibInternal(str, dictionary)
 end
 
 -- Calculate the huffman code of fixed block
@@ -2714,6 +2972,8 @@ end
 -- Stuffs in this table is subject to change.
 LibDeflate.internals = {
 	LoadStringToTable = LoadStringToTable,
+	IsValidDictionary = IsValidDictionary,
+	IsEqualAdler32 = IsEqualAdler32,
 }
 
 return LibDeflate
