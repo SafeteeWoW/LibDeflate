@@ -229,7 +229,7 @@ local _dist_deflate_code_to_extra_bitlen = {
 
 -- The code order of the first huffman header in the dynamic deflate block.
 -- See the page 12 of RFC1951
-local _header_code_order = {16, 17, 18,
+local _rle_codes_huffman_bitlen_order = {16, 17, 18,
 	0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15}
 
 -- The following tables are used by fixed deflate block.
@@ -1135,7 +1135,7 @@ local function GetBlockDynamicHuffmanHeader(lcodes_counts, dcodes_counts)
 
 	local HCLEN = 0
 	for i = 1, 19 do
-		local symbol = _header_code_order[i]
+		local symbol = _rle_codes_huffman_bitlen_order[i]
 		local length = rle_codes_huffman_bitlens[symbol] or 0
 		if length ~= 0 then
 			HCLEN = i
@@ -1215,7 +1215,7 @@ local function CompressDynamicHuffmanBlock(WriteBits, is_last_block
 	WriteBits(HCLEN, 4)
 
 	for i = 1, HCLEN+4 do
-		local symbol = _header_code_order[i]
+		local symbol = _rle_codes_huffman_bitlen_order[i]
 		local length = rle_codes_huffman_bitlens[symbol] or 0
 		WriteBits(length, 3)
 	end
@@ -1398,7 +1398,7 @@ local function Deflate(WriteBits, WriteString, Flush, str, level, dictionary)
 	local is_last_block = nil
 	local block_start
 	local block_end
-	local result, bitlen_written
+	local bitlen_written
 	local total_bitlen = select(2, Flush())
 	local strlen = #str
 	local offset
@@ -1471,7 +1471,7 @@ local function Deflate(WriteBits, WriteString, Flush, str, level, dictionary)
 			total_bitlen = total_bitlen + dynamic_block_bitlen
 		end
 
-		result, bitlen_written = Flush()
+		bitlen_written = select(2, Flush())
 		if bitlen_written ~= total_bitlen then
 			error(("sth wrong in the bitSize calculation, %d %d")
 				:format(bitlen_written, total_bitlen))
@@ -1632,10 +1632,10 @@ local function CreateReader(input_string)
 	-- Assume reader is on the byte boundary.
 	-- @param bytelen The number of bytes to be read.
 	-- @param buffer The byte read will be stored into this buffer.
-	-- @param buffer_size The buffer will be modified starting from 
+	-- @param buffer_size The buffer will be modified starting from
 	--	buffer[buffer_size+1], ending at buffer[buffer_size+bytelen-1]
 	-- @return the new buffer_size
-	local function ReadBytes(bytelen, buffer, buffer_size) 
+	local function ReadBytes(bytelen, buffer, buffer_size)
 		assert(cache_bitlen % 8 == 0)
 
 		local byte_from_cache = (cache_bitlen/8 < bytelen)
@@ -1662,7 +1662,7 @@ local function CreateReader(input_string)
 	end
 
 	-- Decode huffman code
-	-- To improve speed, this function does not check 
+	-- To improve speed, this function does not check
 	-- if the input has been exhausted.
 	-- Use ReaderBitsLeft() < 0 to check it.
 	-- Credits for Mark Adler. This code is from puff:Decode()
@@ -1670,9 +1670,9 @@ local function CreateReader(input_string)
 	-- @param huffman_bitlen_count
 	-- @param huffman_symbol
 	-- @param min_bitlen The minimum huffman bit length of all symbols
-	-- @return The decoded deflate code. 
+	-- @return The decoded deflate code.
 	--	Negative value is returned if decoding fails.
-	local function Decode(huffman_bitlen_count, huffman_symbol, min_bitlen)
+	local function Decode(huffman_bitlen_counts, huffman_symbols, min_bitlen)
 		local code = 0
 		local first = 0
 		local index = 0
@@ -1697,9 +1697,9 @@ local function CreateReader(input_string)
 			-- Reverse the bits
 			code = _reverse_bits_tbl[min_bitlen][code]
 
-			count = huffman_bitlen_count[min_bitlen]
+			count = huffman_bitlen_counts[min_bitlen]
 			if code < count then
-				return huffman_symbol[code]
+				return huffman_symbols[code]
 			end
 			index = count
 			first = count * 2
@@ -1713,10 +1713,10 @@ local function CreateReader(input_string)
 			cache_bitlen = cache_bitlen - 1
 
 			code = (bit==1) and (code + 1 - code % 2) or code
-			count = huffman_bitlen_count[bitlen] or 0
+			count = huffman_bitlen_counts[bitlen] or 0
 			local diff = code - first
 			if diff < count then
-				return huffman_symbol[index + diff]
+				return huffman_symbols[index + diff]
 			end
 			index = index + count
 			first = first + count
@@ -1742,6 +1742,29 @@ local function CreateReader(input_string)
 	return ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary
 end
 
+-- Create a deflate state, so I can pass in less arguments to functions.
+-- @param str the whole string to be decompressed.
+-- @param dictionary The preset dictionary. nil if not provided.
+--		This dictionary should be produced by LibDeflate:CreateDictionary(str)
+-- @return The decomrpess state.
+local function CreateDecompressState(str, dictionary)
+	local ReadBits, ReadBytes, Decode, ReaderBitsLeft
+		, SkipToByteBoundary = CreateReader(str)
+	local state =
+	{
+		ReadBits = ReadBits,
+		ReadBytes = ReadBytes,
+		Decode = Decode,
+		ReaderBitsLeft = ReaderBitsLeft,
+		SkipToByteBoundary = SkipToByteBoundary,
+		buffer_size = 0,
+		buffer = {},
+		result = "",
+		dictionary = dictionary,
+	}
+	return state
+end
+
 -- Get the stuffs needed to decode huffman codes
 -- @see puff.c:construct(...)
 -- @param huffman_bitlen The huffman bit length of the huffman codes.
@@ -1751,24 +1774,24 @@ end
 -- @return The count of each huffman bit length.
 -- @return A table to convert huffman codes to deflate codes.
 -- @return The minimum huffman bit length.
-local function GetHuffmanForDecode(huffman_bitlen, max_symbol, max_bitlen)
-	local huffman_bitlen_count = {}
+local function GetHuffmanForDecode(huffman_bitlens, max_symbol, max_bitlen)
+	local huffman_bitlen_counts = {}
 	local min_bitlen = max_bitlen
 	for symbol = 0, max_symbol do
-		local bitlen = huffman_bitlen[symbol] or 0
+		local bitlen = huffman_bitlens[symbol] or 0
 		min_bitlen = (bitlen > 0 and bitlen < min_bitlen)
 			and bitlen or min_bitlen
-		huffman_bitlen_count[bitlen] = (huffman_bitlen_count[bitlen] or 0) + 1
+		huffman_bitlen_counts[bitlen] = (huffman_bitlen_counts[bitlen] or 0)+1
 	end
 
-	if huffman_bitlen_count[0] == max_symbol+1 then -- No Codes
-		return 0, huffman_bitlen_count, {}, 0 -- Complete, but decode will fail
+	if huffman_bitlen_counts[0] == max_symbol+1 then -- No Codes
+		return 0, huffman_bitlen_counts, {}, 0 -- Complete, but decode will fail
 	end
 
 	local left = 1
 	for len = 1, max_bitlen do
 		left = left * 2
-		left = left - (huffman_bitlen_count[len] or 0)
+		left = left - (huffman_bitlen_counts[len] or 0)
 		if left < 0 then
 			return left -- Over-subscribed, return negative
 		end
@@ -1778,33 +1801,33 @@ local function GetHuffmanForDecode(huffman_bitlen, max_symbol, max_bitlen)
 	local offsets = {}
 	offsets[1] = 0
 	for len = 1, max_bitlen-1 do
-		offsets[len + 1] = offsets[len] + (huffman_bitlen_count[len] or 0)
+		offsets[len + 1] = offsets[len] + (huffman_bitlen_counts[len] or 0)
 	end
 
-	local huffman_symbol = {}
+	local huffman_symbols = {}
 	for symbol = 0, max_symbol do
-		local bitlen = huffman_bitlen[symbol] or 0
+		local bitlen = huffman_bitlens[symbol] or 0
 		if bitlen ~= 0 then
 			local offset = offsets[bitlen]
-			huffman_symbol[offset] = symbol
+			huffman_symbols[offset] = symbol
 			offsets[bitlen] = offsets[bitlen] + 1
 		end
 	end
 
 	-- Return zero for complete set, positive for incomplete set.
-	return left, huffman_bitlen_count, huffman_symbol, min_bitlen
+	return left, huffman_bitlen_counts, huffman_symbols, min_bitlen
 end
 
 -- Decode a fixed or dynamic huffman blocks, excluding last block identifier
 -- and block type identifer.
 -- @see puff.c:codes()
 -- @param state decompression state that will be modified by this function.
---	Lots of stuffs in the state.
+--	@see CreateDecompressState
 -- @param ... Read the source code
--- @return 0 if success, netative value otherwise.
-local function DecodeUntilEndOfBlock(state, lcodes_huffman_bitlen
-	, lcodes_huffman_symbol, lcodes_huffman_min_bitlen
-	, dcodes_huffman_bitlen, dcodes_huffman_symbol
+-- @return 0 if success, other value if fails.
+local function DecodeUntilEndOfBlock(state, lcodes_huffman_bitlens
+	, lcodes_huffman_symbols, lcodes_huffman_min_bitlen
+	, dcodes_huffman_bitlens, dcodes_huffman_symbols
 	, dcodes_huffman_min_bitlen)
 	local buffer, buffer_size, ReadBits, Decode, ReaderBitsLeft, result =
 		state.buffer, state.buffer_size, state.ReadBits, state.Decode
@@ -1827,8 +1850,8 @@ local function DecodeUntilEndOfBlock(state, lcodes_huffman_bitlen
 	end
 
 	repeat
-		local symbol = Decode(lcodes_huffman_bitlen
-			, lcodes_huffman_symbol, lcodes_huffman_min_bitlen)
+		local symbol = Decode(lcodes_huffman_bitlens
+			, lcodes_huffman_symbols, lcodes_huffman_min_bitlen)
 		if symbol < 0 or symbol > 285 then
 		-- invalid literal/length or distance code in fixed or dynamic block
 			return -10
@@ -1837,12 +1860,12 @@ local function DecodeUntilEndOfBlock(state, lcodes_huffman_bitlen
 			buffer[buffer_size] = _byte_to_char[symbol]
 		elseif symbol > 256 then -- Length code
 			symbol = symbol - 256
-			local length = _literal_deflate_code_to_base_len[symbol]
-			length = (symbol >= 8)
-				 and (length 
-				 	+ ReadBits(_literal_deflate_code_to_extra_bitlen[symbol]))
-				 	or length
-			symbol = Decode(dcodes_huffman_bitlen, dcodes_huffman_symbol
+			local bitlen = _literal_deflate_code_to_base_len[symbol]
+			bitlen = (symbol >= 8)
+				 and (bitlen
+				 + ReadBits(_literal_deflate_code_to_extra_bitlen[symbol]))
+					or bitlen
+			symbol = Decode(dcodes_huffman_bitlens, dcodes_huffman_symbols
 				, dcodes_huffman_min_bitlen)
 			if symbol < 0 or symbol > 29 then
 			-- invalid literal/length or distance code in fixed or dynamic block
@@ -1852,24 +1875,24 @@ local function DecodeUntilEndOfBlock(state, lcodes_huffman_bitlen
 			dist = (dist > 4) and (dist
 				+ ReadBits(_dist_deflate_code_to_extra_bitlen[symbol])) or dist
 
-			local charBufferIndex = buffer_size-dist+1
-			if charBufferIndex < buffer_end then
+			local char_buffer_index = buffer_size-dist+1
+			if char_buffer_index < buffer_end then
 			-- distance is too far back in fixed or dynamic block
 				return -11
 			end
-			if charBufferIndex >= -257 then
-				for _=1, length do
+			if char_buffer_index >= -257 then
+				for _=1, bitlen do
 					buffer_size = buffer_size + 1
-					buffer[buffer_size] = buffer[charBufferIndex]
-					charBufferIndex = charBufferIndex + 1
+					buffer[buffer_size] = buffer[char_buffer_index]
+					char_buffer_index = char_buffer_index + 1
 				end
 			else
-				charBufferIndex = dict_strlen + charBufferIndex
-				for _=1, length do
+				char_buffer_index = dict_strlen + char_buffer_index
+				for _=1, bitlen do
 					buffer_size = buffer_size + 1
-					buffer[buffer_size] = 
-					_byte_to_char[dict_string_table[charBufferIndex]]
-					charBufferIndex = charBufferIndex + 1
+					buffer[buffer_size] =
+					_byte_to_char[dict_string_table[char_buffer_index]]
+					char_buffer_index = char_buffer_index + 1
 				end
 			end
 		end
@@ -1885,7 +1908,7 @@ local function DecodeUntilEndOfBlock(state, lcodes_huffman_bitlen
 			end
 			buffer_size = buffer_size - 32768
 			buffer[buffer_size+1] = nil
-			-- NOTE: buffer[32769..end] and buffer[-257..0] are not cleared. 
+			-- NOTE: buffer[32769..end] and buffer[-257..0] are not cleared.
 			-- This is why "buffer_size" variable is needed.
 		end
 	until symbol == 256
@@ -1896,35 +1919,40 @@ local function DecodeUntilEndOfBlock(state, lcodes_huffman_bitlen
 	return 0
 end
 
--- TODO: Actually test store block
+-- Decompress a store block
+-- @param state decompression state that will be modified by this function.
+-- @return 0 if success, other value if fails.
 local function DecompressStoreBlock(state)
 	local buffer, buffer_size, ReadBits, ReadBytes, ReaderBitsLeft
 		, SkipToByteBoundary, result =
-		state.buffer, state.buffer_size, state.ReadBits, state.ReadBytes, state.ReaderBitsLeft,
-		state.SkipToByteBoundary, state.result
+		state.buffer, state.buffer_size, state.ReadBits, state.ReadBytes
+		, state.ReaderBitsLeft, state.SkipToByteBoundary, state.result
 
 	SkipToByteBoundary()
-	local len = ReadBits(16)
+	local bytelen = ReadBits(16)
 	if ReaderBitsLeft() < 0 then
 		return 2 -- available inflate data did not terminate
 	end
-	local lenComp = ReadBits(16)
+	local bytelenComp = ReadBits(16)
 	if ReaderBitsLeft() < 0 then
 		return 2 -- available inflate data did not terminate
 	end
 
-	if len % 256 + lenComp % 256 ~= 255 then
+	if bytelen % 256 + bytelenComp % 256 ~= 255 then
 		return -2 -- Not one's complement
 	end
-	if (len-len % 256)/256 + (lenComp-lenComp % 256)/256 ~= 255 then
+	if (bytelen-bytelen % 256)/256
+		+ (bytelenComp-bytelenComp % 256)/256 ~= 255 then
 		return -2 -- Not one's complement
 	end
 
 	-- Note that ReadBytes will skip to the next byte boundary first.
-	buffer_size = ReadBytes(len, buffer, buffer_size)
+	buffer_size = ReadBytes(bytelen, buffer, buffer_size)
 	if buffer_size < 0 then
 		return 2 -- available inflate data did not terminate
 	end
+
+	-- memory clean up when there are enough bytes in the buffer.
 	if buffer_size >= 65536 then
 		result = result..table_concat(buffer, "", 1, 32768)
 		for i=32769, buffer_size do
@@ -1938,61 +1966,77 @@ local function DecompressStoreBlock(state)
 	return 0
 end
 
+-- Decompress a fixed block
+-- @param state decompression state that will be modified by this function.
+-- @return 0 if success, other value if fails.
 local function DecompressFixBlock(state)
-	return DecodeUntilEndOfBlock(state, _fix_block_literal_huffman_bitlen_count, _fix_block_literal_huffman_to_deflate_code, 7,
-		_fix_block_dist_huffman_bitlen_count, _fix_block_dist_huffman_to_deflate_code, 5)
+	return DecodeUntilEndOfBlock(state
+		, _fix_block_literal_huffman_bitlen_count
+		, _fix_block_literal_huffman_to_deflate_code, 7
+		, _fix_block_dist_huffman_bitlen_count
+		, _fix_block_dist_huffman_to_deflate_code, 5)
 end
 
+-- Decompress a dynamic block
+-- @param state decompression state that will be modified by this function.
+-- @return 0 if success, other value if fails.
 local function DecompressDynamicBlock(state)
 	local ReadBits, Decode = state.ReadBits, state.Decode
-	local nLen = ReadBits(5) + 257
-	local nDist = ReadBits(5) + 1
-	local nCode = ReadBits(4) + 4
-	if nLen > 286 or nDist > 30 then
-		return -3 -- dynamic block code description: too many length or distance codes
+	local nlen = ReadBits(5) + 257
+	local ndist = ReadBits(5) + 1
+	local ncode = ReadBits(4) + 4
+	if nlen > 286 or ndist > 30 then
+		-- dynamic block code description: too many length or distance codes
+		return -3
 	end
 
-	local lengthLengths = {}
+	local rle_codes_huffman_bitlens = {}
 
-	for index=1, nCode do
-		lengthLengths[_header_code_order[index]] = ReadBits(3)
+	for i = 1, ncode do
+		rle_codes_huffman_bitlens[_rle_codes_huffman_bitlen_order[i]] =
+			ReadBits(3)
 	end
 
-	local err, lenLenHuffmanLenCount, lenLenHuffmanSym, lenLenMinLen = 
-		GetHuffmanForDecode(lengthLengths, 18, 7)
-	if err ~= 0 then -- Require complete code set here
-		return -4 -- dynamic block code description: code lengths codes incomplete
+	local rle_codes_err, rle_codes_huffman_bitlen_counts,
+		rle_codes_huffman_symbols, rle_codes_huffman_min_bitlen =
+		GetHuffmanForDecode(rle_codes_huffman_bitlens, 18, 7)
+	if rle_codes_err ~= 0 then -- Require complete code set here
+		-- dynamic block code description: code lengths codes incomplete
+		return -4
 	end
 
-	local litHuffmanLen = {}
-	local distHuffmanLen = {}
+	local lcodes_huffman_bitlens = {}
+	local dcodes_huffman_bitlens = {}
 	-- Read length/literal and distance code length tables
 	local index = 0
-	while index < nLen + nDist do
+	while index < nlen + ndist do
 		local symbol -- Decoded value
-		local len -- Last length to repeat
+		local bitlen -- Last length to repeat
 
-		symbol = Decode(lenLenHuffmanLenCount, lenLenHuffmanSym, lenLenMinLen)
+		symbol = Decode(rle_codes_huffman_bitlen_counts
+			, rle_codes_huffman_symbols, rle_codes_huffman_min_bitlen)
 
 		if symbol < 0 then
 			return symbol -- Invalid symbol
 		elseif symbol < 16 then
-			if index < nLen then
-				litHuffmanLen[index] = symbol
+			if index < nlen then
+				lcodes_huffman_bitlens[index] = symbol
 			else
-				distHuffmanLen[index-nLen] = symbol
+				dcodes_huffman_bitlens[index-nlen] = symbol
 			end
 			index = index + 1
 		else
-			len = 0
+			bitlen = 0
 			if symbol == 16 then
 				if index == 0 then
-					return -5 -- dynamic block code description: repeat lengths with no first length
+					-- dynamic block code description: repeat lengths
+					-- with no first length
+					return -5
 				end
-				if index-1 < nLen then
-					len = litHuffmanLen[index-1]
+				if index-1 < nlen then
+					bitlen = lcodes_huffman_bitlens[index-1]
 				else
-					len = distHuffmanLen[index-nLen-1]
+					bitlen = dcodes_huffman_bitlens[index-nlen-1]
 				end
 				symbol = 3 + ReadBits(2)
 			elseif symbol == 17 then -- Repeat zero 3..10 times
@@ -2000,58 +2044,73 @@ local function DecompressDynamicBlock(state)
 			else -- == 18, repeat zero 11.138 times
 				symbol = 11 + ReadBits(7)
 			end
-			if index + symbol > nLen + nDist then
-				return -6 -- dynamic block code description: repeat more than specified lengths
+			if index + symbol > nlen + ndist then
+				-- dynamic block code description:
+				-- repeat more than specified lengths
+				return -6
 			end
 			while symbol > 0 do -- Repeat last or zero symbol times
 				symbol = symbol - 1
-				if index < nLen then
-					litHuffmanLen[index] = len
+				if index < nlen then
+					lcodes_huffman_bitlens[index] = bitlen
 				else
-					distHuffmanLen[index-nLen] = len
+					dcodes_huffman_bitlens[index-nlen] = bitlen
 				end
 				index = index + 1
 			end
 		end
 	end
 
-	if (litHuffmanLen[256] or 0) == 0 then
-		return -9 -- dynamic block code description: missing end-of-block code
+	if (lcodes_huffman_bitlens[256] or 0) == 0 then
+		-- dynamic block code description: missing end-of-block code
+		return -9
 	end
 
-	local litErr, litHuffmanLenCount, litHuffmanSym, litMinLen = 
-		GetHuffmanForDecode(litHuffmanLen, nLen-1, 15)
-	--dynamic block code description: invalid literal/length code lengths,Incomplete code ok only for single length 1 code
-	if (litErr ~=0 and (litErr < 0 or nLen ~= (litHuffmanLenCount[0] or 0)+(litHuffmanLenCount[1] or 0))) then
+	local lcodes_err, lcodes_huffman_bitlen_counts
+		, lcodes_huffman_symbols, lcodes_huffman_min_bitlen =
+		GetHuffmanForDecode(lcodes_huffman_bitlens, nlen-1, 15)
+	--dynamic block code description: invalid literal/length code lengths,
+	-- Incomplete code ok only for single length 1 code
+	if (lcodes_err ~=0 and (lcodes_err < 0
+		or nlen ~= (lcodes_huffman_bitlen_counts[0] or 0)
+			+(lcodes_huffman_bitlen_counts[1] or 0))) then
 		return -7
 	end
 
-	local distErr, distHuffmanLenCount, distHuffmanSym, distMinLen = 
-		GetHuffmanForDecode(distHuffmanLen, nDist-1, 15)
-	-- dynamic block code description: invalid distance code lengths, Incomplete code ok only for single length 1 code
-	if (distErr ~=0 and (distErr < 0 or nDist ~= (distHuffmanLenCount[0] or 0)
-		+ (distHuffmanLenCount[1] or 0))) then
+	local dcodes_err, dcodes_huffman_bitlen_counts
+		, dcodes_huffman_symbols, dcodes_huffman_min_bitlen =
+		GetHuffmanForDecode(dcodes_huffman_bitlens, ndist-1, 15)
+	-- dynamic block code description: invalid distance code lengths,
+	-- Incomplete code ok only for single length 1 code
+	if (dcodes_err ~=0 and (dcodes_err < 0
+		or ndist ~= (dcodes_huffman_bitlen_counts[0] or 0)
+			+ (dcodes_huffman_bitlen_counts[1] or 0))) then
 		return -8
 	end
 
 	-- Build buffman table for literal/length codes
-	return DecodeUntilEndOfBlock(state, litHuffmanLenCount, litHuffmanSym, litMinLen
-		, distHuffmanLenCount, distHuffmanSym, distMinLen)
+	return DecodeUntilEndOfBlock(state, lcodes_huffman_bitlen_counts
+		, lcodes_huffman_symbols, lcodes_huffman_min_bitlen
+		, dcodes_huffman_bitlen_counts, dcodes_huffman_symbols
+		, dcodes_huffman_min_bitlen)
 end
 
+-- Decompress a deflate stream
+-- @param state: a decompression state
+-- @return the decompressed string if success. nil if fails.
 local function Inflate(state)
 	local ReadBits = state.ReadBits
 
-	local isLastBlock
-	while not isLastBlock do
-		isLastBlock = (ReadBits(1) == 1)
-		local blockType = ReadBits(2)
+	local is_last_block
+	while not is_last_block do
+		is_last_block = (ReadBits(1) == 1)
+		local block_type = ReadBits(2)
 		local status
-		if blockType == 0 then
+		if block_type == 0 then
 			status = DecompressStoreBlock(state)
-		elseif blockType == 1 then
+		elseif block_type == 1 then
 			status = DecompressFixBlock(state)
-		elseif blockType == 2 then
+		elseif block_type == 2 then
 			status = DecompressDynamicBlock(state)
 		else
 			return nil, -1 -- invalid block type (type == 3)
@@ -2066,44 +2125,35 @@ local function Inflate(state)
 	return state.result
 end
 
-local function CreateInflateState(str, dictionary)
-	local ReadBits, ReadBytes, Decode, ReaderBitsLeft
-		, SkipToByteBoundary = CreateReader(str)
-	local state =
-	{
-		ReadBits = ReadBits,
-		ReadBytes = ReadBytes,
-		Decode = Decode,
-		ReaderBitsLeft = ReaderBitsLeft,
-		SkipToByteBoundary = SkipToByteBoundary,
-		buffer_size = 0,
-		buffer = {},
-		result = "",
-		dictionary = dictionary,
-	}
-	return state
-end
+--- Decompress a raw deflated compressed data
+-- @return the decompressed data if success, nil if fails.
+-- @return number of unprocessed bytes if success (This could happen if bytes
+-- are appended after the compressed data, if you think that's an error, feel
+-- free to check if this is zero.
+-- undefined value if fails.
+-- (Actually a error code if fails, but I won't define it in the documentation
+-- so undefined value is returned as 2nd returns if decompression fails.
 function LibDeflate:DecompressDeflate(str, dictionary)
 	-- WIP
 	assert(type(str) == "string")
 
-	local state = CreateInflateState(str, dictionary)
+	local state = CreateDecompressState(str, dictionary)
 
 	local result, status = Inflate(state)
 	if not result then
 		return nil, status
 	end
 
-	local bitsLeft = state.ReaderBitsLeft()
-	local byteLeft = (bitsLeft - bitsLeft % 8) / 8
-	return state.result, byteLeft
+	local bitlen_left = state.ReaderBitsLeft()
+	local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
+	return state.result, bytelen_left
 end
 
 function LibDeflate:DecompressZlib(str, dictionary)
 	-- WIP
 	assert(type(str) == "string")
 
-	local state = CreateInflateState(str, dictionary)
+	local state = CreateDecompressState(str, dictionary)
 	local ReadBits = state.ReadBits
 
 	local CMF = ReadBits(8)
@@ -2113,10 +2163,10 @@ function LibDeflate:DecompressZlib(str, dictionary)
 	local CM = CMF % 16
 	local CINFO = (CMF - CM) / 16
 	if CM ~= 8 then
-		return nil, -12 -- TODO invalid compression method
+		return nil, -12 -- invalid compression method
 	end
 	if CINFO > 7 then
-		return nil, -13 -- TODO invalid window size
+		return nil, -13 -- invalid window size
 	end
 
 	local FLG = ReadBits(8)
@@ -2124,11 +2174,11 @@ function LibDeflate:DecompressZlib(str, dictionary)
 		return nil, 2 -- available inflate data did not terminate
 	end
 	if (CMF*256+FLG)%31 ~= 0 then
-		return nil, -14 -- TODO invalid header checksum
+		return nil, -14 -- invalid header checksum
 	end
 
-	local FDIST = (FLG-FLG%32)/32 -- TODO
-	local FLEVEL = (FLG-FLG%64)/64 -- TODO
+	local FDIST = (FLG-FLG%32)/32 -- luacheck: ignore FDIST
+	local FLEVEL = (FLG-FLG%64)/64 -- luacheck: ignore FLEVEL
 
 	local result, status = Inflate(state)
 	if not result then
@@ -2145,10 +2195,10 @@ function LibDeflate:DecompressZlib(str, dictionary)
 	end
 
 	local adler32_expected = adler_byte0*16777216
-		+adler_byte1*65536+adler_byte2*256+adler_byte3
+		+ adler_byte1*65536 + adler_byte2*256 + adler_byte3
 	local adler32_actual = self:Adler32(result)
 	if adler32_expected ~= adler32_actual then
-		return nil, -15 -- TODO Adler32 checksum does not match
+		return nil, -15 -- Adler32 checksum does not match
 	end
 
 	local bitsLeft = state.ReaderBitsLeft()
@@ -2156,6 +2206,8 @@ function LibDeflate:DecompressZlib(str, dictionary)
 	return state.result, byteLeft
 end
 
+
+-- TODO: Deprecated
 function LibDeflate:Decompress(str, dictionary)
 	return self:DecompressDeflate(str, dictionary)
 end
@@ -2289,17 +2341,15 @@ do
 		, _fix_block_dist_huffman_bitlen, 31, 5)
 end
 
-----------------------------------------------------------------------
-----------------------------------------------------------------------
 -- Encoding algorithms
---------------------------------------------------------------------------------
 -- Prefix encoding algorithm
 -- implemented by Galmok of European Stormrage (Horde), galmok@gmail.com
 -- From LibCompress <https://www.wowace.com/projects/libcompress>,
 -- which is licensed under GPLv2
 -- The code has been modified by the author of LibDeflate.
------------------------------------------------------------------------
--- to be able to match any requested byte value, the search 
+------------------------------------------------------------------------------
+
+-- to be able to match any requested byte value, the search
 -- string must be preprocessed characters to escape with %:
 -- ( ) . % + - * ? [ ] ^ $
 -- "illegal" byte values:
@@ -2321,7 +2371,7 @@ local _gsub_escape_table = {
 }
 
 local function escape_for_gsub(str)
-	return str:gsub("([%z%(%)%.%%%+%-%*%?%[%]%^%$])",  _gsub_escape_table)
+	return str:gsub("([%z%(%)%.%%%+%-%*%?%[%]%^%$])", _gsub_escape_table)
 end
 
 --[[
@@ -2333,11 +2383,11 @@ They return a table with functions to encode and decode text.
 table, msg = LibDeflate:GetEncodeDecodeTable(reserved_chars, escape_chars
 	, map_chars)
 
-	reserved_chars: The characters in this string will not appear 
+	reserved_chars: The characters in this string will not appear
 		in the encoded data.
-	escape_chars: A string of characters used as escape-characters 
+	escape_chars: A string of characters used as escape-characters
 		(don't supply more than needed). #escape_chars >= 1
-	map_chars: First characters in reserved_chars maps to first 
+	map_chars: First characters in reserved_chars maps to first
 		characters in map_chars.  (#map_chars <= #reserved_chars)
 
 return value:
@@ -2347,7 +2397,7 @@ return value:
 		encoded_message = table:Encode(message)
 		message = table:Decode(encoded_message)
 
-Except for the mapped characters, all encoding will be with 1 
+Except for the mapped characters, all encoding will be with 1
 	escape character followed by 1 suffix, i.e. 2 bytes.
 --]]
 function LibDeflate:GetEncodeDecodeTable(reserved_chars, escape_chars
@@ -2407,9 +2457,9 @@ function LibDeflate:GetEncodeDecodeTable(reserved_chars, escape_chars
 		decode_repls[#decode_repls+1] = decode_translate
 	end
 
-	local escapeCharIndex = 1
-	local escapeChar = string_sub(escape_chars
-		, escapeCharIndex, escapeCharIndex)
+	local escape_char_index = 1
+	local escape_char = string_sub(escape_chars
+		, escape_char_index, escape_char_index)
 	-- map single byte to double-byte
 	local r = 0 -- suffix char value to the escapeChar
 
@@ -2424,19 +2474,19 @@ function LibDeflate:GetEncodeDecodeTable(reserved_chars, escape_chars
 			-- while r < 256 and taken[r] do
 				r = r + 1
 				if r > 255 then -- switch to next escapeChar
-					if not escapeChar or escapeChar == "" then
+					if not escape_char or escape_char == "" then
 						-- we are out of escape chars and we need more!
 						return nil, "Out of escape characters"
 					end
 					decode_patterns[#decode_patterns+1] =
-						escape_for_gsub(escapeChar)
+						escape_for_gsub(escape_char)
 						.."(["
 						.. escape_for_gsub(table_concat(decode_search)).."])"
 					decode_repls[#decode_repls+1] = decode_translate
 
-					escapeCharIndex = escapeCharIndex + 1
-					escapeChar = string_sub(escape_chars, escapeCharIndex
-						, escapeCharIndex)
+					escape_char_index = escape_char_index + 1
+					escape_char = string_sub(escape_chars, escape_char_index
+						, escape_char_index)
 					r = 0
 					decode_search = {}
 					decode_translate = {}
@@ -2444,7 +2494,7 @@ function LibDeflate:GetEncodeDecodeTable(reserved_chars, escape_chars
 			end
 
 			local char_r = _byte_to_char[r]
-			encode_translate[c] = escapeChar..char_r
+			encode_translate[c] = escape_char..char_r
 			encode_search[#encode_search+1] = c
 			decode_translate[char_r] = c
 			decode_search[#decode_search+1] = char_r
@@ -2452,7 +2502,7 @@ function LibDeflate:GetEncodeDecodeTable(reserved_chars, escape_chars
 		end
 		if i == #encode_bytes then
 			decode_patterns[#decode_patterns+1] =
-				escape_for_gsub(escapeChar).."(["
+				escape_for_gsub(escape_char).."(["
 				.. escape_for_gsub(table_concat(decode_search)).."])"
 			decode_repls[#decode_repls+1] = decode_translate
 		end

@@ -212,7 +212,7 @@ local function FullMemoryCollect()
 		else
 			stable_count = 0
 		end
-	until stable_count == 10 
+	until stable_count == 10
 	-- Stop full memory collect until memory does not decrease for 10 times.
 end
 
@@ -350,7 +350,7 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 					"EncodeForChatChannel fails")
 
 			-- Try decompress by puff
-			local returnedStatus_puff, stdout_puff, stderr_puff = 
+			local returnedStatus_puff, stdout_puff, stderr_puff =
 				RunProgram("puff -w ", compress_filename, decompress_filename)
 			lu.assertEquals(returnedStatus_puff, 0
 				, "puff decompression failed with code "..returnedStatus_puff)
@@ -517,7 +517,7 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 			zdeflate_level = "-"..level
 			for j=1, #strategies do
 				zdeflate_strategy = strategies[j]
-				local status, stdout, stderr = 
+				local status, stdout, stderr =
 					RunProgram("zdeflate "..zdeflate_level
 					.." "..zdeflate_strategy
 					.." < ", tmp_filename, tmp_filename..".out")
@@ -602,11 +602,11 @@ local function CheckDecompressIncludingError(compress, decompress, is_zlib)
 			or "zdeflate -d <", input_filename, input_filename..".decompress")
 		if not d then
 			if not is_zlib then
-				if returned_status_puff ~= 0 
+				if returned_status_puff ~= 0
 					and returnedStatus_zdeflate ~= 0 then
 					print((">>>> %q cannot be decompress as expected")
 					:format((StringForPrint(StringToHex(compress)))))
-				elseif returned_status_puff ~= 0 
+				elseif returned_status_puff ~= 0
 					and returnedStatus_zdeflate == 0 then
 					lu.assertTrue(false,
 					(">>>> %q puff error but not zdeflate?")
@@ -785,7 +785,7 @@ do
 
 						codecTable["decode_search"..tostring(escapeCharIndex)] =
 							escape_for_gsub(escapeChar)
-							.."([".. 
+							.."(["..
 							escape_for_gsub(table_concat(decode_search)).."])"
 						codecTable["decode_translate"
 							..tostring(escapeCharIndex)] = decode_translate
@@ -816,7 +816,7 @@ do
 			codecTable["decode_search"..tostring(escapeCharIndex)] =
 				escape_for_gsub(escapeChar)
 				.."([".. escape_for_gsub(table_concat(decode_search)).."])"
-			codecTable["decode_translate"..tostring(escapeCharIndex)] = 
+			codecTable["decode_translate"..tostring(escapeCharIndex)] =
 				decode_translate
 			table_insert(decode_func_string,
 				"str = str:gsub(self.decode_search"..tostring(escapeCharIndex)
@@ -1372,9 +1372,8 @@ TestDecompress = {}
 			HexToString("4 0 24 49 0"), nil) -- Invalid bit length repeat
 		CheckDecompressIncludingError(
 			HexToString("4 0 24 e9 ff ff"), nil) -- Invalid bit length repeat
-		-- Invalid code: missing end of block
 		CheckDecompressIncludingError(
-			HexToString("4 0 24 e9 ff 6d"), nil) 
+			HexToString("4 0 24 e9 ff 6d"), nil) -- Invalid code: missing end of block
 		-- Invalid literal/lengths set
 		CheckDecompressIncludingError(
 			HexToString("4 80 49 92 24 49 92 24 71 ff ff 93 11 0"), nil)
@@ -1608,7 +1607,7 @@ TestInternals = {}
 
 				local oldminor = self.minors[major]
 				if oldminor and oldminor >= minor then return nil end
-				self.minors[major], self.libs[major] = 
+				self.minors[major], self.libs[major] =
 					minor, self.libs[major] or {}
 				return self.libs[major], oldminor
 			end
@@ -1806,7 +1805,7 @@ TestEncode = {}
 local function AddToCoverageTest(suite, test)
 	assert(suite)
 	assert(type(suite[test]) == "function")
-	CodeCoverage[test] = function(_, ...) 
+	CodeCoverage[test] = function(_, ...)
 		return suite[test](_G[suite], ...) end
 end
 local function AddAllToCoverageTest(suite)
