@@ -352,6 +352,104 @@ do
 	end
 end
 
+--- Create a preset dictionary
+-- If you choose to use preset dictionary,
+-- COMPRESSION AND DECOMPRESSION MUST USE THE SAME DICTIONARY PRODUCED HERE.
+-- This function should not be called repeatedly.
+-- Prefer to call this functionl only once.
+-- Dont store multiple copy of the dictionary, the memory usage of the
+-- dictionary is roughly 50x of the input string.
+--
+-- @param str The string used as the preset dictionary.
+-- 			You should put stuffs that frequently appears in the data to
+-- 			be compressed in the string and preferablely put more frequently
+-- 			appeared stuffed at the end of the string. Empty string is not
+-- 			allowed. If the string is longer than 32768 bytes, string will
+-- 			be truncated and only the last 32768 bytes will be used as the
+-- 			input.
+-- @return  The dictionary used for preset dictionary compression and
+-- 			decompression. Again, if you choose to use preset dictionary,
+-- 			compression and decompression must use the same dictionary.
+function LibDeflate:CreateDictionary(str)
+	if type(str) ~= "string" then
+		error(("Usage: LibDeflate:CreateDictionary(str):"
+			.." 'str' - string expected got '%s'."):format(type(str)), 2)
+	end
+	local strlen = #str
+	if strlen == 0 then
+		error(("Usage: LibDeflate:CreateDictionary(str):"
+			.." 'str' - Empty string is not allowede."), 2)
+	end
+	if strlen > 32768 then
+		str = str:sub(strlen-32767, strlen)
+	end
+	local dictionary = {}
+	dictionary.string_table = {}
+	dictionary.strlen = strlen
+	dictionary.hash_tables = {}
+	local string_table = dictionary.string_table
+	local hash_tables = dictionary.hash_tables
+	string_table[1] = string_byte(str, 1, 1)
+	string_table[2] = string_byte(str, 2, 2)
+	if strlen >= 3 then
+		local i = 1
+		local hash = string_table[1]*256+string_table[2]
+		while i <= strlen - 2 - 3 do
+			local x1, x2, x3, x4 = string_byte(str, i+2, i+5)
+			string_table[i+2] = x1
+			string_table[i+3] = x2
+			string_table[i+4] = x3
+			string_table[i+5] = x4
+			hash = (hash*256+x1)%16777216
+			local t = hash_tables[hash] or {i-strlen}
+			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
+			i =  i + 1
+			hash = (hash*256+x2)%16777216
+			t = hash_tables[hash] or {i-strlen}
+			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
+			i =  i + 1
+			hash = (hash*256+x3)%16777216
+			t = hash_tables[hash] or {i-strlen}
+			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
+			i =  i + 1
+			hash = (hash*256+x4)%16777216
+			t = hash_tables[hash] or {i-strlen}
+			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
+			i = i + 1
+		end
+		while i <= strlen - 2 do
+			local x = string_byte(str, i+2)
+			string_table[i+2] = x
+			hash = (hash*256+x)%16777216
+			local t = hash_tables[hash] or {i-strlen}
+			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
+			i = i + 1
+		end
+	end
+	return dictionary
+end
+
+-- Check if the dictionary is valid.
+-- @param dictionary The preset dictionary for compression and decompression.
+-- @return true if valid, false if not valid.
+-- @return if not valid, the error message. if valid, nil
+local function IsValidDictionary(dictionary)
+	if type(dictionary) ~= "table" then
+		return false, ("'dictionary' - table expected got '%s'.")
+			:format(type(dictionary))
+	end
+	if type(dictionary.string_table) ~= "table"
+		or type(dictionary.strlen) ~= "number"
+		or dictionary.strlen <= 0
+		or dictionary.strlen > 32768
+		or dictionary.strlen ~= #dictionary.string_table
+		or type(dictionary.hash_tables) ~= "table" then
+		return false, ("'dictionary' - corrupted dictionary.")
+			:format(type(dictionary))
+	end
+	return true
+end
+
 --[[
 	Create an empty writer to easily write stuffs as the unit of bits.
 	Return values:
@@ -1590,7 +1688,7 @@ end
 	1. ReadBits(bitlen)
 	2. ReadBytes(bytelen, buffer, buffer_size)
 	3. Decode(huffman_bitlen_count, huffman_symbol, min_bitlen)
-	4. ReaderBitsLeft()
+	4. ReaderBitlenLeft()
 	5. SkipToByteBoundary()
 --]]
 local function CreateReader(input_string)
@@ -1603,7 +1701,7 @@ local function CreateReader(input_string)
 	-- Read some bits.
 	-- To improve speed, this function does not
 	-- check if the input has been exhausted.
-	-- Use ReaderBitsLeft() < 0 to check it.
+	-- Use ReaderBitlenLeft() < 0 to check it.
 	-- @param bitlen the number of bits to read
 	-- @return the data is read.
 	local function ReadBits(bitlen)
@@ -1664,7 +1762,7 @@ local function CreateReader(input_string)
 	-- Decode huffman code
 	-- To improve speed, this function does not check
 	-- if the input has been exhausted.
-	-- Use ReaderBitsLeft() < 0 to check it.
+	-- Use ReaderBitlenLeft() < 0 to check it.
 	-- Credits for Mark Adler. This code is from puff:Decode()
 	-- @see puff:Decode(...)
 	-- @param huffman_bitlen_count
@@ -1728,7 +1826,7 @@ local function CreateReader(input_string)
 		return -10
 	end
 
-	local function ReaderBitsLeft()
+	local function ReaderBitlenLeft()
 		return (input_strlen - input_next_byte_pos + 1) * 8 + cache_bitlen
 	end
 
@@ -1739,7 +1837,7 @@ local function CreateReader(input_string)
 		cache = (cache - cache % rshift_mask) / rshift_mask
 	end
 
-	return ReadBits, ReadBytes, Decode, ReaderBitsLeft, SkipToByteBoundary
+	return ReadBits, ReadBytes, Decode, ReaderBitlenLeft, SkipToByteBoundary
 end
 
 -- Create a deflate state, so I can pass in less arguments to functions.
@@ -1748,14 +1846,14 @@ end
 --		This dictionary should be produced by LibDeflate:CreateDictionary(str)
 -- @return The decomrpess state.
 local function CreateDecompressState(str, dictionary)
-	local ReadBits, ReadBytes, Decode, ReaderBitsLeft
+	local ReadBits, ReadBytes, Decode, ReaderBitlenLeft
 		, SkipToByteBoundary = CreateReader(str)
 	local state =
 	{
 		ReadBits = ReadBits,
 		ReadBytes = ReadBytes,
 		Decode = Decode,
-		ReaderBitsLeft = ReaderBitsLeft,
+		ReaderBitlenLeft = ReaderBitlenLeft,
 		SkipToByteBoundary = SkipToByteBoundary,
 		buffer_size = 0,
 		buffer = {},
@@ -1829,9 +1927,9 @@ local function DecodeUntilEndOfBlock(state, lcodes_huffman_bitlens
 	, lcodes_huffman_symbols, lcodes_huffman_min_bitlen
 	, dcodes_huffman_bitlens, dcodes_huffman_symbols
 	, dcodes_huffman_min_bitlen)
-	local buffer, buffer_size, ReadBits, Decode, ReaderBitsLeft, result =
+	local buffer, buffer_size, ReadBits, Decode, ReaderBitlenLeft, result =
 		state.buffer, state.buffer_size, state.ReadBits, state.Decode
-		, state.ReaderBitsLeft, state.result
+		, state.ReaderBitlenLeft, state.result
 	local dictionary = state.dictionary
 	local dict_string_table
 	local dict_strlen
@@ -1897,7 +1995,7 @@ local function DecodeUntilEndOfBlock(state, lcodes_huffman_bitlens
 			end
 		end
 
-		if ReaderBitsLeft() < 0 then
+		if ReaderBitlenLeft() < 0 then
 			return 2 -- available inflate data did not terminate
 		end
 
@@ -1923,18 +2021,18 @@ end
 -- @param state decompression state that will be modified by this function.
 -- @return 0 if success, other value if fails.
 local function DecompressStoreBlock(state)
-	local buffer, buffer_size, ReadBits, ReadBytes, ReaderBitsLeft
+	local buffer, buffer_size, ReadBits, ReadBytes, ReaderBitlenLeft
 		, SkipToByteBoundary, result =
 		state.buffer, state.buffer_size, state.ReadBits, state.ReadBytes
-		, state.ReaderBitsLeft, state.SkipToByteBoundary, state.result
+		, state.ReaderBitlenLeft, state.SkipToByteBoundary, state.result
 
 	SkipToByteBoundary()
 	local bytelen = ReadBits(16)
-	if ReaderBitsLeft() < 0 then
+	if ReaderBitlenLeft() < 0 then
 		return 2 -- available inflate data did not terminate
 	end
 	local bytelenComp = ReadBits(16)
-	if ReaderBitsLeft() < 0 then
+	if ReaderBitlenLeft() < 0 then
 		return 2 -- available inflate data did not terminate
 	end
 
@@ -2125,39 +2223,28 @@ local function Inflate(state)
 	return state.result
 end
 
---- Decompress a raw deflated compressed data
--- @return the decompressed data if success, nil if fails.
--- @return number of unprocessed bytes if success (This could happen if bytes
--- are appended after the compressed data, if you think that's an error, feel
--- free to check if this is zero.
--- undefined value if fails.
--- (Actually a error code if fails, but I won't define it in the documentation
--- so undefined value is returned as 2nd returns if decompression fails.
-function LibDeflate:DecompressDeflate(str, dictionary)
-	-- WIP
-	assert(type(str) == "string")
-
+-- @see LibDeflate:DecompressDeflate(str)
+-- @see LibDeflate:DecompressDeflateWithDict(str, dictionary)
+local function DecompressDeflateInternal(str, dictionary)
 	local state = CreateDecompressState(str, dictionary)
-
 	local result, status = Inflate(state)
 	if not result then
 		return nil, status
 	end
 
-	local bitlen_left = state.ReaderBitsLeft()
+	local bitlen_left = state.ReaderBitlenLeft()
 	local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
 	return state.result, bytelen_left
 end
 
-function LibDeflate:DecompressZlib(str, dictionary)
-	-- WIP
-	assert(type(str) == "string")
-
+-- @see LibDeflate:DecompressZlib(str)
+-- @see LibDeflate:DecompressZlibWithDict(str)
+local function DecompressZlibInternal(str, dictionary)
 	local state = CreateDecompressState(str, dictionary)
 	local ReadBits = state.ReadBits
 
 	local CMF = ReadBits(8)
-	if state.ReaderBitsLeft() < 0 then
+	if state.ReaderBitlenLeft() < 0 then
 		return nil, 2 -- available inflate data did not terminate
 	end
 	local CM = CMF % 16
@@ -2170,7 +2257,7 @@ function LibDeflate:DecompressZlib(str, dictionary)
 	end
 
 	local FLG = ReadBits(8)
-	if state.ReaderBitsLeft() < 0 then
+	if state.ReaderBitlenLeft() < 0 then
 		return nil, 2 -- available inflate data did not terminate
 	end
 	if (CMF*256+FLG)%31 ~= 0 then
@@ -2190,30 +2277,106 @@ function LibDeflate:DecompressZlib(str, dictionary)
 	local adler_byte1 = ReadBits(8)
 	local adler_byte2 = ReadBits(8)
 	local adler_byte3 = ReadBits(8)
-	if state.ReaderBitsLeft() < 0 then
+	if state.ReaderBitlenLeft() < 0 then
 		return nil, 2 -- available inflate data did not terminate
 	end
 
 	local adler32_expected = adler_byte0*16777216
 		+ adler_byte1*65536 + adler_byte2*256 + adler_byte3
-	local adler32_actual = self:Adler32(result)
+	local adler32_actual = LibDeflate:Adler32(result)
 	if adler32_expected ~= adler32_actual then
 		return nil, -15 -- Adler32 checksum does not match
 	end
 
-	local bitsLeft = state.ReaderBitsLeft()
-	local byteLeft = (bitsLeft - bitsLeft % 8) / 8
-	return state.result, byteLeft
+	local bitlen_left = state.ReaderBitlenLeft()
+	local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
+	return state.result, bytelen_left
 end
 
-
--- TODO: Deprecated
-function LibDeflate:Decompress(str, dictionary)
-	return self:DecompressDeflate(str, dictionary)
+--- Decompress a raw deflate compressed data
+-- @param str The data to be decompressed
+-- @return the decompressed data if success, nil if fails.
+-- @return number of unprocessed bytes if success (This could happen if bytes
+-- 	are appended after the compressed data, if you think that's an error, feel
+-- 	free to check if this is zero.)
+-- 	Undefined value if fails.
+function LibDeflate:DecompressDeflate(str)
+	if type(str) ~= "string" then
+		error(("Usage: LibDeflate:DecompressDeflate(str): "
+			.."'str' - string expected got '%s'."):format(type(str)), 2)
+	end
+	return DecompressDeflateInternal(str)
 end
 
---[[
+--- Decompress a raw deflate compressed data with preset dictionary.
+-- @param str The data to be decompressed
+-- @param dictionary The preset dictionary created by
+-- 	LibDeflate:CreateDictionary(). The decompressed data must be compressed
+-- 	with the same dictionary. Otherwise wrong decompressed data could be
+-- 	produced without generating any error. Lua errors could occur inside
+-- 	internal code of LibDeflate if dictionary is corrupted.
+-- @return the decompressed data if success, nil if fails.
+-- @return number of unprocessed bytes if success (This could happen if bytes
+-- 	are appended after the compressed data, if you think that's an error, feel
+-- 	free to check if this is zero.)
+-- 	Undefined value if fails.
+function LibDeflate:DecompressDeflateWithDict(str, dictionary)
+	if type(str) ~= "string" then
+		error(("Usage: LibDeflate:DecompressDeflateWithDict(str, dictionary): "
+			.."'str' - string expected got '%s'."):format(type(str)), 2)
+	end
+	local dict_valid, dict_err = IsValidDictionary(dictionary)
+	if not dict_valid then
+		error(("Usage: LibDeflate:DecompressDeflateWithDict(str, dictionary): "
+			..dict_err), 2)
+	end
+	return DecompressDeflateInternal(str, dictionary)
+end
+
+--- Decompress a zlib compressed data
+-- @param str The data to be decompressed
+-- @return the decompressed data if success, nil if fails.
+-- @return number of unprocessed bytes if success (This could happen if bytes
+-- 	are appended after the compressed data, if you think that's an error, feel
+-- 	free to check if this is zero.)
+-- 	Undefined value if fails.
+function LibDeflate:DecompressZlib(str)
+	if type(str) ~= "string" then
+		error(("Usage: LibDeflate:DecompressZlib(str): "
+			.."'str' - string expected got '%s'."):format(type(str)), 2)
+	end
+	return DecompressZlibInternal(str)
+end
+
+--- Decompress a zlib compressed data with preset dictionary.
+-- @param str The data to be decompressed
+-- @param dictionary The preset dictionary created by
+-- 	LibDeflate:CreateDictionary(). The decompressed data must be compressed
+-- 	with the same dictionary. Otherwise wrong decompressed data could be
+-- 	produced without generating any error. Lua errors could occur inside
+-- 	internal code of LibDeflate if dictionary is corrupted.
+-- @return the decompressed data if success, nil if fails.
+-- @return number of unprocessed bytes if success (This could happen if bytes
+-- 	are appended after the compressed data, if you think that's an error, feel
+-- 	free to check if this is zero.)
+-- 	Undefined value if fails.
+function LibDeflate:DecompressDeflateWithDict(str, dictionary)
+	if type(str) ~= "string" then
+		error(("Usage: LibDeflate:DecompressZlibWithDict(str): "
+			.."'str' - string expected got '%s'."):format(type(str)), 2)
+	end
+	local dict_valid, dict_err = IsValidDictionary(dictionary)
+	if not dict_valid then
+		error(("Usage: LibDeflate:DecompressZlibWithDict(str, dictionary): "
+			..dict_err), 2)
+	end
+	return DecompressDeflateInternal(str, dictionary)
+end
+
+--[[--
 	Calculate the Adlder32 value of the string.
+	@param str the input string to calcuate its Adler32 checksum
+	@return integer. The adler32 checksum.
 	@see RFC1950 page 9 for reference code of Adler32
 	This function is loop unrolled by better performance.
 
@@ -2250,57 +2413,6 @@ function LibDeflate:Adler32(str)
 		i = i + 1
 	end
 	return b*65536+a
-end
-
-function LibDeflate:CreateDictionary(str)
-	assert(type(str) == "string")
-	local strlen = #str
-	assert(strlen > 0)
-	assert(strlen <= 32768, tostring(strlen))
-	local dictionary = {}
-	dictionary.string_table = {}
-	dictionary.strlen = strlen
-	dictionary.hash_tables = {}
-	local string_table = dictionary.string_table
-	local hash_tables = dictionary.hash_tables
-	string_table[1] = string_byte(str, 1, 1)
-	string_table[2] = string_byte(str, 2, 2)
-	if strlen >= 3 then
-		local i = 1
-		local hash = string_table[1]*256+string_table[2]
-		while i <= strlen - 2 - 3 do
-			local x1, x2, x3, x4 = string_byte(str, i+2, i+5)
-			string_table[i+2] = x1
-			string_table[i+3] = x2
-			string_table[i+4] = x3
-			string_table[i+5] = x4
-			hash = (hash*256+x1)%16777216
-			local t = hash_tables[hash] or {i-strlen}
-			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
-			i =  i + 1
-			hash = (hash*256+x2)%16777216
-			t = hash_tables[hash] or {i-strlen}
-			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
-			i =  i + 1
-			hash = (hash*256+x3)%16777216
-			t = hash_tables[hash] or {i-strlen}
-			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
-			i =  i + 1
-			hash = (hash*256+x4)%16777216
-			t = hash_tables[hash] or {i-strlen}
-			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
-			i = i + 1
-		end
-		while i <= strlen - 2 do
-			local x = string_byte(str, i+2)
-			string_table[i+2] = x
-			hash = (hash*256+x)%16777216
-			local t = hash_tables[hash] or {i-strlen}
-			if #t == 1 then hash_tables[hash] = t else t[#t+1] = i-strlen end
-			i = i + 1
-		end
-	end
-	return dictionary
 end
 
 -- Calculate the huffman code of fixed block

@@ -370,8 +370,8 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 			local decompress_memory_leaked, decompress_memory_used,
 				decompress_time, decompress_data,
 				decompress_unprocess_byte =
-				MemCheckAndBenchmarkFunc(LibDeflate.Decompress, LibDeflate
-				, compress_data)
+				MemCheckAndBenchmarkFunc(LibDeflate.DecompressDeflate
+					, LibDeflate, compress_data)
 			lu.assertEquals(decompress_unprocess_byte, 0
 				, "Unprocessed bytes after LibDeflate decompression "
 					..tostring(decompress_unprocess_byte))
@@ -433,7 +433,7 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 			local dict_decompress_memory_leaked, dict_decompress_memory_used
 				, dict_decompress_time, dict_decompress_data
 				, dict_decompress_unprocess_byte =
-				MemCheckAndBenchmarkFunc(LibDeflate.DecompressDeflate
+				MemCheckAndBenchmarkFunc(LibDeflate.DecompressDeflateWithDict
 				, LibDeflate, dict_compress_data, dictionary32768)
 			lu.assertEquals(dict_decompress_unprocess_byte, 0
 			, "Unprocessed bytes after LibDeflate zlib decompression "
@@ -528,7 +528,8 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 				if not unique_compress[stdout] then
 					unique_compress[stdout] = true
 					uniques_compress_count = uniques_compress_count + 1
-					local decompressData = LibDeflate:Decompress(stdout)
+					local decompressData =
+						LibDeflate:DecompressDeflate(stdout)
 					AssertLongStringEqual(decompressData, origin,
 						("My decompress fail to decompress "
 						.."at zdeflate level: %s, strategy: %s")
@@ -1522,7 +1523,7 @@ TestInternals = {}
 
 	function TestInternals:TestSimpleRandom()
 		local compress_empty = LibDeflate:Compress("")
-		lu.assertEquals(LibDeflate:Decompress(compress_empty)
+		lu.assertEquals(LibDeflate:DecompressDeflate(compress_empty)
 			, "", "My decompress does not match origin for empty string.")
 		for _=1, 50 do
 			local tmp
@@ -1532,7 +1533,7 @@ TestInternals = {}
 			local expected = str
 			local compress = LibDeflate:Compress(str, level)
 			local _, actual = pcall(function() return LibDeflate
-				:Decompress(compress) end)
+				:DecompressDeflate(compress) end)
 			if expected ~= actual then
 				local strDumpFile = io.open("fail_random.tmp", "wb")
 				if (strDumpFile) then
@@ -1717,7 +1718,8 @@ TestPresetDict = {}
 		local compress = LibDeflate:Compress(fileData, 7, dictionary)
 		print(compress:len())
 
-		local decompressed = LibDeflate:Decompress(compress, dictionary)
+		local decompressed =
+			LibDeflate:DecompressDeflateWithDict(compress, dictionary)
 		print(fileData:len(), decompressed:len())
 		AssertLongStringEqual(fileData, decompressed)
 	end
@@ -1834,7 +1836,7 @@ DecompressInfinite = {}
 		for _=1, 100000 do
 			local len = math.random(0, 10000)
 			local str = GetRandomString(len)
-			LibDeflate:Decompress(str)
+			LibDeflate:DecompressDeflate(str)
 			LibDeflate:DecompressZlib(str)
 			print(StringForPrint(StringToHex(str)))
 		end
