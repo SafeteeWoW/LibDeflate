@@ -676,14 +676,12 @@ local function CreateWriter()
 		total_bitlen = total_bitlen + bitlen
 		-- Only bulk to buffer every 4 bytes. This is quicker.
 		if cache_bitlen >= 32 then
-			buffer[buffer_size+1] = _byte_to_char[cache % 256]
-			buffer[buffer_size+2] =
-				_byte_to_char[((cache-cache%256)/256 % 256)]
-			buffer[buffer_size+3] =
-				_byte_to_char[((cache-cache%65536)/65536 % 256)]
-			buffer[buffer_size+4] =
-				_byte_to_char[((cache-cache%16777216)/16777216 % 256)]
-			buffer_size = buffer_size + 4
+			buffer_size = buffer_size + 1
+			buffer[buffer_size] =
+				_byte_to_char[cache % 256]
+				.._byte_to_char[((cache-cache%256)/256 % 256)]
+				.._byte_to_char[((cache-cache%65536)/65536 % 256)]
+				.._byte_to_char[((cache-cache%16777216)/16777216 % 256)]
 			local rshift_mask = _pow2[32 - cache_bitlen + bitlen]
 			cache = (value - value%rshift_mask)/rshift_mask
 			cache_bitlen = cache_bitlen - 32

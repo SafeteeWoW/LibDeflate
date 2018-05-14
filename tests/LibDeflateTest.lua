@@ -28,6 +28,15 @@ local table_concat = table.concat
 
 math.randomseed(0) -- I don't like true random tests that I cant 100% reproduce.
 
+local _pow2 = {}
+do
+	local pow = 1
+	for i = 0, 32 do
+		_pow2[i] = pow
+		pow = pow * 2
+	end
+end
+
 local _byte0 = string_byte("0", 1)
 local _byte9 = string_byte("9", 1)
 local _byteA = string_byte("A", 1)
@@ -338,6 +347,20 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 				, origin, configs)
 			lu.assertTrue(0 <= compress_pad_bitlen and compress_pad_bitlen < 8
 				,"Unexpected compress pad bitlen")
+
+			-- put random value in the padding bits,
+			-- to see if it is still okay to decompress
+			if compress_pad_bitlen > 0 then
+				local len = #compress_data
+				local last_byte = string.byte(compress_data, len)
+				local random_last_byte = math.random(0, 255)
+				random_last_byte = random_last_byte 
+					- random_last_byte % _pow2[8-compress_pad_bitlen]
+				random_last_byte = random_last_byte 
+					+ last_byte % _pow2[8-compress_pad_bitlen]
+				compress_data = compress_data:sub(1, len-1)
+					..string.char(random_last_byte)
+			end
 			WriteToFile(compress_filename, compress_data)
 
 			-- Test encoding
@@ -488,10 +511,11 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 					, origin:len()),
 				("CompressDeflate:   Size : %d B,\tTime: %.3f ms, "
 					.."Speed: %.0f KB/s, Memory: %d B,"
-					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
+					.." Mem/input: %.2f, (memleak: %d B) padbit: %d\n"):format(
 					compress_data:len(), compress_time
 					, compress_data:len()/compress_time, compress_memory_used
 					, compress_memory_used/origin:len(), compress_memory_leaked
+					, compress_pad_bitlen
 				),
 				("DecompressDeflate: cRatio: %.2f,\tTime: %.3f ms"
 					..", Speed: %.0f KB/s, Memory: %d B,"
@@ -504,12 +528,13 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 				),
 				("CompDeflateDict:   Size : %d B,\tTime: %.3f ms, "
 					.."Speed: %.0f KB/s, Memory: %d B,"
-					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
+					.." Mem/input: %.2f, (memleak: %d B), padbit: %d\n")
+					:format(
 					dict_compress_data:len(), dict_compress_time
 					, dict_compress_data:len()/dict_compress_time
 					, dict_compress_memory_used
 					, dict_compress_memory_used/origin:len()
-					, dict_compress_memory_leaked
+					, dict_compress_memory_leaked, dict_pad_bitlen
 				),
 				("DecompDeflateDict: cRatio : %.2f,\tTime: %.3f ms"
 					..", Speed: %.0f KB/s, Memory: %d B,"
@@ -1618,6 +1643,64 @@ TestDecompress = {}
 			HexToString("1 34 43 cb bc")..("\000"):rep(17202), nil)
 	end
 
+	function TestDecompress:Test2ndReturn()
+		for i = 1, 10 do
+			local str = GetLimitedRandomString(math.random(100, 300))
+			local compressed = LibDeflate:CompressDeflate(str)
+			local extra_len = math.random(1, 10)
+			local extra = GetLimitedRandomString(extra_len)
+			compressed = compressed..extra
+			local decompressed, unprocessed =
+				LibDeflate:DecompressDeflate(compressed)
+			AssertLongStringEqual(str, decompressed)
+			lu.assertEquals(unprocessed, extra_len)
+		end
+		for i = 1, 10 do
+			local dict_str = GetLimitedRandomString(math.random(100, 300))
+			local dict = LibDeflate:CreateDictionary(dict_str)
+			-- Don't compute adler32 in runtime in real program.
+			-- adler32 value should be hardcoded as a constant.
+			LibDeflate:VerifyDictionary(dict_str, dict
+				, LibDeflate:Adler32(dict_str))
+			local str = GetLimitedRandomString(math.random(100, 300))
+			local compressed = LibDeflate:CompressDeflateWithDict(str, dict)
+			local extra_len = math.random(1, 10)
+			local extra = GetLimitedRandomString(extra_len)
+			compressed = compressed..extra
+			local decompressed, unprocessed =
+				LibDeflate:DecompressDeflateWithDict(compressed, dict)
+			AssertLongStringEqual(str, decompressed)
+			lu.assertEquals(unprocessed, extra_len)
+		end
+		for i = 1, 10 do
+			local str = GetLimitedRandomString(math.random(100, 300))
+			local compressed = LibDeflate:CompressZlib(str)
+			local extra_len = math.random(1, 10)
+			local extra = GetLimitedRandomString(extra_len)
+			compressed = compressed..extra
+			local decompressed, unprocessed =
+				LibDeflate:DecompressZlib(compressed)
+			AssertLongStringEqual(str, decompressed)
+			lu.assertEquals(unprocessed, extra_len)
+		end
+		for i = 1, 10 do
+			local dict_str = GetLimitedRandomString(math.random(100, 300))
+			local dict = LibDeflate:CreateDictionary(dict_str)
+			-- Don't compute adler32 in runtime in real program.
+			-- adler32 value should be hardcoded as a constant.
+			LibDeflate:VerifyDictionary(dict_str, dict
+				, LibDeflate:Adler32(dict_str))
+			local str = GetLimitedRandomString(math.random(100, 300))
+			local compressed = LibDeflate:CompressZlibWithDict(str, dict)
+			local extra_len = math.random(1, 10)
+			local extra = GetLimitedRandomString(extra_len)
+			compressed = compressed..extra
+			local decompressed, unprocessed =
+				LibDeflate:DecompressZlibWithDict(compressed, dict)
+			AssertLongStringEqual(str, decompressed)
+			lu.assertEquals(unprocessed, extra_len)
+		end
+	end
 	-- TODO test decompress with dict
 	function TestDecompress:TestDecompressWithDict()
 		--lu.equals(HexToString("78 9c 63 00 00 00 01 00 01")
