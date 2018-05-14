@@ -162,7 +162,7 @@ local table_sort = table.sort
 local tostring = tostring
 local type = type
 
--- Converts i to 2^i, (0<=i<=31)
+-- Converts i to 2^i, (0<=i<=32)
 -- This is used to implement bit left shift and bit right shift.
 -- "x >> y" in C:   "(x-x%_pow2[y])/_pow2[y]" in Lua
 -- "x << y" in C:   "x*_pow2[y]" in Lua
@@ -275,7 +275,7 @@ end
 
 do
 	local pow = 1
-	for i = 0, 31 do
+	for i = 0, 32 do
 		_pow2[i] = pow
 		pow = pow * 2
 	end
@@ -641,18 +641,30 @@ function LibDeflate:VerifyDictionary(str, dictionary, adler32)
 	dictionary.adler32 = adler32
 end
 
+-- partial flush to save memory
+local _FLUSH_MODE_MEMORY_CLEANUP = 0
+-- full flush with partial bytes
+local _FLUSH_MODE_OUTPUT = 1
+-- write bytes to get to byte boundary
+local _FLUSH_MODE_BYTE_BOUNDARY = 2
+-- no flush, just get num of bits written so far
+local _FLUSH_MODE_NO_FLUSH = 3
+
 --[[
 	Create an empty writer to easily write stuffs as the unit of bits.
 	Return values:
 	1. WriteBits(code, bitlen):
 	2. WriteString(str):
-	3. Flush(full_flush):
+	3. Flush(mode):
 --]]
 local function CreateWriter()
 	local buffer_size = 0
 	local cache = 0
 	local cache_bitlen = 0
+	local total_bitlen = 0
 	local buffer = {}
+	-- When buffer is big enough, flush into result_buffer to save memory.
+	local result_buffer = {}
 
 	-- Write bits with value "value" and bit length of "bitlen" into writer.
 	-- @param value: The value being written
@@ -661,7 +673,7 @@ local function CreateWriter()
 	local function WriteBits(value, bitlen)
 		cache = cache + value * _pow2[cache_bitlen]
 		cache_bitlen = cache_bitlen + bitlen
-
+		total_bitlen = total_bitlen + bitlen
 		-- Only bulk to buffer every 4 bytes. This is quicker.
 		if cache_bitlen >= 32 then
 			buffer[buffer_size+1] = _byte_to_char[cache % 256]
@@ -690,43 +702,57 @@ local function CreateWriter()
 		cache_bitlen = 0
 		buffer_size = buffer_size + 1
 		buffer[buffer_size] = str
+		total_bitlen = total_bitlen + #str*8
 	end
 
 	-- Flush current stuffs in the writer and return it.
 	-- This operation will free most of the memory.
-	-- @param full_flush If true, also flush "cache" into the output,
-	-- with last byte padded with some bits if cache_bitlen is
-	-- not a multiple of 8.
-	-- @return All stuffs in the writer, excluding bits in "cache"
-	-- variable, as a string.
-	-- @return The number of bits stored in the writer.
-	local function FlushWriter(full_flush)
-		local ret
-		if full_flush then
+	-- @param mode See the descrtion of the constant and the source code.
+	-- @return The total number of bits stored in the writer right now.
+	-- for byte boundary mode, it includes the padding bits.
+	-- for output mode, it does not include padding bits.
+	-- @return Return the outputs if mode is output.
+	local function FlushWriter(mode)
+		if mode == _FLUSH_MODE_NO_FLUSH then
+			return total_bitlen
+		end
+
+		if mode == _FLUSH_MODE_OUTPUT
+			or mode == _FLUSH_MODE_BYTE_BOUNDARY then
 			-- Full flush, also output cache.
 			-- Need to pad some bits if cache_bitlen is not multiple of 8.
-			local padding_bitlen = (8-cache_bitlen%8)%8
+			local padding_bitlen = (8 - cache_bitlen % 8) % 8
+
 			if cache_bitlen > 0 then
+				-- padding with all 1 bits, mainly because "\000" is not
+				-- good to be tranmitted. I do this so "\000" is a little bit
+				-- less frequent.
+				cache = cache - _pow2[cache_bitlen]
+					+ _pow2[cache_bitlen+padding_bitlen]
 				for _ = 1, cache_bitlen, 8 do
 					buffer_size = buffer_size + 1
-					buffer[buffer_size] = string_char(cache % 256)
+					buffer[buffer_size] = _byte_to_char[cache % 256]
 					cache = (cache-cache%256)/256
 				end
+
 				cache = 0
 				cache_bitlen = 0
 			end
-			ret = table_concat(buffer)
-			buffer = {ret}
-			buffer_size = 1
-			return ret, (#ret*8)-padding_bitlen
+			if mode == _FLUSH_MODE_BYTE_BOUNDARY then
+				total_bitlen = total_bitlen + padding_bitlen
+				return total_bitlen
+			end
+		end
+
+		local flushed = table_concat(buffer)
+		buffer = {}
+		buffer_size = 0
+		result_buffer[#result_buffer+1] = flushed
+
+		if mode == _FLUSH_MODE_MEMORY_CLEANUP then
+			return total_bitlen
 		else
-			-- Not full flush
-			-- This operation is mainly used to free memory,
-			-- not for return value.
-			ret = table_concat(buffer)
-			buffer = {ret}
-			buffer_size = 1
-			return ret, (#ret*8)+cache_bitlen
+			return total_bitlen, table_concat(result_buffer)
 		end
 	end
 
@@ -1686,7 +1712,7 @@ end
 -- 64KB, then memory cleanup won't happen.
 -- This function determines whether to use store/fixed/dynamic blocks by
 -- calculating the block size of each block type and chooses the smallest one.
-local function Deflate(configs, WriteBits, WriteString, Flush, str
+local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 	, dictionary)
 	local string_table = {}
 	local hash_tables = {}
@@ -1694,7 +1720,7 @@ local function Deflate(configs, WriteBits, WriteString, Flush, str
 	local block_start
 	local block_end
 	local bitlen_written
-	local total_bitlen = select(2, Flush())
+	local total_bitlen = FlushWriter(_FLUSH_MODE_NO_FLUSH)
 	local strlen = #str
 	local offset
 
@@ -1784,9 +1810,15 @@ local function Deflate(configs, WriteBits, WriteString, Flush, str
 			total_bitlen = total_bitlen + dynamic_block_bitlen
 		end
 
-		bitlen_written = select(2, Flush())
+		if is_last_block then
+			bitlen_written = FlushWriter(_FLUSH_MODE_NO_FLUSH)
+		else
+			bitlen_written = FlushWriter(_FLUSH_MODE_MEMORY_CLEANUP)
+		end
+
 		if bitlen_written ~= total_bitlen then
-			error(("sth wrong in the bitSize calculation, %d %d")
+			error(("LibDeflate Developer error: "
+				.."sth wrong in the block bitlen calculation, %d %d")
 				:format(bitlen_written, total_bitlen))
 		end
 
@@ -1836,10 +1868,11 @@ end
 -- @see LibDeflate:CompressDeflate(str, configs)
 -- @see LibDeflate:CompressDeflateWithDict(str, dictionary, configs)
 local function CompressDeflateInternal(str, dictionary, configs)
-	local WriteBits, WriteString, Flush = CreateWriter()
-	Deflate(configs, WriteBits, WriteString, Flush, str, dictionary)
-	local result, totalBitSize = Flush(true)
-	return result, totalBitSize
+	local WriteBits, WriteString, FlushWriter = CreateWriter()
+	Deflate(configs, WriteBits, WriteString, FlushWriter, str, dictionary)
+	local total_bitlen, result = FlushWriter(_FLUSH_MODE_OUTPUT)
+	local padding_bitlen = (8-total_bitlen%8)%8
+	return result, padding_bitlen
 end
 
 --- Compress using raw deflate format.
@@ -1879,7 +1912,7 @@ end
 -- @see LibDeflate:CompressZlib(str, configs)
 -- @see LibDeflate:CompressZlibWithDict(str, dictionary, configs)
 local function CompressZlibInternal(str, dictionary, configs)
-	local WriteBits, WriteString, Flush = CreateWriter()
+	local WriteBits, WriteString, FlushWriter = CreateWriter()
 
 	local CM = 8 -- Compression method
 	local CINFO = 7 --Window Size = 32K
@@ -1911,8 +1944,8 @@ local function CompressZlibInternal(str, dictionary, configs)
 		WriteBits(byte0, 8)
 	end
 
-	Deflate(configs, WriteBits, WriteString, Flush, str, dictionary)
-	Flush(true)
+	Deflate(configs, WriteBits, WriteString, FlushWriter, str, dictionary)
+	FlushWriter(_FLUSH_MODE_BYTE_BOUNDARY)
 
 	local adler32 = LibDeflate:Adler32(str)
 
@@ -1929,9 +1962,9 @@ local function CompressZlibInternal(str, dictionary, configs)
 	WriteBits(byte1, 8)
 	WriteBits(byte2, 8)
 	WriteBits(byte3, 8)
-	local result, totalBitSize = Flush(true)
-
-	return result, totalBitSize
+	local total_bitlen, result = FlushWriter(_FLUSH_MODE_OUTPUT)
+	local padding_bitlen = (8-total_bitlen%8)%8
+	return result, padding_bitlen
 end
 
 --- Compress using zlib format.
@@ -2147,7 +2180,7 @@ local function CreateDecompressState(str, dictionary)
 		SkipToByteBoundary = SkipToByteBoundary,
 		buffer_size = 0,
 		buffer = {},
-		result = "",
+		result_buffer = {},
 		dictionary = dictionary,
 	}
 	return state
@@ -2217,9 +2250,10 @@ local function DecodeUntilEndOfBlock(state, lcodes_huffman_bitlens
 	, lcodes_huffman_symbols, lcodes_huffman_min_bitlen
 	, dcodes_huffman_bitlens, dcodes_huffman_symbols
 	, dcodes_huffman_min_bitlen)
-	local buffer, buffer_size, ReadBits, Decode, ReaderBitlenLeft, result =
+	local buffer, buffer_size, ReadBits, Decode, ReaderBitlenLeft
+		, result_buffer =
 		state.buffer, state.buffer_size, state.ReadBits, state.Decode
-		, state.ReaderBitlenLeft, state.result
+		, state.ReaderBitlenLeft, state.result_buffer
 	local dictionary = state.dictionary
 	local dict_string_table
 	local dict_strlen
@@ -2290,7 +2324,8 @@ local function DecodeUntilEndOfBlock(state, lcodes_huffman_bitlens
 		end
 
 		if buffer_size >= 65536 then
-			result = result..table_concat(buffer, "", 1, 32768)
+			result_buffer[#result_buffer+1] =
+				table_concat(buffer, "", 1, 32768)
 			for i=32769, buffer_size do
 				buffer[i-32768] = buffer[i]
 			end
@@ -2302,7 +2337,6 @@ local function DecodeUntilEndOfBlock(state, lcodes_huffman_bitlens
 	until symbol == 256
 
 	state.buffer_size = buffer_size
-	state.result = result
 
 	return 0
 end
@@ -2312,9 +2346,9 @@ end
 -- @return 0 if success, other value if fails.
 local function DecompressStoreBlock(state)
 	local buffer, buffer_size, ReadBits, ReadBytes, ReaderBitlenLeft
-		, SkipToByteBoundary, result =
+		, SkipToByteBoundary, result_buffer =
 		state.buffer, state.buffer_size, state.ReadBits, state.ReadBytes
-		, state.ReaderBitlenLeft, state.SkipToByteBoundary, state.result
+		, state.ReaderBitlenLeft, state.SkipToByteBoundary, state.result_buffer
 
 	SkipToByteBoundary()
 	local bytelen = ReadBits(16)
@@ -2342,14 +2376,13 @@ local function DecompressStoreBlock(state)
 
 	-- memory clean up when there are enough bytes in the buffer.
 	if buffer_size >= 65536 then
-		result = result..table_concat(buffer, "", 1, 32768)
+		result_buffer[#result_buffer+1] = table_concat(buffer, "", 1, 32768)
 		for i=32769, buffer_size do
 			buffer[i-32768] = buffer[i]
 		end
 		buffer_size = buffer_size - 32768
 		buffer[buffer_size+1] = nil
 	end
-	state.result = result
 	state.buffer_size = buffer_size
 	return 0
 end
@@ -2508,9 +2541,10 @@ local function Inflate(state)
 		end
 	end
 
-	state.result = state.result..table_concat(state.buffer, ""
-		, 1, state.buffer_size)
-	return state.result
+	state.result_buffer[#state.result_buffer+1] =
+		table_concat(state.buffer, "", 1, state.buffer_size)
+	local result = table_concat(state.result_buffer)
+	return result
 end
 
 -- @see LibDeflate:DecompressDeflate(str)
@@ -2524,7 +2558,7 @@ local function DecompressDeflateInternal(str, dictionary)
 
 	local bitlen_left = state.ReaderBitlenLeft()
 	local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
-	return state.result, bytelen_left
+	return result, bytelen_left
 end
 
 -- @see LibDeflate:DecompressZlib(str)
@@ -2596,7 +2630,7 @@ local function DecompressZlibInternal(str, dictionary)
 
 	local bitlen_left = state.ReaderBitlenLeft()
 	local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
-	return state.result, bytelen_left
+	return result, bytelen_left
 end
 
 --- Decompress a raw deflate compressed data

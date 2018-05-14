@@ -333,11 +333,11 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 			local configs = {level = level}
 			-- Compress by raw deflate
 			local compress_memory_leaked, compress_memory_used, compress_time,
-				compress_data, compress_bitlen =
+				compress_data, compress_pad_bitlen =
 				MemCheckAndBenchmarkFunc(LibDeflate.CompressDeflate, LibDeflate
 				, origin, configs)
-			lu.assertEquals(math.ceil(compress_bitlen/8), compress_data:len(),
-				"Unexpected compress bit size")
+			lu.assertTrue(0 <= compress_pad_bitlen and compress_pad_bitlen < 8
+				,"Unexpected compress pad bitlen")
 			WriteToFile(compress_filename, compress_data)
 
 			-- Test encoding
@@ -387,11 +387,11 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 
 			-- Compress with Zlib header instead of raw Deflate
 			local zlib_compress_memory_leaked, zlib_compress_memory_used
-				, zlib_compress_time, zlib_compress_data, zlib_compress_bitlen =
+				, zlib_compress_time, zlib_compress_data, zlib_pad_bitlen =
 				MemCheckAndBenchmarkFunc(LibDeflate.CompressZlib, LibDeflate
 				, origin, configs)
-			lu.assertEquals(zlib_compress_bitlen/8, zlib_compress_data:len()
-				, "Unexpected zlib bit size")
+			lu.assertEquals(zlib_pad_bitlen, 0
+				,"Unexpected zlib compress pad bitlen")
 
 			WriteToFile(zlib_compress_filename, zlib_compress_data)
 			local zlib_returned_status_zdeflate, zlibStdout_zdeflate
@@ -420,13 +420,12 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 			-- raw deflate compress with preset dictionary.
 			local dict_compress_memory_leaked, dict_compress_memory_used
 				, dict_compress_time,
-				dict_compress_data, dict_compress_bitlen =
+				dict_compress_data, dict_pad_bitlen =
 				MemCheckAndBenchmarkFunc(LibDeflate.CompressDeflateWithDict
 				, LibDeflate, origin, dictionary32768, configs)
 			WriteToFile(dict_compress_filename, dict_compress_data)
-			lu.assertEquals(math.ceil(dict_compress_bitlen/8)
-				, dict_compress_data:len(),
-				"Unexpected compress bit size")
+			lu.assertTrue(0 <= dict_pad_bitlen and dict_pad_bitlen <8
+				, "Unexpected dict pad bitlen")
 			local dict_returned_status_zdeflate, dict_stdout_zdeflate
 				, dict_stderr_zdeflate =
 				RunProgram("zdeflate -d --dict tests/dictionary32768.txt <"
@@ -449,17 +448,15 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 			, "Unprocessed bytes after LibDeflate zlib decompression "
 					..tostring(dict_decompress_unprocess_byte))
 
-
 			-- zlib compress with preset dictionary.
 			local zdict_compress_memory_leaked, zdict_compress_memory_used
 				, zdict_compress_time,
-				zdict_compress_data, zdict_compress_bitlen =
+				zdict_compress_data, zdict_pad_bitlen =
 				MemCheckAndBenchmarkFunc(LibDeflate.CompressZlibWithDict
 				, LibDeflate, origin, dictionary32768, configs)
 			WriteToFile(zdict_compress_filename, zdict_compress_data)
-			lu.assertEquals(math.ceil(zdict_compress_bitlen/8)
-				, zdict_compress_data:len(),
-				"Unexpected compress bit size")
+			lu.assertEquals(zdict_pad_bitlen, 0
+				, "Unexpected zdict pad bit size")
 			local zdict_returned_status_zdeflate, zdict_stdout_zdeflate
 				, zdict_stderr_zdeflate =
 				RunProgram("zdeflate -d --zlib --dict "
@@ -1319,7 +1316,7 @@ TestThirdPartyBig = {}
 	end
 	function TestThirdPartyBig:TestHtml_x_4()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/html_x_4"
-			, {1,2,3,4,5})
+			, {1,2,3,4})
 	end
 	function TestThirdPartyBig:TestLcet10()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/lcet10.txt"
@@ -1345,7 +1342,7 @@ TestThirdPartyBig = {}
 TestWoWData = {}
 	function TestWoWData:TestWarlockWeakAuras()
 		CheckCompressAndDecompressFile("tests/data/warlockWeakAuras.txt"
-			, {1,2,3,4,5,6,7})
+			, {1,2,3,4,5})
 	end
 
 TestDecompress = {}
@@ -1670,8 +1667,7 @@ TestInternals = {}
 	end
 
 	function TestInternals:TestSimpleRandom()
-		for _=1, 50 do
-			local tmp
+		for _=1, 30 do
 			local strlen = math.random(0, 1000)
 			local str = GetLimitedRandomString(strlen)
 			local level = (math.random() < 0.5) and (math.random(1, 8)) or nil
@@ -1844,14 +1840,14 @@ TestPresetDict = {}
 	end
 
 	function TestPresetDict:TestCheckDictRandomComplete()
-		for _ = 1, 100 do
+		for _ = 1, 30 do
 			local dict_str = GetRandomStringComplete(256+math.random(0, 1000))
 			CreateAndCheckDictionary(dict_str)
 		end
 	end
 
 	function TestPresetDict:TestLength3String()
-		for _ = 1, 30 do
+		for _ = 1, 20 do
 			local dict_str = GetRandomString(3)
 			local dictionary = CreateAndCheckDictionary(dict_str)
 			local str = dict_str
@@ -1896,7 +1892,7 @@ TestPresetDict = {}
 	function TestPresetDict:TestIsEqualAdler32()
 		local IsEqualAdler32 = LibDeflate.internals.IsEqualAdler32
 		lu.assertTrue(IsEqualAdler32(4072834167, -222133129))
-		for _ = 1, 100 do
+		for _ = 1, 30 do
 			local rand = math.random(0, 1000)
 			lu.assertTrue(IsEqualAdler32(rand, rand))
 			lu.assertTrue(IsEqualAdler32(rand+256*256*256*256, rand))
@@ -2009,7 +2005,6 @@ CodeCoverage = {}
 	AddAllToCoverageTest(TestPresetDict)
 	AddToCoverageTest(TestThirdPartyBig, "TestUrls10K")
 	AddToCoverageTest(TestThirdPartyBig, "Testptt5")
-	AddToCoverageTest(TestThirdPartyBig, "TestKennedyXls")
 	AddToCoverageTest(TestThirdPartyBig, "TestGeoProtodata")
 	AddToCoverageTest(TestThirdPartyBig, "TestMapsdatazrh")
 
