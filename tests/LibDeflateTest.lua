@@ -15,7 +15,6 @@ local collectgarbage = collectgarbage
 local os = os
 local type = type
 local io = io
-local ipairs = ipairs
 local print = print
 local tostring = tostring
 local string_char = string.char
@@ -136,10 +135,6 @@ local function GetFileData(filename)
 	return str
 end
 
-local function GetFileSize(filename)
-	return GetFileData(filename):len()
-end
-
 local function WriteToFile(filename, data)
 	local f = io.open(filename, "wb")
 	lu.assertNotNil(f, ("Cannot open the file: %s, with mode: %s")
@@ -170,11 +165,10 @@ local function GetRandomString(strlen)
 end
 
 -- Get a random string with at least 256 len which includes all characters
-local function GetRandomStringComplete(strlen)
-	assert(strlen >= 256)
+local function GetRandomStringUniqueChars(strlen)
 	local taken = {}
 	local tmp = {}
-	for i=0, 255 do
+	for i=0, (strlen < 256) and strlen-1 or 255 do
 		local rand = math.random(1, 256-i)
 		local count = 0
 		for j=0, 255 do
@@ -188,17 +182,21 @@ local function GetRandomStringComplete(strlen)
 			end
 		end
 	end
-	for _=1, strlen-256 do
-		table_insert(tmp, math.random(1, #tmp+1)
-			, string_char(math.random(0, 255)))
+	if strlen > 256 then
+		for _=1, strlen-256 do
+			table_insert(tmp, math.random(1, #tmp+1)
+				, string_char(math.random(0, 255)))
+		end
 	end
 	return table_concat(tmp)
 end
-assert(GetRandomStringComplete(256):len() == 256)
-assert(GetRandomStringComplete(500):len() == 500)
+assert(GetRandomStringUniqueChars(3):len() == 3)
+assert(GetRandomStringUniqueChars(255):len() == 255)
+assert(GetRandomStringUniqueChars(256):len() == 256)
+assert(GetRandomStringUniqueChars(500):len() == 500)
 do
 	local taken = {}
-	local str = GetRandomStringComplete(256)
+	local str = GetRandomStringUniqueChars(256)
 	for i=1, 256 do
 		local byte = string_byte(str, i, i)
 		assert(not taken[byte])
@@ -354,9 +352,9 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 				local len = #compress_data
 				local last_byte = string.byte(compress_data, len)
 				local random_last_byte = math.random(0, 255)
-				random_last_byte = random_last_byte 
+				random_last_byte = random_last_byte
 					- random_last_byte % _pow2[8-compress_pad_bitlen]
-				random_last_byte = random_last_byte 
+				random_last_byte = random_last_byte
 					+ last_byte % _pow2[8-compress_pad_bitlen]
 				compress_data = compress_data:sub(1, len-1)
 					..string.char(random_last_byte)
@@ -379,7 +377,7 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 					"EncodeForChatChannel fails")
 
 			-- Try decompress by puff
-			local returnedStatus_puff, stdout_puff, stderr_puff =
+			local returnedStatus_puff, stdout_puff=
 				RunProgram("puff -w ", compress_filename, decompress_filename)
 			lu.assertEquals(returnedStatus_puff, 0
 				, "puff decompression failed with code "..returnedStatus_puff)
@@ -680,10 +678,10 @@ local function CheckDecompressIncludingError(compress, decompress, is_zlib)
 		inputFile:write(compress)
 		inputFile:flush()
 		inputFile:close()
-		local returned_status_puff, stdout_puff, stderr_puff =
+		local returned_status_puff, stdout_puff =
 			RunProgram("puff -w", input_filename
 			, input_filename..".decompress")
-		local returnedStatus_zdeflate, stdout_zdeflate, stderr_zdeflate =
+		local returnedStatus_zdeflate, stdout_zdeflate =
 			RunProgram(is_zlib and "zdeflate --zlib -d <"
 			or "zdeflate -d <", input_filename, input_filename..".decompress")
 		if not d then
@@ -776,9 +774,20 @@ local function CreateAndCheckDictionary(str)
 	return dictionary
 end
 
+local function CreateDictionaryWithoutVerify(str)
+	local dict = LibDeflate:CreateDictionary(str)
+	-- Dont do this in the real program.
+	-- Dont calculate adler32 in runtime. Do hardcode it as constant.
+	-- This is just for test purpose
+	LibDeflate:VerifyDictionary(str, dict, LibDeflate:Adler32(str))
+	return dict
+end
+
 -- the input dictionary must can make compressed data smaller.
-local function CheckDictEffectiveness(str, dictionary, dict_str)
-	local configs = {level = 9}
+-- otherwise, set dontCheckEffectivenss
+local function CheckDictEffectiveness(str, dictionary, dict_str
+	, dontCheckEffectiveness)
+	local configs = {level = 7}
 	local compress_dict = LibDeflate:CompressDeflateWithDict(str
 		, dictionary, configs)
 	local decompressed_dict =
@@ -792,11 +801,13 @@ local function CheckDictEffectiveness(str, dictionary, dict_str)
 
 	local byte_smaller_with_dict = compress_no_dict:len()
 		- compress_dict:len()
-	lu.assertTrue(byte_smaller_with_dict > 0)
-	print((">>> %d bytes smaller with (deflate dict) "..
-		"DICT: %s, DATA: %s")
-		:format(byte_smaller_with_dict
-			, StringForPrint(dict_str), StringForPrint(str)))
+	if not dontCheckEffectiveness then
+		lu.assertTrue(byte_smaller_with_dict > 0)
+		print((">>> %d bytes smaller with (deflate dict) "..
+			"DICT: %s, DATA: %s")
+			:format(byte_smaller_with_dict
+				, StringForPrint(dict_str), StringForPrint(str)))
+	end
 
 	local zlib_compress_dict = LibDeflate:
 		CompressZlibWithDict(str, dictionary, configs)
@@ -813,10 +824,12 @@ local function CheckDictEffectiveness(str, dictionary, dict_str)
 		- zlib_compress_dict:len()
 	-- for zlib with dict, 4 extra bytes needed to store
 	-- the adler32 of dictionary
-	lu.assertTrue(zlib_byte_smaller_with_dict > -4)
-	print((">>> %d bytes smaller with (zlib dict) DICT: %s DATA: %s")
-		:format(zlib_byte_smaller_with_dict
-		, StringForPrint(dict_str), StringForPrint(str)))
+	if not dontCheckEffectiveness then
+		lu.assertTrue(zlib_byte_smaller_with_dict > -4)
+		print((">>> %d bytes smaller with (zlib dict) DICT: %s DATA: %s")
+			:format(zlib_byte_smaller_with_dict
+			, StringForPrint(dict_str), StringForPrint(str)))
+	end
 
 	return compress_dict, compress_no_dict
 		, zlib_compress_dict, zlib_compress_no_dict
@@ -1367,7 +1380,7 @@ TestThirdPartyBig = {}
 TestWoWData = {}
 	function TestWoWData:TestWarlockWeakAuras()
 		CheckCompressAndDecompressFile("tests/data/warlockWeakAuras.txt"
-			, {1,2,3,4,5})
+			, {1,2,3,4})
 	end
 
 TestDecompress = {}
@@ -1538,8 +1551,9 @@ TestDecompress = {}
 			HexToString("4 0 24 49 0"), nil) -- Invalid bit length repeat
 		CheckDecompressIncludingError(
 			HexToString("4 0 24 e9 ff ff"), nil) -- Invalid bit length repeat
+		-- Invalid code: missing end of block
 		CheckDecompressIncludingError(
-			HexToString("4 0 24 e9 ff 6d"), nil) -- Invalid code: missing end of block
+			HexToString("4 0 24 e9 ff 6d"), nil)
 		-- Invalid literal/lengths set
 		CheckDecompressIncludingError(
 			HexToString("4 80 49 92 24 49 92 24 71 ff ff 93 11 0"), nil)
@@ -1644,7 +1658,7 @@ TestDecompress = {}
 	end
 
 	function TestDecompress:Test2ndReturn()
-		for i = 1, 10 do
+		for _ = 1, 10 do
 			local str = GetLimitedRandomString(math.random(100, 300))
 			local compressed = LibDeflate:CompressDeflate(str)
 			local extra_len = math.random(1, 10)
@@ -1655,13 +1669,9 @@ TestDecompress = {}
 			AssertLongStringEqual(str, decompressed)
 			lu.assertEquals(unprocessed, extra_len)
 		end
-		for i = 1, 10 do
-			local dict_str = GetLimitedRandomString(math.random(100, 300))
-			local dict = LibDeflate:CreateDictionary(dict_str)
-			-- Don't compute adler32 in runtime in real program.
-			-- adler32 value should be hardcoded as a constant.
-			LibDeflate:VerifyDictionary(dict_str, dict
-				, LibDeflate:Adler32(dict_str))
+		for _ = 1, 10 do
+			local dict = CreateDictionaryWithoutVerify(
+				GetLimitedRandomString(math.random(100, 300)))
 			local str = GetLimitedRandomString(math.random(100, 300))
 			local compressed = LibDeflate:CompressDeflateWithDict(str, dict)
 			local extra_len = math.random(1, 10)
@@ -1672,7 +1682,7 @@ TestDecompress = {}
 			AssertLongStringEqual(str, decompressed)
 			lu.assertEquals(unprocessed, extra_len)
 		end
-		for i = 1, 10 do
+		for _ = 1, 10 do
 			local str = GetLimitedRandomString(math.random(100, 300))
 			local compressed = LibDeflate:CompressZlib(str)
 			local extra_len = math.random(1, 10)
@@ -1683,13 +1693,9 @@ TestDecompress = {}
 			AssertLongStringEqual(str, decompressed)
 			lu.assertEquals(unprocessed, extra_len)
 		end
-		for i = 1, 10 do
-			local dict_str = GetLimitedRandomString(math.random(100, 300))
-			local dict = LibDeflate:CreateDictionary(dict_str)
-			-- Don't compute adler32 in runtime in real program.
-			-- adler32 value should be hardcoded as a constant.
-			LibDeflate:VerifyDictionary(dict_str, dict
-				, LibDeflate:Adler32(dict_str))
+		for _ = 1, 10 do
+			local dict = CreateDictionaryWithoutVerify(
+				GetLimitedRandomString(math.random(100, 300)))
 			local str = GetLimitedRandomString(math.random(100, 300))
 			local compressed = LibDeflate:CompressZlibWithDict(str, dict)
 			local extra_len = math.random(1, 10)
@@ -1701,9 +1707,44 @@ TestDecompress = {}
 			lu.assertEquals(unprocessed, extra_len)
 		end
 	end
-	-- TODO test decompress with dict
+	-- TODO test decompress with raw deflate dict
 	function TestDecompress:TestDecompressWithDict()
-		--lu.equals(HexToString("78 9c 63 00 00 00 01 00 01")
+		local dict = CreateDictionaryWithoutVerify("abcdefgh")
+		-- local adler32 = LibDeflate:Adler32("abcdefgh")
+		-- adler == 0x0e000325
+		lu.assertEquals(LibDeflate:DecompressZlib(
+			HexToString("78 9c 63 00 00 00 01 00 01")), "\000")
+		-- The data needs dictionary, but calling
+		-- DecompressZlib instead of DecompressZlibWithDict
+		lu.assertEquals(LibDeflate:DecompressZlib(
+			HexToString("78 bb 63 00 00 00 01 00 01")), nil)
+		lu.assertEquals(LibDeflate:DecompressZlib(
+			HexToString("78 bb 25 03 00 0e 63 00 00 00 01 00 01")), nil)
+		lu.assertEquals(LibDeflate:DecompressZlibWithDict(
+			HexToString("78 bb 0e 00 03 25 63 00 00 00 01 00 01"), dict)
+			, "\000")
+
+		-- input ends before dictionary adler32 is read.
+		lu.assertEquals(LibDeflate:DecompressZlibWithDict(
+			HexToString("78 bb 0e 00 03 "), dict)
+			, nil)
+		lu.assertEquals(LibDeflate:DecompressZlibWithDict(
+			HexToString("78 bb 0e 00 "), dict)
+			, nil)
+		lu.assertEquals(LibDeflate:DecompressZlibWithDict(
+			HexToString("78 bb 0e "), dict)
+			, nil)
+		lu.assertEquals(LibDeflate:DecompressZlibWithDict(
+			HexToString("78 bb "), dict)
+			, nil)
+
+		-- adler32 does not match
+		lu.assertEquals(LibDeflate:DecompressZlibWithDict(
+			HexToString("78 bb 25 03 00 0e 63 00 00 00 01 00 01"), dict)
+			, nil)
+		lu.assertEquals(LibDeflate:DecompressZlibWithDict(
+			HexToString("78 bb 0e 00 03 26 63 00 00 00 01 00 01"), dict)
+			, nil)
 	end
 
 TestInternals = {}
@@ -1915,32 +1956,72 @@ TestInternals = {}
 	end
 
 TestPresetDict = {}
-	function TestPresetDict:TestBasic()
+	function TestPresetDict:TestExample()
 		local dict_str = [[ilvl::::::::110:::1517:3336:3528:3337]]
 		local dictionary = CreateAndCheckDictionary(dict_str)
 		local fileData = GetFileData("tests/data/itemStrings.txt")
 		CheckDictEffectiveness(fileData, dictionary, dict_str)
 	end
 
+	function TestPresetDict:TestEmptyString()
+		for i=1, 16 do
+			local dict_str = GetRandomString(i)
+			local dictionary = CreateAndCheckDictionary(dict_str)
+			CheckDictEffectiveness("", dictionary, dict_str, true)
+		end
+	end
+
 	function TestPresetDict:TestCheckDictRandomComplete()
-		for _ = 1, 30 do
-			local dict_str = GetRandomStringComplete(256+math.random(0, 1000))
+		for _ = 1, 10 do
+			local dict_str = GetRandomStringUniqueChars(
+				256+math.random(0, 1000))
 			CreateAndCheckDictionary(dict_str)
 		end
 	end
 
-	function TestPresetDict:TestLength3String()
-		for _ = 1, 20 do
-			local dict_str = GetRandomString(3)
+	-- Test if last two bytes in the dictionary are hashed, with dict size 3.
+	function TestPresetDict:TestLength3String1()
+		for _ = 1, 10 do
+			local dict_str = GetRandomStringUniqueChars(3)
 			local dictionary = CreateAndCheckDictionary(dict_str)
 			local str = dict_str
-			CheckDictEffectiveness(str, dictionary, dict_str)
+			local compress_dict =
+				CheckDictEffectiveness(str, dictionary, dict_str)
+			lu.assertTrue(compress_dict:len() <= 4)
+		end
+	end
+
+	-- Test if last two bytes in the dictionary is hashed, with dict size 2
+	function TestPresetDict:TestLength3String2()
+		for _ = 1, 10 do
+			local str = GetRandomStringUniqueChars(3)
+			local dict_str = str:sub(1, 2)
+			str = str:sub(3, 3)..str
+			local dictionary = CreateAndCheckDictionary(dict_str)
+
+			local compress_dict =
+				CheckDictEffectiveness(str, dictionary, dict_str)
+			lu.assertTrue(compress_dict:len() <= 5)
+		end
+	end
+
+	-- Test if last two bytes in the dictionary is hashed, with dict size 1
+	function TestPresetDict:TestLength3String3()
+		for _ = 1, 10 do
+			local str = GetRandomStringUniqueChars(3)
+			local dict_str = str:sub(1, 1)
+			str = str:sub(2, 3)..str
+			local dictionary = CreateAndCheckDictionary(dict_str)
+
+			local compress_dict =
+				CheckDictEffectiveness(str, dictionary, dict_str)
+			lu.assertTrue(compress_dict:len() <= 6)
 		end
 	end
 
 	function TestPresetDict:TestLength257String()
 		for _ = 1, 10 do
-			local dict_str = GetRandomStringComplete(257)
+			local dict_str = GetRandomStringUniqueChars(257)
 			local dictionary = CreateAndCheckDictionary(dict_str)
 			local str = dict_str
 			local compress_dict =
@@ -1951,7 +2032,7 @@ TestPresetDict = {}
 
 	function TestPresetDict:TestLength258String()
 		for _ = 1, 10 do
-			local dict_str = GetRandomStringComplete(258)
+			local dict_str = GetRandomStringUniqueChars(258)
 			local dictionary = CreateAndCheckDictionary(dict_str)
 			local str = dict_str
 			local compress_dict =
@@ -1963,7 +2044,7 @@ TestPresetDict = {}
 	-- TODO: test dictionary in the middle
 	function TestPresetDict:TestLength259String()
 		for _ = 1, 10 do
-			local dict_str = GetRandomStringComplete(259)
+			local dict_str = GetRandomStringUniqueChars(259)
 			local dictionary = CreateAndCheckDictionary(dict_str)
 			local str = dict_str
 			local compress_dict =
@@ -1998,7 +2079,7 @@ TestEncode = {}
 
 	function TestEncode:TestRandom()
 		for _ = 0, 200 do
-			local str = GetRandomStringComplete(math.random(256, 1000))
+			local str = GetRandomStringUniqueChars(math.random(256, 1000))
 			CheckEncodeAndDecode(str)
 		end
 	end
@@ -2018,48 +2099,48 @@ TestEncode = {}
 		.."\78\118"
 		local escapedChars = "\145\54"
 		for _ = 1, 10 do
-			local str = GetRandomStringComplete(1000)
+			local str = GetRandomStringUniqueChars(1000)
 			CheckEncodeAndDecode(str, reservedChars, escapedChars)
 		end
 	end
 	function TestEncode:TestRandomComplete1()
-		for _ = 0, 200 do
-			local tmp = GetRandomStringComplete(256)
+		for _ = 0, 30 do
+			local tmp = GetRandomStringUniqueChars(256)
 			local reserved = tmp:sub(1, 10)
 			local escaped = tmp:sub(11, 11)
 			local mapped = tmp:sub(12, 12+math.random(0, 9))
-			local str = GetRandomStringComplete(math.random(256, 1000))
+			local str = GetRandomStringUniqueChars(math.random(256, 1000))
 			CheckEncodeAndDecode(str, reserved, escaped, mapped)
 		end
 	end
 
 	function TestEncode:TestRandomComplete2()
-		for _ = 0, 200 do
-			local tmp = GetRandomStringComplete(256)
+		for _ = 0, 30 do
+			local tmp = GetRandomStringUniqueChars(256)
 			local reserved = tmp:sub(1, 10)
 			local escaped = tmp:sub(11, 11)
-			local str = GetRandomStringComplete(math.random(256, 1000))
+			local str = GetRandomStringUniqueChars(math.random(256, 1000))
 			CheckEncodeAndDecode(str, reserved, escaped)
 		end
 	end
 
 	function TestEncode:TestRandomComplete3()
-		for _ = 0, 200 do
-			local tmp = GetRandomStringComplete(256)
+		for _ = 0, 30 do
+			local tmp = GetRandomStringUniqueChars(256)
 			local reserved = tmp:sub(1, 130) -- Over half chractrs escaped
 			local escaped = tmp:sub(131, 132) -- Two escape char needed.
 			local mapped = tmp:sub(133, 133+math.random(0, 20))
-			local str = GetRandomStringComplete(math.random(256, 1000))
+			local str = GetRandomStringUniqueChars(math.random(256, 1000))
 			CheckEncodeAndDecode(str, reserved, escaped, mapped)
 		end
 	end
 
 	function TestEncode:TestRandomComplete4()
-		for _ = 0, 200 do
-			local tmp = GetRandomStringComplete(256)
+		for _ = 0, 30 do
+			local tmp = GetRandomStringUniqueChars(256)
 			local reserved = tmp:sub(1, 130) -- Over half chractrs escaped
 			local escaped = tmp:sub(131, 132) -- Two escape char needed.
-			local str = GetRandomStringComplete(math.random(256, 1000))
+			local str = GetRandomStringUniqueChars(math.random(256, 1000))
 			CheckEncodeAndDecode(str, reserved, escaped)
 		end
 	end
@@ -2081,15 +2162,12 @@ end
 CodeCoverage = {}
 	AddAllToCoverageTest(TestBasicStrings)
 	AddAllToCoverageTest(TestMyData)
-	AddAllToCoverageTest(TestWoWData)
 	AddAllToCoverageTest(TestDecompress)
 	AddAllToCoverageTest(TestInternals)
 	AddAllToCoverageTest(TestEncode)
 	AddAllToCoverageTest(TestPresetDict)
-	AddToCoverageTest(TestThirdPartyBig, "TestUrls10K")
 	AddToCoverageTest(TestThirdPartyBig, "Testptt5")
 	AddToCoverageTest(TestThirdPartyBig, "TestGeoProtodata")
-	AddToCoverageTest(TestThirdPartyBig, "TestMapsdatazrh")
 
 -- Check if decompress can give any lua error for random string.
 DecompressInfinite = {}
@@ -2098,8 +2176,12 @@ DecompressInfinite = {}
 		for _=1, 100000 do
 			local len = math.random(0, 10000)
 			local str = GetRandomString(len)
+			local dict = CreateDictionaryWithoutVerify(
+				GetRandomString(math.random(1, 32768)))
 			LibDeflate:DecompressDeflate(str)
 			LibDeflate:DecompressZlib(str)
+			LibDeflate:DecompressDeflateWithDict(str, dict)
+			LibDeflate:DecompressZlibWithDict(str, dict)
 			print(StringForPrint(StringToHex(str)))
 		end
 	end

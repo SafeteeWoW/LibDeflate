@@ -152,7 +152,6 @@ end
 local assert = assert
 local error = error
 local pairs = pairs
-local select = select
 local string_byte = string.byte
 local string_char = string.char
 local string_gsub = string.gsub
