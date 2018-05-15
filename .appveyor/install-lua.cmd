@@ -33,7 +33,7 @@ echo Setting up Lua 5.1.4 ...
 if NOT EXIST "lua514\lua5.1.exe" (
     @echo on
     echo Fetching Lua v5.1.4 from internet
-    curl -fLsS -o %ZIP_514% http://sourceforge.net/projects/luabinaries/files/%VER_514%/Tools%%20Executables/%ZIP_514%/download
+    curl --retry 10 --retry-delay 10 -fLsS -o %ZIP_514% http://sourceforge.net/projects/luabinaries/files/%VER_514%/Tools%%20Executables/%ZIP_514%/download
     unzip -d lua514 %ZIP_514%
 ) else (
     echo Using cached version of Lua v5.1.4
@@ -49,7 +49,7 @@ echo Setting up Lua 5.1.5 ...
 if NOT EXIST "lua515\lua5.1.exe" (
     @echo on
     echo Fetching Lua v5.1.5 from internet
-    curl -fLsS -o %ZIP_515% http://sourceforge.net/projects/luabinaries/files/%VER_515%/Tools%%20Executables/%ZIP_515%/download
+    curl --retry 10 --retry-delay 10 -fLsS -o %ZIP_515% http://sourceforge.net/projects/luabinaries/files/%VER_515%/Tools%%20Executables/%ZIP_515%/download
     unzip -d lua515 %ZIP_515%
 ) else (
     echo Using cached version of Lua v5.1.5
@@ -65,7 +65,7 @@ echo Setting up Lua 5.2.4 ...
 if NOT EXIST "lua524\lua524.exe" (
     @echo on
     echo Fetching Lua v5.2.4 from internet
-    curl -fLsS -o %ZIP_524% http://sourceforge.net/projects/luabinaries/files/%VER_524%/Tools%%20Executables/%ZIP_524%/download
+    curl --retry 10 --retry-delay 10 -fLsS -o %ZIP_524% http://sourceforge.net/projects/luabinaries/files/%VER_524%/Tools%%20Executables/%ZIP_524%/download
     unzip -d lua524 %ZIP_524%
 ) else (
     echo Using cached version of Lua v5.2.4
@@ -82,7 +82,7 @@ echo Setting up Lua 5.3.3 ...
 if NOT EXIST "lua533\lua533.exe" (
     @echo on
     echo Fetching Lua v5.3.3 from internet
-    curl -fLsS -o %ZIP_533% http://sourceforge.net/projects/luabinaries/files/%VER_533%/Tools%%20Executables/%ZIP_533%/download
+    curl --retry 10 --retry-delay 10 -fLsS -o %ZIP_533% http://sourceforge.net/projects/luabinaries/files/%VER_533%/Tools%%20Executables/%ZIP_533%/download
     unzip -d lua533 %ZIP_533%
 ) else (
     echo Using cached version of Lua v5.3.3
@@ -115,5 +115,5 @@ set LUA=luajit21\luajit.exe
 :AFTERLUA
 choco install luarocks
 set LUA_PATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\share\lua\5.1\?.lua;C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\share\lua\5.1\?\init.lua;%APPVEYOR_BUILD_FOLDER%\?.lua;%LUA_PATH%
-set LUA_CPATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\lib\lua\5.1\?.dll;%APPVEYOR_BUILD_FOLDER%\?.dll;%LUA_CPATH%
+set LUA_CPATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\lib\lua\5.1\?.dll;%APPVEYOR_BUILD_FOLDER%\?.dll;%LUA_CPATH%;
 luarocks install luaunit

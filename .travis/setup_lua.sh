@@ -73,7 +73,7 @@ else # -e $LUA_HOME_DIR
 
         echo ">> Downloading LuaJIT"
         if [ "$LUA" == "luajit" ]; then
-            curl --location https://github.com/LuaJIT/LuaJIT/archive/v$LUAJIT_VERSION.tar.gz | tar xz;
+            curl --retry 10 --retry-delay 10 --location https://github.com/LuaJIT/LuaJIT/archive/v$LUAJIT_VERSION.tar.gz | tar xz;
         else
             git clone https://github.com/LuaJIT/LuaJIT.git $LUAJIT_BASE;
         fi
@@ -93,16 +93,16 @@ else # -e $LUA_HOME_DIR
 
         echo "Downloading $LUA"
         if [ "$LUA" == "lua5.1.4" ]; then
-            curl http://www.lua.org/ftp/lua-5.1.4.tar.gz | tar xz
+            curl --retry 10 --retry-delay 10 http://www.lua.org/ftp/lua-5.1.4.tar.gz | tar xz
             cd lua-5.1.4;
         elif [ "$LUA" == "lua5.1.5" ]; then
-            curl http://www.lua.org/ftp/lua-5.1.5.tar.gz | tar xz
+            curl --retry 10 --retry-delay 10 http://www.lua.org/ftp/lua-5.1.5.tar.gz | tar xz
             cd lua-5.1.5;
         elif [ "$LUA" == "lua5.2.4" ]; then
-            curl http://www.lua.org/ftp/lua-5.2.4.tar.gz | tar xz
+            curl --retry 10 --retry-delay 10 http://www.lua.org/ftp/lua-5.2.4.tar.gz | tar xz
             cd lua-5.2.4;
         elif [ "$LUA" == "lua5.3.3" ]; then
-            curl http://www.lua.org/ftp/lua-5.3.3.tar.gz | tar xz
+            curl --retry 10 --retry-delay 10 http://www.lua.org/ftp/lua-5.3.3.tar.gz | tar xz
             cd lua-5.3.3;
         fi
 
@@ -162,7 +162,7 @@ else # -e $LUA_HOME_DIR
 
     echo ">> Downloading luarocks"
     LUAROCKS_BASE=luarocks-$LUAROCKS
-    curl --location http://luarocks.org/releases/$LUAROCKS_BASE.tar.gz | tar xz
+    curl --retry 10 --retry-delay 10 --location http://luarocks.org/releases/$LUAROCKS_BASE.tar.gz | tar xz
 
     cd $LUAROCKS_BASE
 
