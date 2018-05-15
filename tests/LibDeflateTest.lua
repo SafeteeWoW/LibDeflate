@@ -3,6 +3,7 @@
 -- Don't run two tests at the same time.
 
 local LibDeflate = require("LibDeflate")
+
 -- UnitTests
 local lu = require("luaunit")
 
@@ -36,57 +37,69 @@ do
 	end
 end
 
-local _byte0 = string_byte("0", 1)
-local _byte9 = string_byte("9", 1)
-local _byteA = string_byte("A", 1)
-local _byteF = string_byte("F", 1)
-local _bytea = string_byte("a", 1)
-local _bytef = string_byte("f", 1)
-local function HexToString(str)
-	local t = {}
-	local val = 1
-	for i=1, str:len()+1 do
-		local b = string_byte(str, i, i) or -1
-		if b >= _byte0 and b <= _byte9 then
-			val = val*16 + b - _byte0
-		elseif b >= _byteA and b <= _byteF then
-			val = val*16 + b - _byteA + 10
-		elseif b >= _bytea and b <= _bytef then
-			val = val*16 + b - _bytea + 10
-		elseif val ~= 1 and val < 32 then  -- one digit followed by delimiter
-            val = val + 240                 -- make it look like two digits
-		end
-		if val > 255 then
-			t[#t+1] = string_char(val % 256)
-			val = 1
-		end
+local function GetTableSize(t)
+	local size = 0
+	for _, _ in pairs(t) do
+		size = size + 1
 	end
-	return table.concat(t)
+	return size
 end
-assert(HexToString("f") == string_char(15))
-assert(HexToString("1f") == string_char(31))
-assert(HexToString("1f 2") == string_char(31)..string_char(2))
-assert(HexToString("1f 22") == string_char(31)..string_char(34))
-assert(HexToString("F") == string_char(15))
-assert(HexToString("1F") == string_char(31))
-assert(HexToString("1F 2") == string_char(31)..string_char(2))
-assert(HexToString("1F 22") == string_char(31)..string_char(34))
 
-assert(HexToString("a") == string_char(10))
-assert(HexToString("1a") == string_char(26))
-assert(HexToString("1a 90") == string_char(26)..string_char(144))
-assert(HexToString("1a 9") == string_char(26)..string_char(9))
-assert(HexToString("A") == string_char(10))
-assert(HexToString("1A") == string_char(26))
-assert(HexToString("1A 09") == string_char(26)..string_char(9))
-assert(HexToString("1A 00") == string_char(26)..string_char(0))
+local HexToString
+local HalfByteToHex
+do
+	local _byte0 = string_byte("0", 1)
+	local _byte9 = string_byte("9", 1)
+	local _byteA = string_byte("A", 1)
+	local _byteF = string_byte("F", 1)
+	local _bytea = string_byte("a", 1)
+	local _bytef = string_byte("f", 1)
+	function HexToString(str)
+		local t = {}
+		local val = 1
+		for i=1, str:len()+1 do
+			local b = string_byte(str, i, i) or -1
+			if b >= _byte0 and b <= _byte9 then
+				val = val*16 + b - _byte0
+			elseif b >= _byteA and b <= _byteF then
+				val = val*16 + b - _byteA + 10
+			elseif b >= _bytea and b <= _bytef then
+				val = val*16 + b - _bytea + 10
+			elseif val ~= 1 and val < 32 then  -- one digit followed by delimiter
+	            val = val + 240                 -- make it look like two digits
+			end
+			if val > 255 then
+				t[#t+1] = string_char(val % 256)
+				val = 1
+			end
+		end
+		return table.concat(t)
+	end
+	assert(HexToString("f") == string_char(15))
+	assert(HexToString("1f") == string_char(31))
+	assert(HexToString("1f 2") == string_char(31)..string_char(2))
+	assert(HexToString("1f 22") == string_char(31)..string_char(34))
+	assert(HexToString("F") == string_char(15))
+	assert(HexToString("1F") == string_char(31))
+	assert(HexToString("1F 2") == string_char(31)..string_char(2))
+	assert(HexToString("1F 22") == string_char(31)..string_char(34))
 
-local function HalfByteToHex(half_byte)
-	assert (half_byte >= 0 and half_byte < 16)
-	if half_byte < 10 then
-		return string_char(_byte0 + half_byte)
-	else
-		return string_char(_bytea + half_byte-10)
+	assert(HexToString("a") == string_char(10))
+	assert(HexToString("1a") == string_char(26))
+	assert(HexToString("1a 90") == string_char(26)..string_char(144))
+	assert(HexToString("1a 9") == string_char(26)..string_char(9))
+	assert(HexToString("A") == string_char(10))
+	assert(HexToString("1A") == string_char(26))
+	assert(HexToString("1A 09") == string_char(26)..string_char(9))
+	assert(HexToString("1A 00") == string_char(26)..string_char(0))
+
+	function HalfByteToHex(half_byte)
+		assert (half_byte >= 0 and half_byte < 16)
+		if half_byte < 10 then
+			return string_char(_byte0 + half_byte)
+		else
+			return string_char(_bytea + half_byte-10)
+		end
 	end
 end
 
@@ -1955,6 +1968,45 @@ TestInternals = {}
 		end
 	end
 
+	function TestInternals:TestByteTo6bitChar()
+		local _byte_to_6bit_char = LibDeflate.internals._byte_to_6bit_char
+		lu.assertNotNil(_byte_to_6bit_char)
+		lu.assertEquals(GetTableSize(_byte_to_6bit_char), 64)
+		for i= 0, 25 do
+			lu.assertEquals(_byte_to_6bit_char[i],
+				string.char(string.byte("a", 1) + i))
+		end
+		for i = 26, 51 do
+			lu.assertEquals(_byte_to_6bit_char[i],
+				string.char(string.byte("A", 1) + i - 26))
+		end
+		for i = 52, 61 do
+			lu.assertEquals(_byte_to_6bit_char[i],
+				string.char(string.byte("0", 1) + i - 52))
+		end
+		lu.assertEquals(_byte_to_6bit_char[62], "(")
+		lu.assertEquals(_byte_to_6bit_char[63], ")")
+	end
+
+	function TestInternals:Test6BitToByte()
+		local _6bit_to_byte = LibDeflate.internals._6bit_to_byte
+		lu.assertNotNil(_6bit_to_byte)
+		lu.assertEquals(GetTableSize(_6bit_to_byte), 64)
+		for i = string.byte("a", 1), string.byte("z", 1) do
+			lu.assertEquals(_6bit_to_byte[i], i - string.byte("a", 1))
+		end
+		for i = string.byte("A", 1), string.byte("Z", 1) do
+			lu.assertEquals(_6bit_to_byte[i], i - string.byte("A", 1) + 26)
+		end
+		for i = string.byte("0", 1), string.byte("9", 1) do
+			lu.assertEquals(_6bit_to_byte[i], i - string.byte("0", 1) + 52)
+		end
+		lu.assertEquals(_6bit_to_byte[string.byte("(", 1)], 62)
+		lu.assertEquals(_6bit_to_byte[string.byte(")", 1)], 63)
+	end
+
+
+
 TestPresetDict = {}
 	function TestPresetDict:TestExample()
 		local dict_str = [[ilvl::::::::110:::1517:3336:3528:3337]]
@@ -2142,6 +2194,37 @@ TestEncode = {}
 			local escaped = tmp:sub(131, 132) -- Two escape char needed.
 			local str = GetRandomStringUniqueChars(math.random(256, 1000))
 			CheckEncodeAndDecode(str, reserved, escaped)
+		end
+	end
+
+	local function CheckEncode6Bit(str)
+		AssertLongStringEqual(LibDeflate:Decode6Bit(LibDeflate:Encode6Bit(str))
+			, str)
+	end
+	function TestEncode:Test6Bit()
+		CheckEncode6Bit("")
+		for i = 0, 255 do
+			CheckEncode6Bit(string.char(i))
+		end
+		for _ = 1, 200 do
+			CheckEncode6Bit(GetRandomStringUniqueChars(math.random(100, 1000)))
+		end
+		local encode_6bit_weakaura =
+			GetFileData("tests/data/reference/encode_6bit_weakaura.txt")
+		local decode_6bit_weakaura =
+			GetFileData("tests/data/reference/decode_6bit_weakaura.txt")
+			print(LibDeflate:Encode6Bit(decode_6bit_weakaura):len())
+		AssertLongStringEqual(LibDeflate:Encode6Bit(decode_6bit_weakaura)
+			, encode_6bit_weakaura)
+	end
+	function TestEncode:Test6BitErrors()
+		for i = 0, 255 do
+			lu.assertNil(LibDeflate:Decode6Bit(string.char(i)))
+		end
+		for i = 0, 255 do
+			if not LibDeflate.internals._6bit_to_byte[i] then
+				lu.assertNil(LibDeflate:Decode6Bit((string.char(i)):rep(100)))
+			end
 		end
 	end
 

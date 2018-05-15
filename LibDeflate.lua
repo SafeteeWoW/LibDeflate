@@ -2999,12 +2999,140 @@ function LibDeflate:DecodeForWoWChatChannel(str)
 	return _chat_channel_encode_table:Decode(str)
 end
 
+-- Credits to WeakAuras <https://github.com/WeakAuras/WeakAuras2>,
+-- and Galmok (galmok@gmail.com) for the 6 bit encoding algorithm.
+-- The result of encoding will be 25% larger than the
+-- origin string, but every single byte of the encoding result will be
+-- printable characters as the following.
+local _byte_to_6bit_char = {
+	[0]="a", "b", "c", "d", "e", "f", "g", "h",
+	"i", "j", "k", "l", "m", "n", "o", "p",
+	"q", "r", "s", "t", "u", "v", "w", "x",
+	"y", "z", "A", "B", "C", "D", "E", "F",
+	"G", "H", "I", "J", "K", "L", "M", "N",
+	"O", "P", "Q", "R", "S", "T", "U", "V",
+	"W", "X", "Y", "Z", "0", "1", "2", "3",
+	"4", "5", "6", "7", "8", "9", "(", ")"
+}
+
+local _6bit_to_byte = {
+	[97]=0,[98]=1,[99]=2,[100]=3,[101]=4,[102]=5,[103]=6,[104]=7,
+	[105]=8,[106]=9,[107]=10,[108]=11,[109]=12,[110]=13,[111]=14,[112]=15,
+	[113]=16,[114]=17,[115]=18,[116]=19,[117]=20,[118]=21,[119]=22,[120]=23,
+	[121]=24,[122]=25,[65]=26,[66]=27,[67]=28,[68]=29,[69]=30,[70]=31,
+	[71]=32,[72]=33,[73]=34,[74]=35,[75]=36,[76]=37,[77]=38,[78]=39,
+	[79]=40,[80]=41,[81]=42,[82]=43,[83]=44,[84]=45,[85]=46,[86]=47,
+	[87]=48,[88]=49,[89]=50,[90]=51,[48]=52,[49]=53,[50]=54,[51]=55,
+	[52]=56,[53]=57,[54]=58,[55]=59,[56]=60,[57]=61,[40]=62,[41]=63,
+}
+
+--- Encode the string by converting every 6 bits to a byte(8bits).
+-- The result will be 25% larger than the origin string. However, every single
+-- byte of the encoded string will be one of 64 printable ASCII characters.
+-- (64 = 26 lowercase + 26 uppercase + 10 digits + left paren + right paren)
+-- @param str The string to be encoded
+-- @return The encoded string
+function LibDeflate:Encode6Bit(str)
+	local strlen = #str
+	local strlenMinus2 = strlen - 2
+	local i = 1
+	local buffer = {}
+	local buffer_size = 0
+	while i <= strlenMinus2 do
+		local x1, x2, x3 = string_byte(str, i, i+2)
+		i = i + 3
+		local cache = x1+x2*256+x3*65536
+		local b1 = cache % 64
+		cache = (cache - b1) / 64
+		local b2 = cache % 64
+		cache = (cache - b2) / 64
+		local b3 = cache % 64
+		local b4 = (cache - b3) / 64
+		buffer_size = buffer_size + 1
+		buffer[buffer_size] =
+			_byte_to_6bit_char[b1].._byte_to_6bit_char[b2]
+			.._byte_to_6bit_char[b3].._byte_to_6bit_char[b4]
+	end
+
+	local cache = 0
+	local cache_bitlen = 0
+	while i <= strlen do
+		local x = string_byte(str, i, i)
+		cache = cache + x * _pow2[cache_bitlen]
+		cache_bitlen = cache_bitlen + 8
+		i = i + 1
+	end
+	while cache_bitlen > 0 do
+		local bit6 = cache % 64
+		buffer_size = buffer_size + 1
+		buffer[buffer_size] = _byte_to_6bit_char[bit6]
+		cache = (cache - bit6) / 64
+		cache_bitlen = cache_bitlen - 6
+	end
+
+	return table_concat(buffer)
+end
+
+--- Decode the string produced by LibDeflate:Encode6Bit()
+-- @param str The string to be decoded
+-- @return The decoded string if success. nil if fails.
+function LibDeflate:Decode6Bit(str)
+	local strlen = #str
+	if strlen == 1 then
+		return nil
+	end
+	local strlenMinus3 = strlen - 3
+	local i = 1
+	local buffer = {}
+	local buffer_size = 0
+	while i <= strlenMinus3 do
+		local x1, x2, x3, x4 = string_byte(str, i, i+3)
+		x1 = _6bit_to_byte[x1]
+		x2 = _6bit_to_byte[x2]
+		x3 = _6bit_to_byte[x3]
+		x4 = _6bit_to_byte[x4]
+		if not (x1 and x2 and x3 and x4) then
+			return nil
+		end
+		i = i + 4
+		local cache = x1+x2*64+x3*4096+x4*262144
+		local b1 = cache % 256
+		cache = (cache - b1) / 256
+		local b2 = cache % 256
+		local b3 = (cache - b2) / 256
+		buffer_size = buffer_size + 1
+		buffer[buffer_size] =
+			_byte_to_char[b1].._byte_to_char[b2].._byte_to_char[b3]
+	end
+
+	local cache  = 0
+	local cache_bitlen = 0
+	while i <= strlen do
+		local x = string_byte(str, i, i)
+		cache = cache + _6bit_to_byte[x] * _pow2[cache_bitlen]
+		cache_bitlen = cache_bitlen + 6
+		i = i + 1
+	end
+
+	while cache_bitlen >= 8 do
+		local byte = cache % 256
+		buffer_size = buffer_size + 1
+		buffer[buffer_size] = _byte_to_char[byte]
+		cache = (cache - byte) / 256
+		cache_bitlen = cache_bitlen - 8
+	end
+
+	return table_concat(buffer)
+end
+
 -- For test. Don't use the functions in this table for real application.
 -- Stuffs in this table is subject to change.
 LibDeflate.internals = {
 	LoadStringToTable = LoadStringToTable,
 	IsValidDictionary = IsValidDictionary,
 	IsEqualAdler32 = IsEqualAdler32,
+	_byte_to_6bit_char = _byte_to_6bit_char,
+	_6bit_to_byte = _6bit_to_byte,
 }
 
 return LibDeflate
