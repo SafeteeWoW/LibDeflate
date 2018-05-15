@@ -326,7 +326,7 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 
 	do
 		if levels == "all" then
-			levels = {1,2,3,4,5,6,7,8,9}
+			levels = {0,1,2,3,4,5,6,7,8,9}
 		else
 			levels = levels or {1}
 		end
@@ -1323,77 +1323,77 @@ TestThirdPartyBig = {}
 	end
 	function TestThirdPartyBig:TestHTML()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/html"
-			, {1,2,3,4,5})
+			, {0,1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestPaper100kPdf()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/paper-100k.pdf"
-			, {1,2,3,4,5})
+			, {0,1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestGeoProtodata()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/geo.protodata"
-			, {1,2,3,4,5})
+			, {0,1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestFireworksJpeg()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/fireworks.jpeg"
-			, {1,2,3,4,5})
+			, {0,1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestAsyoulik()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/asyoulik.txt"
-			, {1,2,3,4,5})
+			, {0,1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestCompressedRepeated()
 		CheckCompressAndDecompressFile(
-			"tests/data/3rdparty/compressed_repeated", {1,2,3,4,5})
+			"tests/data/3rdparty/compressed_repeated", {0,1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestAlice29()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/alice29.txt"
-			, {1,2,3,4,5})
+			, {0,1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestQuickfox_repeated()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/quickfox_repeated"
-			, {1,2,3,4,5})
+			, {0,1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestKppknGtb()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/kppkn.gtb"
-			, {1,2,3,4,5})
+			, {0,1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestZeros()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/zeros"
-			, {1,2,3,4,5})
+			, {0,1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestMapsdatazrh()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/mapsdatazrh"
-			, {1,2,3,4,5})
+			, {0,1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestHtml_x_4()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/html_x_4"
-			, {1,2,3,4})
+			, {0,1,2,3,4})
 	end
 	function TestThirdPartyBig:TestLcet10()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/lcet10.txt"
-			, {1,2,3,4,5})
+			, {0,1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestPlrabn12()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/plrabn12.txt"
-			, {1,2,3,4,5})
+			, {0,1,2,3,4,5})
 	end
 	function TestThirdPartyBig:TestUrls10K()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/urls.10K"
-			, {1,2,3,4,5})
+			, {0,1,2,3,4,5})
 	end
 	function TestThirdPartyBig:Testptt5()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/ptt5"
-			, {1,2,3,4})
+			, {0,1,2,3,4})
 	end
 	function TestThirdPartyBig:TestKennedyXls()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/kennedy.xls"
-			, {1,2,3,4})
+			, {0,1,2,3,4})
 	end
 
 TestWoWData = {}
 	function TestWoWData:TestWarlockWeakAuras()
 		CheckCompressAndDecompressFile("tests/data/warlockWeakAuras.txt"
-			, {1,2,3,4})
+			, {0,1,2,3,4})
 	end
 
 TestDecompress = {}

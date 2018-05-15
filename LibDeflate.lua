@@ -105,6 +105,7 @@
 		Number. The maximum number of hash chains we look.
 --]]
 local _compression_level_configs = {
+	[0] = {false, nil, 0, 0, 0}, -- level 0, no compression
 	[1] = {false, nil, 4, 8, 4}, -- level 1, similar to zlib level 1
 	[2] = {false, nil, 5, 18, 8}, -- level 2, similar to zlib level 2
 	[3] = {false, nil, 6, 32, 32},	-- level 3, similar to zlib level 3
@@ -1757,40 +1758,58 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 			is_last_block = false
 		end
 
-		-- GetBlockLZ77 needs block_start to block_end+3 to be loaded.
-		LoadStringToTable(str, string_table, block_start, block_end + 3, offset)
-
-		if block_start == 1 and dictionary then
-			local dict_string_table = dictionary.string_table
-			local dict_strlen = dictionary.strlen
-			for i=0, (-dict_strlen+1)<-257 and -257 or (-dict_strlen+1), -1 do
-				string_table[i] = dict_string_table[dict_strlen+i]
-			end
-		end
 		local lcodes, lextra_bits, lcodes_counts, dcodes, dextra_bits
-			, dcodes_counts = GetBlockLZ77Result(level, string_table
-			, hash_tables, block_start, block_end, offset, dictionary)
+			, dcodes_counts
 
 		local HLIT, HDIST, HCLEN, rle_codes_huffman_bitlens
 			, rle_codes_huffman_codes, rle_deflate_codes
 			, rle_extra_bits, lcodes_huffman_bitlens, lcodes_huffman_codes
-			, dcodes_huffman_bitlens, dcodes_huffman_codes =
-			GetBlockDynamicHuffmanHeader(lcodes_counts, dcodes_counts)
-		local dynamic_block_bitlen = GetDynamicHuffmanBlockSize(
-				lcodes, dcodes, HCLEN, rle_codes_huffman_bitlens
-				, rle_deflate_codes, lcodes_huffman_bitlens
-				, dcodes_huffman_bitlens)
-		local fixed_block_bitlen = GetFixedHuffmanBlockSize(lcodes, dcodes)
-		local store_block_bitlen = GetStoreBlockSize(block_start, block_end
+			, dcodes_huffman_bitlens, dcodes_huffman_codes
+
+		local dynamic_block_bitlen
+		local fixed_block_bitlen
+		local store_block_bitlen
+
+		if level ~= 0 then
+			-- GetBlockLZ77 needs block_start to block_end+3 to be loaded.
+			LoadStringToTable(str, string_table, block_start, block_end + 3
+				, offset)
+
+			if block_start == 1 and dictionary then
+				local dict_string_table = dictionary.string_table
+				local dict_strlen = dictionary.strlen
+				for i=0, (-dict_strlen+1)<-257
+					and -257 or (-dict_strlen+1), -1 do
+					string_table[i] = dict_string_table[dict_strlen+i]
+				end
+			end
+			lcodes, lextra_bits, lcodes_counts, dcodes, dextra_bits
+				, dcodes_counts = GetBlockLZ77Result(level, string_table
+				, hash_tables, block_start, block_end, offset, dictionary)
+
+			HLIT, HDIST, HCLEN, rle_codes_huffman_bitlens
+				, rle_codes_huffman_codes, rle_deflate_codes
+				, rle_extra_bits, lcodes_huffman_bitlens, lcodes_huffman_codes
+				, dcodes_huffman_bitlens, dcodes_huffman_codes =
+				GetBlockDynamicHuffmanHeader(lcodes_counts, dcodes_counts)
+			dynamic_block_bitlen = GetDynamicHuffmanBlockSize(
+					lcodes, dcodes, HCLEN, rle_codes_huffman_bitlens
+					, rle_deflate_codes, lcodes_huffman_bitlens
+					, dcodes_huffman_bitlens)
+			fixed_block_bitlen = GetFixedHuffmanBlockSize(lcodes, dcodes)
+		end
+
+		store_block_bitlen = GetStoreBlockSize(block_start, block_end
 			, total_bitlen)
 
-		local min_bitlen = dynamic_block_bitlen
-		min_bitlen = (fixed_block_bitlen < min_bitlen)
+		local min_bitlen = store_block_bitlen
+		min_bitlen = (fixed_block_bitlen and fixed_block_bitlen < min_bitlen)
 			and fixed_block_bitlen or min_bitlen
-		min_bitlen = (store_block_bitlen < min_bitlen)
-			and store_block_bitlen or min_bitlen
+		min_bitlen = (dynamic_block_bitlen
+			and dynamic_block_bitlen < min_bitlen)
+			and dynamic_block_bitlen or min_bitlen
 
-		if store_block_bitlen == min_bitlen then
+		if level == 0 or store_block_bitlen == min_bitlen then
 			CompressStoreBlock(WriteBits, WriteString, is_last_block
 				, str, block_start, block_end, total_bitlen)
 			total_bitlen = total_bitlen + store_block_bitlen
@@ -1814,11 +1833,7 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 			bitlen_written = FlushWriter(_FLUSH_MODE_MEMORY_CLEANUP)
 		end
 
-		if bitlen_written ~= total_bitlen then
-			error(("LibDeflate Developer error: "
-				.."sth wrong in the block bitlen calculation, %d %d")
-				:format(bitlen_written, total_bitlen))
-		end
+		assert(bitlen_written == total_bitlen)
 
 		-- Memory clean up, so memory consumption does not always grow linearly
 		-- , even if input string is > 64K.
