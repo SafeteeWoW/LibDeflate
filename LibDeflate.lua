@@ -207,30 +207,34 @@ local _dist256_to_deflate_extra_bitlen = {}
 -- The key of the table is (code - 256), 257<=code<=285
 local _literal_deflate_code_to_base_len = {
 	3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
-	35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258}
+	35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258,
+}
 
 -- Convert a literal/LZ77_length deflate code to base LZ77 length extra bits
 -- The key of the table is (code - 256), 257<=code<=285
 local _literal_deflate_code_to_extra_bitlen = {
 	0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
-	3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0}
+	3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+}
 
 -- Convert a distance deflate code to base LZ77 distance. (0<=code<=29)
 local _dist_deflate_code_to_base_dist = {
 	[0] = 1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
 	257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145,
-	8193, 12289, 16385, 24577}
+	8193, 12289, 16385, 24577,
+}
 
 -- Convert a distance deflate code to LZ77 bits length. (0<=code<=29)
 local _dist_deflate_code_to_extra_bitlen = {
 	[0] = 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
-	7, 7, 8, 8, 9, 9, 10, 10, 11, 11,
-	12, 12, 13, 13}
+	7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13,
+}
 
 -- The code order of the first huffman header in the dynamic deflate block.
 -- See the page 12 of RFC1951
 local _rle_codes_huffman_bitlen_order = {16, 17, 18,
-	0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15}
+	0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
+}
 
 -- The following tables are used by fixed deflate block.
 -- The value of these tables are assigned at the bottom of the source.
@@ -1005,9 +1009,6 @@ local function GetHuffmanBitlenAndCode(symbol_counts, max_bitlen, max_symbol)
 				while (n > 0) do
 					local symbol = leafs[index][2]
 					symbol_bitlens[symbol] = bitlen
-					max_non_zero_bitlen_symbol =
-						(symbol > max_non_zero_bitlen_symbol)
-						and symbol or max_non_zero_bitlen_symbol
 					n = n - 1
 					index = index + 1
 				end
@@ -3012,7 +3013,7 @@ local _byte_to_6bit_char = {
 	"G", "H", "I", "J", "K", "L", "M", "N",
 	"O", "P", "Q", "R", "S", "T", "U", "V",
 	"W", "X", "Y", "Z", "0", "1", "2", "3",
-	"4", "5", "6", "7", "8", "9", "(", ")"
+	"4", "5", "6", "7", "8", "9", "(", ")",
 }
 
 local _6bit_to_byte = {
