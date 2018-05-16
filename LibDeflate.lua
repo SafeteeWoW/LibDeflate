@@ -575,15 +575,15 @@ local function IsValidArguments(str,
 		end
 		if type_configs == "table" then
 			for k, v in pairs(configs) do
-				if k ~= "level" then
+				if k ~= "level" and k ~= "strategy" then
 					return false,
-					("'configs' - expected key in the config '%s'.")
+					("'configs' - unexpected table key in the configs: '%s'.")
 					:format(k)
 				elseif k == "level" and not _compression_level_configs[v] then
 					return false,
 					("'configs' - invalid 'level': '%s'."):format(tostring(v))
 				elseif k == "strategy" and v ~= "fixed" and v ~= "huffman_only"
-						and "random_block_type" then
+						and v ~= "dynamic" then
 						-- random_block_type is for testing purpose
 					("'configs' - invalid 'strategy': '%s'.")
 						:format(tostring(v))
@@ -1123,7 +1123,7 @@ end
 -- @param t The load destination
 -- @param start str[index] will be the first character to be loaded.
 -- @param end str[index] will be the last character to be loaded
--- @param offset str[index] will be loaded into t[index+offset]
+-- @param offset str[index] will be loaded into t[index-offset]
 -- @return t
 local function LoadStringToTable(str, t, start, stop, offset)
 	local i = start - offset
@@ -1729,9 +1729,13 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 	local offset
 
 	local level
+	local strategy
 	if configs then
 		if configs.level then
 			level = configs.level
+		end
+		if configs.strategy then
+			strategy = configs.strategy
 		end
 	end
 
@@ -1776,10 +1780,10 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 		local store_block_bitlen
 
 		if level ~= 0 then
+
 			-- GetBlockLZ77 needs block_start to block_end+3 to be loaded.
 			LoadStringToTable(str, string_table, block_start, block_end + 3
 				, offset)
-
 			if block_start == 1 and dictionary then
 				local dict_string_table = dictionary.string_table
 				local dict_strlen = dictionary.strlen
@@ -1788,9 +1792,27 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 					string_table[i] = dict_string_table[dict_strlen+i]
 				end
 			end
-			lcodes, lextra_bits, lcodes_counts, dcodes, dextra_bits
+
+			if strategy == "huffman_only" then
+				lcodes = {}
+				LoadStringToTable(str, lcodes, block_start, block_end
+					, block_start-1)
+				lextra_bits = {}
+				lcodes_counts = {}
+				lcodes[block_end - block_start+2] = 256 -- end of block
+				for i=1, block_end - block_start+2 do
+					local code = lcodes[i]
+					lcodes_counts[code] = (lcodes_counts[code] or 0) + 1
+				end
+				dcodes = {}
+				dextra_bits = {}
+				dcodes_counts = {}
+			else
+				lcodes, lextra_bits, lcodes_counts, dcodes, dextra_bits
 				, dcodes_counts = GetBlockLZ77Result(level, string_table
-				, hash_tables, block_start, block_end, offset, dictionary)
+				, hash_tables, block_start, block_end, offset, dictionary
+				)
+			end
 
 			HLIT, HDIST, HCLEN, rle_codes_huffman_bitlens
 				, rle_codes_huffman_codes, rle_deflate_codes
@@ -1814,15 +1836,17 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 			and dynamic_block_bitlen < min_bitlen)
 			and dynamic_block_bitlen or min_bitlen
 
-		if level == 0 or store_block_bitlen == min_bitlen then
+		if level == 0 or (strategy ~= "fixed" and strategy ~= "dynamic" and
+			store_block_bitlen == min_bitlen) then
 			CompressStoreBlock(WriteBits, WriteString, is_last_block
 				, str, block_start, block_end, total_bitlen)
 			total_bitlen = total_bitlen + store_block_bitlen
-		elseif fixed_block_bitlen ==  min_bitlen then
+		elseif strategy ~= "dynamic" and (
+			strategy == "fixed" or fixed_block_bitlen == min_bitlen) then
 			CompressFixedHuffmanBlock(WriteBits, is_last_block,
 					lcodes, lextra_bits, dcodes, dextra_bits)
 			total_bitlen = total_bitlen + fixed_block_bitlen
-		elseif dynamic_block_bitlen == min_bitlen then
+		elseif strategy == "dynamic" or dynamic_block_bitlen == min_bitlen then
 			CompressDynamicHuffmanBlock(WriteBits, is_last_block, lcodes
 				, lextra_bits, dcodes, dextra_bits, HLIT, HDIST, HCLEN
 				, rle_codes_huffman_bitlens, rle_codes_huffman_codes

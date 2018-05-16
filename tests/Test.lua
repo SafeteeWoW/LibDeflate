@@ -304,8 +304,19 @@ local function MemCheckAndBenchmarkFunc(func_name, ...)
 		, elapsed_time*1000/repeat_count, unpack(ret)
 end
 
-local function GetFirstBlockType(compressed_data)
-	local first_byte = string.byte(compressed_data, 1, 1)
+local function GetFirstBlockType(compressed_data, isZlib)
+	local first_block_byte_index = 1
+	if isZlib then
+		local byte2 = string.byte(compressed_data, 2, 2)
+		local has_dict = ((byte2-byte2%32)/32)%2
+		if has_dict == 1 then
+			first_block_byte_index = 7
+		else
+			first_block_byte_index = 3
+		end
+	end
+	local first_byte = string.byte(compressed_data
+		, first_block_byte_index, first_block_byte_index)
 	local bit3 = first_byte % 8
 	return (bit3 - bit3 % 2) / 2
 end
@@ -418,9 +429,22 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 				-- to see if decompression still works.
 				compress_data = PutRandomBitsInPaddingBits(compress_data
 					, compress_pad_bitlen)
+				local isZlib = compress_func_name:find("Zlib")
 				if strategy == "fixed" then
-					lu.assertEquals(GetFirstBlockType(compress_data), 1,
-					compress_func_name)
+					lu.assertEquals(GetFirstBlockType(compress_data, isZlib)
+					, (level == 0) and 0 or 1,
+					compress_func_name.." "..tostring(level))
+				elseif strategy == "dynamic" then
+					lu.assertEquals(GetFirstBlockType(compress_data, isZlib)
+					, (level == 0) and 0 or 2,
+					compress_func_name.." "..tostring(level))
+				elseif strategy == "huffman_only" then  -- luacheck: ignore
+					-- Emtpy
+				elseif strategy == nil then -- luacheck: ignore
+					-- Empty
+				else
+					lu.assertTrue(false, "Unexpected strategy: "
+						..tostring(strategy))
 				end
 				WriteToFile(compress_filename, compress_data)
 
@@ -454,13 +478,17 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 				lu.assertEquals(#zdeflate_decompress_to_run, #compress_to_run)
 
 				-- Try decompress by zdeflate
+				-- zdeflate is a C program calling zlib library
+				-- which is modifed from zlib example.
+				-- zdeflate can do all compression and decompression doable
+				-- by LibDeflate (except encode and decode)
 				local returnedStatus_zdeflate, stdout_zdeflate
 					, stderr_zdeflate =
 					RunProgram(zdeflate_decompress_to_run[j], compress_filename
 						, decompress_filename)
 				lu.assertEquals(returnedStatus_zdeflate, 0
 					, compress_func_name
-					.."zdeflate decompression failed with msg "
+					..":zdeflate decompression failed with msg "
 					..stderr_zdeflate)
 				AssertLongStringEqual(stdout_zdeflate, origin
 					, compress_func_name
@@ -1912,8 +1940,6 @@ TestInternals = {}
 		lu.assertEquals(_6bit_to_byte[string.byte(")", 1)], 63)
 	end
 
-
-
 TestPresetDict = {}
 	function TestPresetDict:TestExample()
 		local dict_str = [[ilvl::::::::110:::1517:3336:3528:3337]]
@@ -2136,7 +2162,129 @@ TestEncode = {}
 	end
 
 TestCompressStrategy = {}
+	function TestCompressStrategy:TestHtml_x_4Fixed()
+		CheckCompressAndDecompressFile("tests/data/3rdparty/html_x_4"
+			, {0,1,3,4}, "fixed")
+	end
+	function TestCompressStrategy:TestHtml_x_4HuffmanOnly()
+		CheckCompressAndDecompressFile("tests/data/3rdparty/html_x_4"
+			, {0,1,3,4}, "huffman_only")
+	end
+	function TestCompressStrategy:TestHtml_x_4Dynamic()
+		CheckCompressAndDecompressFile("tests/data/3rdparty/html_x_4"
+			, {0,1,2,3,4}, "dynamic")
+	end
+	function TestCompressStrategy:TestAsyoulikFixed()
+		CheckCompressAndDecompressFile("tests/data/3rdparty/asyoulik.txt"
+			, {0,1,3,4}, "fixed")
+	end
+	function TestCompressStrategy:TestAsyoulikHuffmanOnly()
+		CheckCompressAndDecompressFile("tests/data/3rdparty/asyoulik.txt"
+			, {0,1,3,4}, "huffman_only")
+	end
+	function TestCompressStrategy:TestAsyoulikDynamic()
+		CheckCompressAndDecompressFile("tests/data/3rdparty/asyoulik.txt"
+			, {0,1,3,4}, "dynamic")
+	end
 
+	-- Some hard coded compresses length here.
+	-- Modify if algorithm changes.
+	-- (I don't think it will happen in the future though)
+	function TestCompressStrategy:IsFixedStrategyInEffect()
+		local str = ""
+		for i=0, 255 do
+			str = str..string.char(i)
+		end
+		for i=255, 0, -1 do
+			str = str..string.char(i)
+		end
+
+		lu.assertEquals(
+			LibDeflate:CompressDeflate(str):len(), 517)
+		lu.assertEquals(
+			GetFirstBlockType(
+				LibDeflate:CompressDeflate(str, {strategy = "fixed"}), false)
+			, 1)
+		lu.assertEquals(
+			LibDeflate:CompressDeflate(str, {strategy = "fixed"}):len()
+			, 542)
+		lu.assertEquals(
+			GetFirstBlockType(
+				LibDeflate:CompressZlib(str, {strategy = "fixed"}, true))
+			, 1)
+		lu.assertEquals(
+			LibDeflate:CompressZlib(str, {strategy = "fixed"}):len()
+			, 548)
+	end
+	function TestCompressStrategy:IsHuffmanOnlyStrategyInEffect()
+		local str = ("a"):rep(1000)
+		lu.assertEquals(
+			LibDeflate:CompressDeflate(str):len()
+			, 10)
+		lu.assertEquals(
+			LibDeflate:CompressDeflate(str, {strategy = "huffman_only"}):len()
+			, 138)
+		lu.assertEquals(
+			LibDeflate:CompressZlib(str):len()
+			,16)
+		lu.assertEquals(
+			LibDeflate:CompressZlib(str, {strategy = "huffman_only"}):len()
+			, 144)
+	end
+	function TestCompressStrategy:IsDynamicStrategyInEffect()
+		local str = ""
+		for i=0, 255 do
+			str = str..string.char(i)
+		end
+		for i=255, 0, -1 do
+			str = str..string.char(i)
+		end
+
+		lu.assertEquals(
+			LibDeflate:CompressDeflate(str):len(), 517)
+		lu.assertEquals(
+			GetFirstBlockType(
+				LibDeflate:CompressDeflate(str, {strategy = "dynamic"}), false)
+			, 2)
+		lu.assertEquals(
+			LibDeflate:CompressDeflate(str, {strategy = "dynamic"}):len()
+			, 536)
+		lu.assertEquals(
+			GetFirstBlockType(
+				LibDeflate:CompressZlib(str, {strategy = "dynamic"}, true))
+			, 2)
+		lu.assertEquals(
+			LibDeflate:CompressZlib(str, {strategy = "dynamic"}):len()
+			, 542)
+	end
+
+TestCompressRatio = {}
+	-- May need to modify number if algorithm changes.
+	function TestCompressRatio:TestSmallTest()
+		-- avoid github auto CRLF problem by removing \n in the file.
+		local fileData = GetFileData("tests/data/smalltest_no_newline.txt")
+		lu.assertEquals(fileData:len(), 28453)
+		lu.assertTrue(LibDeflate:CompressDeflate(fileData, {level=0}):len()
+			<= 28458)
+		lu.assertTrue(LibDeflate:CompressDeflate(fileData, {level=1}):len()
+			<= 7467)
+		lu.assertTrue(LibDeflate:CompressDeflate(fileData, {level=2}):len()
+			<= 7011)
+		lu.assertTrue(LibDeflate:CompressDeflate(fileData, {level=3}):len()
+			<= 6740)
+		lu.assertTrue(LibDeflate:CompressDeflate(fileData, {level=4}):len()
+			<= 6401)
+		lu.assertTrue(LibDeflate:CompressDeflate(fileData, {level=5}):len()
+			<= 5992)
+		lu.assertTrue(LibDeflate:CompressDeflate(fileData, {level=6}):len()
+			<= 5884)
+		lu.assertTrue(LibDeflate:CompressDeflate(fileData, {level=7}):len()
+			<= 5829)
+		lu.assertTrue(LibDeflate:CompressDeflate(fileData, {level=8}):len()
+			<= 5820)
+		lu.assertTrue(LibDeflate:CompressDeflate(fileData, {level=9}):len()
+			<= 5820)
+	end
 --------------------------------------------------------------
 -- Coverage Tests --------------------------------------------
 --------------------------------------------------------------
@@ -2151,6 +2299,7 @@ local function AddAllToCoverageTest(suite)
 		AddToCoverageTest(suite, k)
 	end
 end
+
 CodeCoverage = {}
 	AddAllToCoverageTest(TestBasicStrings)
 	AddAllToCoverageTest(TestMyData)
@@ -2160,6 +2309,7 @@ CodeCoverage = {}
 	AddAllToCoverageTest(TestPresetDict)
 	AddToCoverageTest(TestThirdPartyBig, "Testptt5")
 	AddToCoverageTest(TestThirdPartyBig, "TestGeoProtodata")
+	AddAllToCoverageTest(TestCompressStrategy)
 
 -- Check if decompress can give any lua error for random string.
 DecompressInfinite = {}
