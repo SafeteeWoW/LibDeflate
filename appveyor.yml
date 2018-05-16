@@ -21,7 +21,7 @@ build: off
 
 test_script:
 - cmd: >-
-    %LUA% -v tests\TestLibDeflate.lua --verbose --shuffle -o junit -n testresult.xml
+    %LUA% -v tests\Test.lua --verbose --shuffle -o junit -n testresult.xml
 
 after_test:
 - ps: $wc = New-Object 'System.Net.WebClient'

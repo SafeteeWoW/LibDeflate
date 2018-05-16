@@ -30,10 +30,10 @@ before_install:
 
 script:
   - luacheck -g -u .
-  - lua tests/TestLibDeflate.lua --verbose --shuffle
+  - lua tests/Test.lua --verbose --shuffle
   # converage test makes it too slow. so only run once in luajit linux
   # Don't shuffle coverage test so we see progress
-  - if [[ "$LUA" == "luajit" && "$TRAVIS_OS_NAME" == "linux" ]]; then lua -lluacov tests/TestLibDeflate.lua CodeCoverage --verbose; fi
+  - if [[ "$LUA" == "luajit" && "$TRAVIS_OS_NAME" == "linux" ]]; then lua -lluacov tests/Test.lua CodeCoverage --verbose; fi
 
 after_success:
   - if [[ "$LUA" == "luajit" && "$TRAVIS_OS_NAME" == "linux" ]]; then luacov-coveralls -v --include %./LibDeflate.lua; fi
