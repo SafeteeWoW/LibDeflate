@@ -276,7 +276,7 @@ local function AssertLongStringEqual(actual, expected, msg)
 	end
 end
 
-local function MemCheckAndBenchmarkFunc(func, ...)
+local function MemCheckAndBenchmarkFunc(func_name, ...)
 	local memory_before
 	local memory_running
 	local memory_after
@@ -290,7 +290,7 @@ local function MemCheckAndBenchmarkFunc(func, ...)
 	elapsed_time = -1
 	local repeat_count = 0
 	while elapsed_time < 0.015 do
-		ret = {func(...)}
+		ret = {LibDeflate[func_name](LibDeflate, ...)}
 		elapsed_time = os.clock() - start_time
 		repeat_count = repeat_count + 1
 	end
@@ -304,11 +304,33 @@ local function MemCheckAndBenchmarkFunc(func, ...)
 		, elapsed_time*1000/repeat_count, unpack(ret)
 end
 
+local function GetFirstBlockType(compressed_data)
+	local first_byte = string.byte(compressed_data, 1, 1)
+	local bit3 = first_byte % 8
+	return (bit3 - bit3 % 2) / 2
+end
+
+local function PutRandomBitsInPaddingBits(compressed_data, padding_bitlen)
+	if padding_bitlen > 0 then
+		local len = #compressed_data
+		local last_byte = string.byte(compressed_data, len)
+		local random_last_byte = math.random(0, 255)
+		random_last_byte = random_last_byte
+			- random_last_byte % _pow2[8-padding_bitlen]
+		random_last_byte = random_last_byte
+			+ last_byte % _pow2[8-padding_bitlen]
+		compressed_data = compressed_data:sub(1, len-1)
+			..string.char(random_last_byte)
+	end
+	return compressed_data
+end
+
 local dictionary32768_str = GetFileData("tests/dictionary32768.txt")
 local dictionary32768 = LibDeflate:CreateDictionary(dictionary32768_str)
 LibDeflate:VerifyDictionary(dictionary32768_str, dictionary32768, -222133129)
 
-local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
+local function CheckCompressAndDecompress(string_or_filename, is_file, levels
+	, strategy)
 	-- Init cache table in these functions
 	-- , to help memory leak check in the following codes.
 	LibDeflate:EncodeForWoWAddonChannel("")
@@ -340,263 +362,148 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 
 		local decompress_filename = compress_filename..".decompress"
 
-		local zlib_compress_filename = compress_filename..".zlib"
-		local zlib_decompress_filename = zlib_compress_filename..".decompress"
-		local zdict_compress_filename = compress_filename.."zlib..dict"
-		local zdict_decompress_filename = compress_filename
-			.."zlib..dict.decompress"
-		local dict_compress_filename = compress_filename..".dict"
-		local dict_decompress_filename = compress_filename..".dict.decompress"
-
 		for i=1, #levels+1 do -- also test level == nil
 			local level = levels[i]
-			local configs = {level = level}
-			-- Compress by raw deflate
-			local compress_memory_leaked, compress_memory_used, compress_time,
-				compress_data, compress_pad_bitlen =
-				MemCheckAndBenchmarkFunc(LibDeflate.CompressDeflate, LibDeflate
-				, origin, configs)
-			lu.assertTrue(0 <= compress_pad_bitlen and compress_pad_bitlen < 8
-				,"Unexpected compress pad bitlen")
-
-			-- put random value in the padding bits,
-			-- to see if it is still okay to decompress
-			if compress_pad_bitlen > 0 then
-				local len = #compress_data
-				local last_byte = string.byte(compress_data, len)
-				local random_last_byte = math.random(0, 255)
-				random_last_byte = random_last_byte
-					- random_last_byte % _pow2[8-compress_pad_bitlen]
-				random_last_byte = random_last_byte
-					+ last_byte % _pow2[8-compress_pad_bitlen]
-				compress_data = compress_data:sub(1, len-1)
-					..string.char(random_last_byte)
-			end
-			WriteToFile(compress_filename, compress_data)
-
-			-- Test encoding
-			local compress_data_WoW_addon_encoded =
-				LibDeflate:EncodeForWoWAddonChannel(compress_data)
-			AssertLongStringEqual(
-				LibDeflate:DecodeForWoWAddonChannel(
-					compress_data_WoW_addon_encoded), compress_data,
-					"EncodeForAddonChannel fails")
-
-			local compress_data_data_WoW_chat_encoded =
-				LibDeflate:EncodeForWoWChatChannel(compress_data)
-			AssertLongStringEqual(
-				LibDeflate:DecodeForWoWChatChannel(
-					compress_data_data_WoW_chat_encoded), compress_data,
-					"EncodeForChatChannel fails")
-
-			-- Try decompress by puff
-			local returnedStatus_puff, stdout_puff=
-				RunProgram("puff -w ", compress_filename, decompress_filename)
-			lu.assertEquals(returnedStatus_puff, 0
-				, "puff decompression failed with code "..returnedStatus_puff)
-			AssertLongStringEqual(stdout_puff, origin
-				, "puff decompress result does not match origin string.")
-
-			-- Try decompress by zdeflate
-			local returnedStatus_zdeflate, stdout_zdeflate, stderr_zdeflate =
-				RunProgram("zdeflate -d <", compress_filename
-					, decompress_filename)
-			lu.assertEquals(returnedStatus_zdeflate, 0
-				, "zdeflate decompression failed with msg "..stderr_zdeflate)
-			AssertLongStringEqual(stdout_zdeflate, origin
-				, "zdeflate decompress result does not match origin string.")
-
-			-- Try decompress by LibDeflate
-			local decompress_memory_leaked, decompress_memory_used,
-				decompress_time, decompress_data,
-				decompress_unprocess_byte =
-				MemCheckAndBenchmarkFunc(LibDeflate.DecompressDeflate
-					, LibDeflate, compress_data)
-			AssertLongStringEqual(decompress_data, origin
-				, "LibDeflate decompress result does not match origin string.")
-			lu.assertEquals(decompress_unprocess_byte, 0
-				, "Unprocessed bytes after LibDeflate decompression "
-					..tostring(decompress_unprocess_byte))
-
-
-			-- Compress with Zlib header instead of raw Deflate
-			local zlib_compress_memory_leaked, zlib_compress_memory_used
-				, zlib_compress_time, zlib_compress_data, zlib_pad_bitlen =
-				MemCheckAndBenchmarkFunc(LibDeflate.CompressZlib, LibDeflate
-				, origin, configs)
-			lu.assertEquals(zlib_pad_bitlen, 0
-				,"Unexpected zlib compress pad bitlen")
-
-			WriteToFile(zlib_compress_filename, zlib_compress_data)
-			local zlib_returned_status_zdeflate, zlibStdout_zdeflate
-				, zlibStderr_zdeflate =
-				RunProgram("zdeflate --zlib -d <", zlib_compress_filename
-				, zlib_decompress_filename)
-			lu.assertEquals(zlib_returned_status_zdeflate, 0
-				, "zdeflate fails to decompress zlib with msg "
-				..tostring(zlibStderr_zdeflate))
-			AssertLongStringEqual(zlibStdout_zdeflate, origin,
-				"zDeflate decompress result does not match origin zlib string.")
-
-			local zlibDecompressMemoryLeaked, zlibDecompressMemoryUsed
-				, zlibDecompressTime, zlibDecompressData
-				, zlibDecompressUnprocessByte =
-				MemCheckAndBenchmarkFunc(LibDeflate.DecompressZlib, LibDeflate
-				, zlib_compress_data)
-			AssertLongStringEqual(zlibDecompressData, origin
-				, "LibDeflate zlib decompress result does not"..
-				" match origin string.")
-			lu.assertEquals(zlibDecompressUnprocessByte, 0
-				, "Unprocessed bytes after LibDeflate zlib decompression "
-					..tostring(zlibDecompressUnprocessByte))
-
-
-			-- raw deflate compress with preset dictionary.
-			local dict_compress_memory_leaked, dict_compress_memory_used
-				, dict_compress_time,
-				dict_compress_data, dict_pad_bitlen =
-				MemCheckAndBenchmarkFunc(LibDeflate.CompressDeflateWithDict
-				, LibDeflate, origin, dictionary32768, configs)
-			WriteToFile(dict_compress_filename, dict_compress_data)
-			lu.assertTrue(0 <= dict_pad_bitlen and dict_pad_bitlen <8
-				, "Unexpected dict pad bitlen")
-			local dict_returned_status_zdeflate, dict_stdout_zdeflate
-				, dict_stderr_zdeflate =
-				RunProgram("zdeflate -d --dict tests/dictionary32768.txt <"
-				, dict_compress_filename, dict_decompress_filename)
-			lu.assertEquals(dict_returned_status_zdeflate, 0
-				, "zdeflate fails to decompress with dict with msg "
-				..tostring(dict_stderr_zdeflate))
-			AssertLongStringEqual(dict_stdout_zdeflate, origin,
-				"zdeflate decompress with dictionary result does not "
-				.."match origin string.")
-			local dict_decompress_memory_leaked, dict_decompress_memory_used
-				, dict_decompress_time, dict_decompress_data
-				, dict_decompress_unprocess_byte =
-				MemCheckAndBenchmarkFunc(LibDeflate.DecompressDeflateWithDict
-				, LibDeflate, dict_compress_data, dictionary32768)
-			AssertLongStringEqual(dict_decompress_data, origin,
-				"my decompress with dictionary result does not "
-				.."match origin string.")
-			lu.assertEquals(dict_decompress_unprocess_byte, 0
-			, "Unprocessed bytes after LibDeflate zlib decompression "
-					..tostring(dict_decompress_unprocess_byte))
-
-			-- zlib compress with preset dictionary.
-			local zdict_compress_memory_leaked, zdict_compress_memory_used
-				, zdict_compress_time,
-				zdict_compress_data, zdict_pad_bitlen =
-				MemCheckAndBenchmarkFunc(LibDeflate.CompressZlibWithDict
-				, LibDeflate, origin, dictionary32768, configs)
-			WriteToFile(zdict_compress_filename, zdict_compress_data)
-			lu.assertEquals(zdict_pad_bitlen, 0
-				, "Unexpected zdict pad bit size")
-			local zdict_returned_status_zdeflate, zdict_stdout_zdeflate
-				, zdict_stderr_zdeflate =
-				RunProgram("zdeflate -d --zlib --dict "
-				.."tests/dictionary32768.txt <"
-				, zdict_compress_filename, zdict_decompress_filename)
-			lu.assertEquals(zdict_returned_status_zdeflate, 0
-				, "zdeflate fails to decompress with dict with msg "
-				..tostring(zdict_stderr_zdeflate))
-			AssertLongStringEqual(zdict_stdout_zdeflate, origin,
-				"zdeflate decompress with dictionary result does not "
-				.."match origin string.")
-			local zdict_decompress_memory_leaked, zdict_decompress_memory_used
-				, zdict_decompress_time, zdict_decompress_data
-				, zdict_decompress_unprocess_byte =
-				MemCheckAndBenchmarkFunc(LibDeflate.DecompressZlibWithDict
-				, LibDeflate, zdict_compress_data, dictionary32768)
-
-			AssertLongStringEqual(zdict_decompress_data, origin,
-				"my decompress with dictionary result does not "
-				.."match origin string.")
-			lu.assertEquals(zdict_decompress_unprocess_byte, 0
-			, "Unprocessed bytes after LibDeflate zlib decompression "
-					..tostring(zdict_decompress_unprocess_byte))
+			local configs = {level = level, strategy = strategy}
 
 			print(
-				(">>>>> %s: %s Level: %s size: %d B\n")
+				(">>>>> %s: %s size: %d B Level: %s Strategy: %s")
 				:format(is_file and "File" or "String",
-					string_or_filename:sub(1, 40), tostring(level)
-					, origin:len()),
-				("CompressDeflate:   Size : %d B,\tTime: %.3f ms, "
-					.."Speed: %.0f KB/s, Memory: %d B,"
-					.." Mem/input: %.2f, (memleak: %d B) padbit: %d\n"):format(
-					compress_data:len(), compress_time
-					, compress_data:len()/compress_time, compress_memory_used
-					, compress_memory_used/origin:len(), compress_memory_leaked
-					, compress_pad_bitlen
-				),
-				("DecompressDeflate: cRatio: %.2f,\tTime: %.3f ms"
-					..", Speed: %.0f KB/s, Memory: %d B,"
-					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
-					origin:len()/compress_data:len(), decompress_time
-					, decompress_data:len()/decompress_time
-					, decompress_memory_used
-					, decompress_memory_used/origin:len()
-					, decompress_memory_leaked
-				),
-				("CompDeflateDict:   Size : %d B,\tTime: %.3f ms, "
-					.."Speed: %.0f KB/s, Memory: %d B,"
-					.." Mem/input: %.2f, (memleak: %d B), padbit: %d\n")
-					:format(
-					dict_compress_data:len(), dict_compress_time
-					, dict_compress_data:len()/dict_compress_time
-					, dict_compress_memory_used
-					, dict_compress_memory_used/origin:len()
-					, dict_compress_memory_leaked, dict_pad_bitlen
-				),
-				("DecompDeflateDict: cRatio : %.2f,\tTime: %.3f ms"
-					..", Speed: %.0f KB/s, Memory: %d B,"
-					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
-					origin:len()/dict_compress_data:len()
-					, dict_decompress_time
-					, dict_decompress_data:len()/dict_decompress_time
-					, dict_decompress_memory_used
-					, dict_decompress_memory_used/origin:len()
-					, dict_decompress_memory_leaked
-				),
-				("CompressZlib:      Size : %d B,\tTime: %.3f ms"
-					..", Speed: %.0f KB/s, Memory: %d B,"
-					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
-					zlib_compress_data:len(), zlib_compress_time
-					, zlib_compress_data:len()/zlib_compress_time
-					, zlib_compress_memory_used
-					,zlib_compress_memory_used/origin:len()
-					, zlib_compress_memory_leaked
-				),
-				("DecompressZlib:    cRatio: %.2f,\tTime: %.3f ms"
-					..", Speed: %.0f KB/s, Memory: %d B,"
-					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
-					origin:len()/compress_data:len(), zlibDecompressTime
-					, zlibDecompressData:len()/zlibDecompressTime
-					, zlibDecompressMemoryUsed
-					, zlibDecompressMemoryUsed/origin:len()
-					, zlibDecompressMemoryLeaked
-				),
-				("CompZlibDict: cRatio : %.2f,\tTime: %.3f ms"
-					..", Speed: %.0f KB/s, Memory: %d B,"
-					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
-					origin:len()/zdict_compress_data:len()
-					, zdict_compress_time
-					, zdict_compress_data:len()/zdict_compress_time
-					, zdict_compress_memory_used
-					, zdict_compress_memory_used/origin:len()
-					, zdict_compress_memory_leaked
-				),
-				("DecompZlibDict: cRatio : %.2f,\tTime: %.3f ms"
-					..", Speed: %.0f KB/s, Memory: %d B,"
-					.." Mem/input: %.2f, (memleak: %d B)\n"):format(
-					origin:len()/zdict_compress_data:len()
-					, zdict_decompress_time
-					, zdict_decompress_data:len()/zdict_decompress_time
-					, zdict_decompress_memory_used
-					, zdict_decompress_memory_used/origin:len()
-					, zdict_decompress_memory_leaked
-				),
-				"\n"
-			)
+					string_or_filename:sub(1, 40),  origin:len()
+					,tostring(level), tostring(strategy)
+				))
+			local compress_to_run = {
+				{"CompressDeflate", origin, configs},
+				{"CompressDeflateWithDict", origin, dictionary32768
+					, configs},
+				{"CompressZlib", origin, configs},
+				{"CompressZlibWithDict", origin, dictionary32768, configs},
+			}
+
+			for j, compress_running in ipairs(compress_to_run) do
+			-- Compress by raw deflate
+				local compress_func_name = compress_running[1]
+				local compress_memory_leaked, compress_memory_used
+					, compress_time, compress_data, compress_pad_bitlen =
+					MemCheckAndBenchmarkFunc(unpack(compress_running))
+
+				if compress_running[1]:find("Deflate") then
+					lu.assertTrue(0 <= compress_pad_bitlen
+						and compress_pad_bitlen < 8
+						, compress_func_name)
+					-- put random value in the padding bits,
+					-- to see if it is still okay to decompress
+
+				else
+					lu.assertEquals(compress_pad_bitlen, 0
+						, compress_func_name)
+				end
+
+				-- Test encoding
+				local compress_data_WoW_addon_encoded =
+					LibDeflate:EncodeForWoWAddonChannel(compress_data)
+				AssertLongStringEqual(
+					LibDeflate:DecodeForWoWAddonChannel(
+						compress_data_WoW_addon_encoded), compress_data
+						, compress_func_name)
+
+				local compress_data_data_WoW_chat_encoded =
+					LibDeflate:EncodeForWoWChatChannel(compress_data)
+				AssertLongStringEqual(
+					LibDeflate:DecodeForWoWChatChannel(
+						compress_data_data_WoW_chat_encoded), compress_data
+						, compress_func_name)
+
+				-- Put random bits in the padding bits of compressed data.
+				-- to see if decompression still works.
+				compress_data = PutRandomBitsInPaddingBits(compress_data
+					, compress_pad_bitlen)
+				if strategy == "fixed" then
+					lu.assertEquals(GetFirstBlockType(compress_data), 1,
+					compress_func_name)
+				end
+				WriteToFile(compress_filename, compress_data)
+
+				if not compress_running[1] == "CompressDeflate" then
+					local returnedStatus_puff, stdout_puff =
+						RunProgram("puff -w ", compress_filename
+							, decompress_filename)
+					lu.assertEquals(returnedStatus_puff, 0
+						, compress_func_name
+						.." puff decompression failed with code "
+						..returnedStatus_puff)
+					AssertLongStringEqual(stdout_puff, origin
+						, "puff fails with "..compress_func_name)
+				end
+
+				local decompress_to_run = {
+					{"DecompressDeflate", compress_data},
+					{"DecompressDeflateWithDict", compress_data
+						, dictionary32768, configs},
+					{"DecompressZlib", compress_data, configs},
+					{"DecompressZlibWithDict", compress_data
+						, dictionary32768, configs},
+				}
+				lu.assertEquals(#decompress_to_run, #compress_to_run)
+				local zdeflate_decompress_to_run = {
+					"zdeflate -d <",
+					"zdeflate -d --dict tests/dictionary32768.txt <",
+					"zdeflate --zlib -d <",
+					"zdeflate --zlib -d --dict tests/dictionary32768.txt <",
+				}
+				lu.assertEquals(#zdeflate_decompress_to_run, #compress_to_run)
+
+				-- Try decompress by zdeflate
+				local returnedStatus_zdeflate, stdout_zdeflate
+					, stderr_zdeflate =
+					RunProgram(zdeflate_decompress_to_run[j], compress_filename
+						, decompress_filename)
+				lu.assertEquals(returnedStatus_zdeflate, 0
+					, compress_func_name
+					.."zdeflate decompression failed with msg "
+					..stderr_zdeflate)
+				AssertLongStringEqual(stdout_zdeflate, origin
+					, compress_func_name
+					.."zdeflate decompress result not match origin string.")
+
+				-- Try decompress by LibDeflate
+				local decompress_memory_leaked, decompress_memory_used,
+					decompress_time, decompress_data,
+					decompress_unprocess_byte =
+					MemCheckAndBenchmarkFunc(unpack(decompress_to_run[j]))
+				AssertLongStringEqual(decompress_data, origin
+					, compress_func_name
+					.." LibDeflate decompress result not match origin string.")
+				lu.assertEquals(decompress_unprocess_byte, 0
+					, compress_func_name
+					.." Unprocessed bytes after LibDeflate decompression "
+						..tostring(decompress_unprocess_byte))
+
+				print(
+					("%s:   Size : %d B,Time: %.3f ms, "
+						.."Speed: %.0f KB/s, Memory: %d B,"
+						.." Mem/input: %.2f, (memleak?: %d B) padbit: %d\n")
+						:format(compress_func_name
+						, compress_data:len(), compress_time
+						, compress_data:len()/compress_time
+						, compress_memory_used
+						, compress_memory_used/origin:len()
+						, compress_memory_leaked
+						, compress_pad_bitlen
+					),
+					("%s:   cRatio: %.2f,Time: %.3f ms"
+						..", Speed: %.0f KB/s, Memory: %d B,"
+						.." Mem/input: %.2f, (memleak?: %d B)"):format(
+						decompress_to_run[j][1]
+						, origin:len()/compress_data:len(), decompress_time
+						, decompress_data:len()/decompress_time
+						, decompress_memory_used
+						, decompress_memory_used/origin:len()
+						, decompress_memory_leaked
+					)
+				)
+			end
+			print("")
 		end
 
 		-- Use all avaiable strategies of zdeflate to compress the data
@@ -668,6 +575,14 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels)
 	end
 
 	return 0
+end
+
+local function CheckCompressAndDecompressString(str, levels, strategy)
+	return CheckCompressAndDecompress(str, false, levels, strategy)
+end
+
+local function CheckCompressAndDecompressFile(inputFileName, levels, strategy)
+	return CheckCompressAndDecompress(inputFileName, true, levels, strategy)
 end
 
 local function CheckDecompressIncludingError(compress, decompress, is_zlib)
@@ -743,14 +658,6 @@ end
 
 local function CheckZlibDecompressIncludingError(compress, decompress)
 	return CheckDecompressIncludingError(compress, decompress, true)
-end
-
-local function CheckCompressAndDecompressString(str, levels)
-	return CheckCompressAndDecompress(str, false, levels)
-end
-
-local function CheckCompressAndDecompressFile(inputFileName, levels)
-	return CheckCompressAndDecompress(inputFileName, true, levels)
 end
 
 local function CreateAndCheckDictionary(str)
@@ -2227,6 +2134,8 @@ TestEncode = {}
 			end
 		end
 	end
+
+TestCompressStrategy = {}
 
 --------------------------------------------------------------
 -- Coverage Tests --------------------------------------------
