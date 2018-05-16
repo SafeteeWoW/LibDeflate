@@ -582,6 +582,11 @@ local function IsValidArguments(str,
 				elseif k == "level" and not _compression_level_configs[v] then
 					return false,
 					("'configs' - invalid 'level': '%s'."):format(tostring(v))
+				elseif k == "strategy" and v ~= "fixed" and v ~= "huffman_only"
+						and "random_block_type" then
+						-- random_block_type is for testing purpose
+					("'configs' - invalid 'strategy': '%s'.")
+						:format(tostring(v))
 				end
 			end
 		end
