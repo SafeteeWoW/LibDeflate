@@ -2309,7 +2309,9 @@ CodeCoverage = {}
 	AddAllToCoverageTest(TestPresetDict)
 	AddToCoverageTest(TestThirdPartyBig, "Testptt5")
 	AddToCoverageTest(TestThirdPartyBig, "TestGeoProtodata")
-	AddAllToCoverageTest(TestCompressStrategy)
+	AddToCoverageTest(TestCompressStrategy, "IsFixedStrategyInEffect")
+	AddToCoverageTest(TestCompressStrategy, "IsDynamicStrategyInEffect")
+	AddToCoverageTest(TestCompressStrategy, "IsHuffmanOnlyStrategyInEffect")
 
 -- Check if decompress can give any lua error for random string.
 DecompressInfinite = {}
