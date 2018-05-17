@@ -1,8 +1,22 @@
--- Run this tests at the folder where LibDeflate.lua located.
--- lua tests/LibDeflateTest.lua
--- Don't run two tests at the same time.
+-- Run this tests at the folder where LibDeflate.lua located, like this.
+-- lua tests/Test.lua
+-- Don't run two "tests/Test.lua" at the same time,
+-- because they will conflict!!!
 
+package.path = (package.path or "")
+			..(";LibDeflate.lua")
+
+local old_globals = {}
+for k, v in pairs(_G) do
+	old_globals[k] = v
+end
 local LibDeflate = require("LibDeflate")
+for k, v in pairs(_G) do
+	assert(v == old_globals[k], "LibDeflate global leak at key: "..tostring(k))
+end
+for k, v in pairs(old_globals) do
+	assert(v == _G[k], "LibDeflate global leak at key: "..tostring(k))
+end
 
 -- UnitTests
 local lu = require("luaunit")
@@ -35,6 +49,25 @@ do
 		_pow2[i] = pow
 		pow = pow * 2
 	end
+end
+
+local function DeepCopy(obj)
+    local SearchTable = {} -- luacheck: ignore
+
+    local function Func(object)
+        if type(object) ~= "table" then
+            return object
+        end
+        local NewTable = {}
+        SearchTable[object] = NewTable
+        for k, v in pairs(object) do
+            NewTable[Func(k)] = Func(v)
+        end
+
+        return setmetatable(NewTable, getmetatable(object))
+    end
+
+    return Func(obj)
 end
 
 local function GetTableSize(t)
@@ -340,12 +373,24 @@ local dictionary32768_str = GetFileData("tests/dictionary32768.txt")
 local dictionary32768 = LibDeflate:CreateDictionary(dictionary32768_str)
 LibDeflate:VerifyDictionary(dictionary32768_str, dictionary32768, -222133129)
 
+local _CheckCompressAndDecompressCounter = 0
 local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 	, strategy)
-	-- Init cache table in these functions
-	-- , to help memory leak check in the following codes.
-	LibDeflate:EncodeForWoWAddonChannel("")
-	LibDeflate:EncodeForWoWChatChannel("")
+
+	-- For 100% code coverage
+	if _CheckCompressAndDecompressCounter % 3 == 0 then
+		LibDeflate.internals.InternalClearCache()
+	end
+	if _CheckCompressAndDecompressCounter % 2 == 0 then
+		-- Init cache table in these functions
+		-- , to help memory leak check in the following codes.
+		LibDeflate:EncodeForWoWAddonChannel("")
+		LibDeflate:EncodeForWoWChatChannel("")
+	else
+		LibDeflate:DecodeForWoWAddonChannel("")
+		LibDeflate:DecodeForWoWChatChannel("")
+	end
+	_CheckCompressAndDecompressCounter = _CheckCompressAndDecompressCounter + 1
 
 	local origin
 	if is_file then
@@ -2085,7 +2130,7 @@ TestEncode = {}
 		local escapedChars = "\145\54"
 		for _ = 1, 10 do
 			local str = GetRandomStringUniqueChars(1000)
-			CheckEncodeAndDecode(str, reservedChars, escapedChars)
+			CheckEncodeAndDecode(str, reservedChars, escapedChars, "")
 		end
 	end
 	function TestEncode:TestRandomComplete1()
@@ -2105,7 +2150,7 @@ TestEncode = {}
 			local reserved = tmp:sub(1, 10)
 			local escaped = tmp:sub(11, 11)
 			local str = GetRandomStringUniqueChars(math.random(256, 1000))
-			CheckEncodeAndDecode(str, reserved, escaped)
+			CheckEncodeAndDecode(str, reserved, escaped, "")
 		end
 	end
 
@@ -2126,7 +2171,7 @@ TestEncode = {}
 			local reserved = tmp:sub(1, 130) -- Over half chractrs escaped
 			local escaped = tmp:sub(131, 132) -- Two escape char needed.
 			local str = GetRandomStringUniqueChars(math.random(256, 1000))
-			CheckEncodeAndDecode(str, reserved, escaped)
+			CheckEncodeAndDecode(str, reserved, escaped, "")
 		end
 	end
 
@@ -2146,7 +2191,6 @@ TestEncode = {}
 			GetFileData("tests/data/reference/encode_6bit_weakaura.txt")
 		local decode_6bit_weakaura =
 			GetFileData("tests/data/reference/decode_6bit_weakaura.txt")
-			print(LibDeflate:Encode6Bit(decode_6bit_weakaura):len())
 		AssertLongStringEqual(LibDeflate:Encode6Bit(decode_6bit_weakaura)
 			, encode_6bit_weakaura)
 	end
@@ -2159,6 +2203,48 @@ TestEncode = {}
 				lu.assertNil(LibDeflate:Decode6Bit((string.char(i)):rep(100)))
 			end
 		end
+	end
+
+	function TestEncode:TestFailGetEncodeDecodeTable()
+		local t, err
+		t, err = LibDeflate:GetEncodeDecodeTable("1", "", "2")
+		lu.assertNil(t)
+		lu.assertEquals(err, "No escape characters supplied.")
+		t, err = LibDeflate:GetEncodeDecodeTable("1", "a", "23")
+		lu.assertNil(t)
+		lu.assertEquals(err, "The number of reserved characters must be"
+			.." at least as many as the number of mapped chars.")
+		t, err = LibDeflate:GetEncodeDecodeTable("", "1", "")
+		lu.assertNil(t)
+		lu.assertEquals(err, "No characters to encode.")
+		t, err = LibDeflate:GetEncodeDecodeTable("1", "2", "1")
+		lu.assertNil(t)
+		lu.assertEquals(err, "There must be no duplicate characters in the"
+			.." concatenation of reserved_chars, escape_chars and"
+			.." map_chars.")
+		t, err = LibDeflate:GetEncodeDecodeTable("2", "1", "1")
+		lu.assertNil(t)
+		lu.assertEquals(err, "There must be no duplicate characters in the"
+			.." concatenation of reserved_chars, escape_chars and"
+			.." map_chars.")
+		t, err = LibDeflate:GetEncodeDecodeTable("1", "1", "2")
+		lu.assertNil(t)
+		lu.assertEquals(err, "There must be no duplicate characters in the"
+			.." concatenation of reserved_chars, escape_chars and"
+			.." map_chars.")
+		local r = {}
+		for i = 128, 255 do
+			r[#r+1] = string.char(i)
+		end
+		local reserved_chars = "sS\000\010\013\124%"..table_concat(r)
+		t, err = LibDeflate:GetEncodeDecodeTable(reserved_chars, "\029"
+			, "\015\020")
+		lu.assertNil(t)
+		lu.assertEquals(err, "Out of escape characters.")
+		t, err = LibDeflate:GetEncodeDecodeTable(reserved_chars, "\029\031"
+			, "\015\020")
+		lu.assertIsTable(t)
+		lu.assertNil(err)
 	end
 
 TestCompressStrategy = {}
@@ -2190,7 +2276,7 @@ TestCompressStrategy = {}
 	-- Some hard coded compresses length here.
 	-- Modify if algorithm changes.
 	-- (I don't think it will happen in the future though)
-	function TestCompressStrategy:IsFixedStrategyInEffect()
+	function TestCompressStrategy:TestIsFixedStrategyInEffect()
 		local str = ""
 		for i=0, 255 do
 			str = str..string.char(i)
@@ -2216,7 +2302,7 @@ TestCompressStrategy = {}
 			LibDeflate:CompressZlib(str, {strategy = "fixed"}):len()
 			, 548)
 	end
-	function TestCompressStrategy:IsHuffmanOnlyStrategyInEffect()
+	function TestCompressStrategy:TestIsHuffmanOnlyStrategyInEffect()
 		local str = ("a"):rep(1000)
 		lu.assertEquals(
 			LibDeflate:CompressDeflate(str):len()
@@ -2231,7 +2317,7 @@ TestCompressStrategy = {}
 			LibDeflate:CompressZlib(str, {strategy = "huffman_only"}):len()
 			, 144)
 	end
-	function TestCompressStrategy:IsDynamicStrategyInEffect()
+	function TestCompressStrategy:TestIsDynamicStrategyInEffect()
 		local str = ""
 		for i=0, 255 do
 			str = str..string.char(i)
@@ -2256,6 +2342,292 @@ TestCompressStrategy = {}
 		lu.assertEquals(
 			LibDeflate:CompressZlib(str, {strategy = "dynamic"}):len()
 			, 542)
+	end
+
+TestErrors = {}
+	local function TestCorruptedDictionary(msg_prefix, func, dict)
+		-- Test corrupted dictionary
+		local backup = DeepCopy(dict)
+		for i = 1, 100 do
+			if i == 1 then
+				dict = nil
+			elseif i == 2 then
+				dict.string_table = 1
+			elseif i == 3 then
+				dict.string_table = nil
+			elseif i == 4 then
+				dict.strlen = {}
+			elseif i == 5 then
+				dict.strlen = 32769
+			elseif i == 6 then
+				dict.string_table[#dict.string_table+1] = 97
+			elseif i == 7 then
+				dict.hash_tables = 1
+			elseif i == 8 then
+				dict.hash_tables = nil
+			else
+				break
+			end
+			if i == 1 then
+				lu.assertErrorMsgContains(
+					msg_prefix
+					.."'dictionary' - table expected got 'nil'."
+					, function() return func(dict) end)
+			else
+				lu.assertErrorMsgContains(
+					msg_prefix
+					.."'dictionary' - corrupted dictionary."
+					, function() return func(dict) end)
+			end
+			dict = backup
+			backup = DeepCopy(dict)
+			func(dict)
+		end
+	end
+
+	-- arguments to "func": str, dictionary, configs
+	local function TestInvalidCompressDecompressArgs(msg_prefix, func
+		, check_dictionary, check_configs)
+		lu.assertErrorMsgContains(
+			msg_prefix
+			.."'str' - string expected got 'nil'."
+			, function() return func() end)
+		lu.assertErrorMsgContains(
+			msg_prefix
+			.."'str' - string expected got 'table'."
+			, function() return func({}) end)
+		local str = GetRandomString(0, 5)
+		local dict = CreateDictionaryWithoutVerify(
+			GetRandomString(math.random(1, 32768)))
+		if check_dictionary then
+			lu.assertErrorMsgContains(
+				msg_prefix
+				.."'dictionary' - Unverified dictionary."
+				.." You must call LibDeflate:VerifyDictionary"
+				.."(str, dictionary, adler32) at least once"
+				.." before using the dictionary."
+				.." 'adler32' should be a constant which is not calculated"
+				.." at runtime, to ensure 'str' is not modified unintentionally"
+				.." during the program development."
+				, function() return func(str
+					, LibDeflate:CreateDictionary("123")
+					, 1) end)
+			TestCorruptedDictionary(msg_prefix,
+			function(dict2) return func(str, dict2, {}) end, dict)
+		else
+			func(str, nil, {})
+		end
+		if check_configs then
+			func(str, dict, nil)
+			func(str, dict, {})
+			lu.assertErrorMsgContains(
+				(
+				msg_prefix
+				.."'configs' - nil or table expected got '%s'.")
+				:format(type(1))
+				, function() return func(str, dict, 1) end)
+			for i = 0, 9 do
+				func(str, dict, {level = i})
+			end
+			local strategies = {"fixed", "huffman_only", "dynamic"}
+			for _, strategy in ipairs(strategies) do
+				func(str, dict, {strategy = strategy})
+				func(str, dict, {level = math.random(0, 9) -- NOTE: here
+					, strategy = strategy})
+			end
+			lu.assertErrorMsgContains(
+				msg_prefix
+				.."'configs' - unsupported table key in the configs:"
+				.." 'not_a_key'."
+				, function() return func(str, dict, {not_a_key=1}) end)
+			lu.assertErrorMsgContains(
+				msg_prefix
+				.."'configs' - unsupported 'level': 10."
+				, function() return func(str, dict, {level=10}) end)
+			lu.assertErrorMsgContains(
+				msg_prefix
+				.."'configs' - unsupported 'strategy': 'dne'."
+				, function() return func(str, dict, {strategy="dne"}) end)
+		else
+			func(str, dict, 1)
+		end
+	end
+
+	function TestErrors:TestAdler32()
+		lu.assertErrorMsgContains("Usage: LibDeflate:Adler32(str): 'str'"
+			.." - string expected got 'nil'."
+			, function() LibDeflate:Adler32() end)
+		lu.assertErrorMsgContains("Usage: LibDeflate:Adler32(str): 'str'"
+			.." - string expected got 'table'."
+			, function() LibDeflate:Adler32({}) end)
+		LibDeflate:Adler32("") -- No error
+	end
+	function TestErrors:TestCreateDictionary()
+		lu.assertErrorMsgContains("Usage: LibDeflate:CreateDictionary(str):"
+			.." 'str' - string expected got 'nil'."
+			, function() LibDeflate:CreateDictionary() end)
+		lu.assertErrorMsgContains("Usage: LibDeflate:CreateDictionary(str):"
+			.." 'str' - string expected got 'table'."
+			, function() LibDeflate:CreateDictionary({}) end)
+		lu.assertErrorMsgContains("Usage: LibDeflate:CreateDictionary(str):"
+			.." 'str' - Empty string is not allowed."
+			, function() LibDeflate:CreateDictionary("") end)
+		LibDeflate:CreateDictionary("1")
+		lu.assertErrorMsgContains("Usage: LibDeflate:CreateDictionary(str):"
+			.." 'str' - string longer than 32768 bytes is not allowed."
+			 .." Got 32769 bytes."
+			, function() LibDeflate:CreateDictionary(("\000"):rep(32769)) end)
+		LibDeflate:CreateDictionary(("\000"):rep(32768))
+	end
+	function TestErrors:TestVerifyDictionary()
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32):"
+			.." 'str' - string expected got 'nil'."
+			, function() LibDeflate:VerifyDictionary() end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32):"
+			.." 'str' - string expected got 'table'."
+			, function() LibDeflate:VerifyDictionary({}) end)
+		local dict = LibDeflate:CreateDictionary("1") -- adler32: 0x00320032
+		local backup = DeepCopy(dict)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32):"
+			.." 'adler32' - number expected got 'nil'."
+			, function() LibDeflate:VerifyDictionary("123", dict, nil) end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32):"
+			.." 'adler32' - number expected got 'table'."
+			, function() LibDeflate:VerifyDictionary("123", dict, {}) end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:VerifyDictionary"
+			.."(str, dictionary, adler32):"
+			.." 'adler32' does not match the actual adler32 of 'str'."
+			.." expected: 3276849 actual: 3276850 ."
+			.." Please check if str is modified unintentionally."
+			, function()
+				LibDeflate:VerifyDictionary("1", dict, 0x00320031)
+			end)-- unmatch adler32
+		LibDeflate:VerifyDictionary("1", dict, 0x00320032)
+		-- Verify again is not an error
+		LibDeflate:VerifyDictionary("1", dict, 0x00320032)
+		dict.string_table[1] = string.byte("1")
+		LibDeflate:VerifyDictionary("1", dict, 0x00320032)
+		dict.string_table[1] = string.byte("2")
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:VerifyDictionary"
+			.."(str, dictionary, adler32):"
+			.." str and dictionary don't match. Please check if the dictionary"
+			.." is produced by LibDeflate:CreateDictionary(str)."
+			, function()
+				LibDeflate:VerifyDictionary("1", dict, 0x00320032)
+			end)
+		dict = backup
+		LibDeflate:VerifyDictionary("1", dict, 0x00320032)
+		backup = DeepCopy(dict)
+		dict.strlen = 2
+		dict.string_table[2] = string.byte("2")
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:VerifyDictionary"
+			.."(str, dictionary, adler32):"
+			.." str and dictionary don't match. Please check if the dictionary"
+			.." is produced by LibDeflate:CreateDictionary(str)."
+			, function()
+				LibDeflate:VerifyDictionary("1", dict, 0x00320032)
+			end)
+		dict = backup
+		LibDeflate:VerifyDictionary("1", dict, 0x00320032)
+
+		TestCorruptedDictionary(
+			"Usage: LibDeflate:VerifyDictionary"
+			.."(str, dictionary, adler32): "
+			, function(dict2)
+				return LibDeflate:VerifyDictionary("1", dict2, 0x00320032) end
+			, dict)
+	end
+	function TestErrors:TestCompressDeflate()
+		TestInvalidCompressDecompressArgs(
+			"Usage: LibDeflate:CompressDeflate(str, configs): "
+			, function(str, _, configs)
+				return LibDeflate:CompressDeflate(str, configs) end
+			, false, true)
+	end
+	function TestErrors:TestCompressDeflateWithDict()
+		TestInvalidCompressDecompressArgs(
+			"Usage: LibDeflate:CompressDeflateWithDict"
+			.."(str, dictionary, configs): "
+			, function(str, dictionary, configs)
+				return LibDeflate:
+					CompressDeflateWithDict(str, dictionary, configs) end
+			, true, true)
+	end
+	function TestErrors:TestCompressZlib()
+		TestInvalidCompressDecompressArgs(
+			"Usage: LibDeflate:CompressZlib(str, configs): "
+			, function(str, _, configs)
+				return LibDeflate:CompressZlib(str, configs) end
+			, false, true)
+	end
+	function TestErrors:TestCompressZlibWithDict()
+		TestInvalidCompressDecompressArgs(
+			"Usage: LibDeflate:CompressZlibWithDict"
+			.."(str, dictionary, configs): "
+			, function(str, dictionary, configs)
+				return LibDeflate:
+					CompressZlibWithDict(str, dictionary, configs) end
+			, true, true)
+	end
+	function TestErrors:TestDecompressDeflate()
+		TestInvalidCompressDecompressArgs(
+			"Usage: LibDeflate:DecompressDeflate(str): "
+			, function(str, _, _)
+				return LibDeflate:DecompressDeflate(str) end
+			, false, false)
+	end
+	function TestErrors:TestDecompressZlib()
+		TestInvalidCompressDecompressArgs(
+			"Usage: LibDeflate:DecompressZlib(str): "
+			, function(str, _, _)
+				return LibDeflate:DecompressZlib(str) end
+			, false, false)
+	end
+	function TestErrors:TestDecompressDeflateWithDict()
+		TestInvalidCompressDecompressArgs(
+			"Usage: LibDeflate:DecompressDeflateWithDict(str, dictionary): "
+			, function(str, dict, _)
+				return LibDeflate:DecompressDeflateWithDict(str, dict) end
+			, true, false)
+	end
+	function TestErrors:TestDecompressZlibWithDict()
+		TestInvalidCompressDecompressArgs(
+			"Usage: LibDeflate:DecompressZlibWithDict(str, dictionary): "
+			, function(str, dict, _)
+				return LibDeflate:DecompressZlibWithDict(str, dict) end
+			, true, false)
+	end
+	function TestErrors:TestGetEncodeDecodeTable()
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:GetEncodeDecodeTable(reserved_chars,"
+			.." escape_chars, map_chars):"
+			.." All arguments must be string."
+			, function()
+				LibDeflate:GetEncodeDecodeTable(nil, "", "")
+			end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:GetEncodeDecodeTable(reserved_chars,"
+			.." escape_chars, map_chars):"
+			.." All arguments must be string."
+			, function()
+				LibDeflate:GetEncodeDecodeTable("", nil, "")
+			end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:GetEncodeDecodeTable(reserved_chars,"
+			.." escape_chars, map_chars):"
+			.." All arguments must be string."
+			, function()
+				LibDeflate:GetEncodeDecodeTable("", "", nil)
+			end)
+		local t, err = LibDeflate:GetEncodeDecodeTable("1", "2", "")
+		lu.assertNil(err)
 	end
 
 TestCompressRatio = {}
@@ -2300,18 +2672,20 @@ local function AddAllToCoverageTest(suite)
 	end
 end
 
+-- Run "luajit -lluacov tests/Test.lua CodeCoverage" for test coverage test.
 CodeCoverage = {}
 	AddAllToCoverageTest(TestBasicStrings)
 	AddAllToCoverageTest(TestMyData)
 	AddAllToCoverageTest(TestDecompress)
 	AddAllToCoverageTest(TestInternals)
-	AddAllToCoverageTest(TestEncode)
 	AddAllToCoverageTest(TestPresetDict)
+	AddAllToCoverageTest(TestEncode)
+	AddAllToCoverageTest(TestErrors)
 	AddToCoverageTest(TestThirdPartyBig, "Testptt5")
 	AddToCoverageTest(TestThirdPartyBig, "TestGeoProtodata")
-	AddToCoverageTest(TestCompressStrategy, "IsFixedStrategyInEffect")
-	AddToCoverageTest(TestCompressStrategy, "IsDynamicStrategyInEffect")
-	AddToCoverageTest(TestCompressStrategy, "IsHuffmanOnlyStrategyInEffect")
+	AddToCoverageTest(TestCompressStrategy, "TestIsFixedStrategyInEffect")
+	AddToCoverageTest(TestCompressStrategy, "TestIsDynamicStrategyInEffect")
+	AddToCoverageTest(TestCompressStrategy, "TestIsHuffmanOnlyStrategyInEffect")
 
 -- Check if decompress can give any lua error for random string.
 DecompressInfinite = {}
@@ -2329,6 +2703,23 @@ DecompressInfinite = {}
 			print(StringForPrint(StringToHex(str)))
 		end
 	end
+
+for k, v in pairs(_G) do
+	if type(k) == "string" and (k:find("^Test") or k:find("^test")) then
+		assert(type(v) == "table", "Globals start with Test or test"
+			.." must be table: "..k)
+		for kk, vv in pairs(v) do
+			assert(type(kk) == "string"
+				and kk:find("^Test"), "All members in test table"
+				.." s keymust start with Test: "..tostring(kk))
+			assert(type(vv) == "function", "All members in test table"
+				.." must be function")
+		end
+	end
+end
+
+
+
 local runner = lu.LuaUnit.new()
 local exitCode = runner:runSuite()
 print("========================================================")

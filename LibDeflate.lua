@@ -460,7 +460,7 @@ function LibDeflate:CreateDictionary(str)
 	if strlen > 32768 then
 		error(("Usage: LibDeflate:CreateDictionary(str):"
 			.." 'str' - string longer than 32768 bytes is not allowed."
-			 .."string length: %d"):format(strlen), 2)
+			 .." Got %d bytes."):format(strlen), 2)
 	end
 	local dictionary = {}
 	dictionary.string_table = {}
@@ -524,11 +524,12 @@ local function IsValidDictionary(dictionary, verifying)
 			:format(type(dictionary))
 	end
 	if verifying ~= true and type(dictionary.adler32) ~= "number" then
-		return false, ("'dictionary' - Unverified dictionary. "
-			.."You must call LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32) before use the dictionary."
-			.."'adler32' should be a constant which is not calculated"
-			.." at runtime, to ensure 'str' is not modified unintentionally "
+		return false, ("'dictionary' - Unverified dictionary."
+			.." You must call LibDeflate:VerifyDictionary"
+			.."(str, dictionary, adler32) at least once"
+			.." before using the dictionary."
+			.." 'adler32' should be a constant which is not calculated"
+			.." at runtime, to ensure 'str' is not modified unintentionally"
 			.." during the program development.")
 	end
 	if type(dictionary.string_table) ~= "table"
@@ -577,15 +578,15 @@ local function IsValidArguments(str,
 			for k, v in pairs(configs) do
 				if k ~= "level" and k ~= "strategy" then
 					return false,
-					("'configs' - unexpected table key in the configs: '%s'.")
+					("'configs' - unsupported table key in the configs: '%s'.")
 					:format(k)
 				elseif k == "level" and not _compression_level_configs[v] then
 					return false,
-					("'configs' - invalid 'level': '%s'."):format(tostring(v))
+					("'configs' - unsupported 'level': %s."):format(tostring(v))
 				elseif k == "strategy" and v ~= "fixed" and v ~= "huffman_only"
 						and v ~= "dynamic" then
 						-- random_block_type is for testing purpose
-					("'configs' - invalid 'strategy': '%s'.")
+					return false, ("'configs' - unsupported 'strategy': '%s'.")
 						:format(tostring(v))
 				end
 			end
@@ -611,40 +612,43 @@ end
 -- 		a hardcoded constant, so this function does its job.
 function LibDeflate:VerifyDictionary(str, dictionary, adler32)
 	if type(str) ~= "string" then
-		error(("Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32): "
-			.."'str' - string expected got '%s'."):format(type(str)), 2)
+		error(("Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32):"
+			.." 'str' - string expected got '%s'."):format(type(str)), 2)
 	end
 	if type(adler32) ~= "number" then
-		error(("Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32): "
-			.."'adler32' - number expected got '%s'.")
+		error(("Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32):"
+			.." 'adler32' - number expected got '%s'.")
 			:format(type(adler32)), 2)
 	end
 	local dict_valid, dict_err = IsValidDictionary(dictionary, true)
 	if not dict_valid then
-		error("Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32): "
-			..dict_err)
+		error("Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32):"
+			.." "..dict_err)
 	end
-	if dictionary.strlen ~= #str then
-		error("Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32): "
-			.."str and dictionary don't match. Please check if dictionary is "
-			.."produced by LibDeflate:CreateDictionary(str)")
-	end
+
+	local string_unmatch = false
 	for i = 1, #str do
 		local string_table = dictionary.string_table
 		if string_table[i] ~= string_byte(str, i) then
-			error("Usage: LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32): "
-			.."str and dictionary don't match. Please check if dictionary is "
-			.."produced by LibDeflate:CreateDictionary(str)")
+			string_unmatch = true
+			break
 		end
+	end
+
+	if dictionary.strlen ~= #str or string_unmatch then
+		error("Usage: LibDeflate:VerifyDictionary"
+		.."(str, dictionary, adler32):"
+		.." str and dictionary don't match. Please check if the dictionary is"
+		.." produced by LibDeflate:CreateDictionary(str).")
 	end
 
 	local actual_adler32 = self:Adler32(str)
 	if not IsEqualAdler32(adler32, actual_adler32) then
 		error(("Usage: LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32): "
-			.."unmatched adler32. expected: %u actual %u ."
-			.."Please check if str is modified unintentionally.")
+				.."(str, dictionary, adler32):"
+				.." 'adler32' does not match the actual adler32 of 'str'."
+				.." expected: %u actual: %u ."
+				.." Please check if str is modified unintentionally.")
 			:format(adler32, actual_adler32))
 	end
 	dictionary.adler32 = adler32
@@ -1926,7 +1930,7 @@ end
 function LibDeflate:CompressDeflate(str, configs)
 	local arg_valid, arg_err = IsValidArguments(str, false, nil, true, configs)
 	if not arg_valid then
-		error(("Usage: LibDeflate:CompressDeflate(str, config): "
+		error(("Usage: LibDeflate:CompressDeflate(str, configs): "
 			..arg_err), 2)
 	end
 	return CompressDeflateInternal(str, nil, configs)
@@ -1945,7 +1949,7 @@ function LibDeflate:CompressDeflateWithDict(str, dictionary, configs)
 		, true, configs)
 	if not arg_valid then
 		error(("Usage: LibDeflate:CompressDeflateWithDict"
-			.."(str, dictionary, config): "
+			.."(str, dictionary, configs): "
 			..arg_err), 2)
 	end
 	return CompressDeflateInternal(str, dictionary, configs)
@@ -2801,19 +2805,10 @@ end
 -- "illegal" byte values:
 -- 0 is replaces %z
 local _gsub_escape_table = {
-	['\000'] = "%z",
-	[('(')] = "%(",
-	[(')')] = "%)",
-	[('.')] = "%.",
-	[('%')] = "%%",
-	[('+')] = "%+",
-	[('-')] = "%-",
-	[('*')] = "%*",
-	[('?')] = "%?",
-	[('[')] = "%[",
-	[(']')] = "%]",
-	[('^')] = "%^",
-	[('$')] = "%$"
+	["\000"] = "%z", ["("] = "%(", [")"] = "%)", ["."] = "%.",
+	["%"] = "%%", ["+"] = "%+", ["-"] = "%-", ["*"] = "%*",
+	["?"] = "%?", ["["] = "%[", ["]"] = "%]", ["^"] = "%^",
+	["$"] = "%$",
 }
 
 local function escape_for_gsub(str)
@@ -2837,9 +2832,8 @@ table, msg = LibDeflate:GetEncodeDecodeTable(reserved_chars, escape_chars
 		characters in map_chars.  (#map_chars <= #reserved_chars)
 
 return value:
+	nil plus the error msg if fails.
 	table
-		if nil then msg holds an error message, otherwise use like this:
-
 		encoded_message = table:Encode(message)
 		message = table:Decode(encoded_message)
 
@@ -2848,19 +2842,25 @@ Except for the mapped characters, all encoding will be with 1
 --]]
 function LibDeflate:GetEncodeDecodeTable(reserved_chars, escape_chars
 	, map_chars)
-	reserved_chars = reserved_chars or ""
-	escape_chars = escape_chars or ""
-	map_chars = map_chars or ""
 	-- select a default escape character
+	if type(reserved_chars) ~= "string"
+		or type(escape_chars) ~= "string"
+		or type(map_chars) ~= "string" then
+			return error(
+				"Usage: LibDeflate:GetEncodeDecodeTable(reserved_chars,"
+				.." escape_chars, map_chars):"
+				.." All arguments must be string.", 2)
+	end
+
 	if escape_chars == "" then
-		return nil, "No escape characters supplied"
+		return nil, "No escape characters supplied."
 	end
 	if #reserved_chars < #map_chars then
-		return nil, "Number of reserved characters must be"
-			.." at least as many as the number of mapped chars"
+		return nil, "The number of reserved characters must be"
+			.." at least as many as the number of mapped chars."
 	end
 	if reserved_chars == "" then
-		return nil, "No characters to encode"
+		return nil, "No characters to encode."
 	end
 
 	local encode_bytes = reserved_chars..escape_chars..map_chars
@@ -2870,7 +2870,8 @@ function LibDeflate:GetEncodeDecodeTable(reserved_chars, escape_chars
 		local byte = string_byte(encode_bytes, i, i)
 		if taken[byte] then -- Modified by LibDeflate:
 			return nil, "There must be no duplicate characters in the"
-				.." concatenation of reserved_chars, escape_chars and map_chars"
+				.." concatenation of reserved_chars, escape_chars and"
+				.." map_chars."
 		end
 		taken[byte] = true
 	end
@@ -2920,10 +2921,6 @@ function LibDeflate:GetEncodeDecodeTable(reserved_chars, escape_chars
 			-- while r < 256 and taken[r] do
 				r = r + 1
 				if r > 255 then -- switch to next escapeChar
-					if not escape_char or escape_char == "" then
-						-- we are out of escape chars and we need more!
-						return nil, "Out of escape characters"
-					end
 					decode_patterns[#decode_patterns+1] =
 						escape_for_gsub(escape_char)
 						.."(["
@@ -2936,6 +2933,18 @@ function LibDeflate:GetEncodeDecodeTable(reserved_chars, escape_chars
 					r = 0
 					decode_search = {}
 					decode_translate = {}
+
+					-- Fixes Another bug in LibCompress r82.
+					-- LibCompress checks this error condition
+					-- right after "if r > 255 then"
+					-- This is why error case should also be tested.
+					if not escape_char or escape_char == "" then
+						-- actually I don't need to check
+						-- "not ecape_char", but what if Lua changes
+						-- the behavior of string.sub() in the future?
+						-- we are out of escape chars and we need more!
+						return nil, "Out of escape characters."
+					end
 				end
 			end
 
@@ -2972,23 +2981,26 @@ function LibDeflate:GetEncodeDecodeTable(reserved_chars, escape_chars
 		end
 		return str
 	end
-	codec_table.__newindex = function() error("This table is read-only") end
 
 	return codec_table
 end
 
 local _addon_channel_encode_table
 
+local function GenerateWoWAddonChannelEncodeTable()
+	return LibDeflate:GetEncodeDecodeTable("\000", "\001", "")
+end
+
 function LibDeflate:EncodeForWoWAddonChannel(str)
 	if not _addon_channel_encode_table then
-		_addon_channel_encode_table = self:GetEncodeDecodeTable("\000", "\001")
+		_addon_channel_encode_table = GenerateWoWAddonChannelEncodeTable()
 	end
 	return _addon_channel_encode_table:Encode(str)
 end
 
 function LibDeflate:DecodeForWoWAddonChannel(str)
 	if not _addon_channel_encode_table then
-		_addon_channel_encode_table = self:GetEncodeDecodeTable("\000", "\001")
+		_addon_channel_encode_table = GenerateWoWAddonChannelEncodeTable()
 	end
 	return _addon_channel_encode_table:Decode(str)
 end
@@ -3170,6 +3182,10 @@ function LibDeflate:Decode6Bit(str)
 	return table_concat(buffer)
 end
 
+local function InternalClearCache()
+	_chat_channel_encode_table = nil
+	_addon_channel_encode_table = nil
+end
 -- For test. Don't use the functions in this table for real application.
 -- Stuffs in this table is subject to change.
 LibDeflate.internals = {
@@ -3178,6 +3194,7 @@ LibDeflate.internals = {
 	IsEqualAdler32 = IsEqualAdler32,
 	_byte_to_6bit_char = _byte_to_6bit_char,
 	_6bit_to_byte = _6bit_to_byte,
+	InternalClearCache = InternalClearCache,
 }
 
 return LibDeflate
