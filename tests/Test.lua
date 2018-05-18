@@ -371,7 +371,8 @@ end
 
 local dictionary32768_str = GetFileData("tests/dictionary32768.txt")
 local dictionary32768 = LibDeflate:CreateDictionary(dictionary32768_str)
-LibDeflate:VerifyDictionary(dictionary32768_str, dictionary32768, -222133129)
+LibDeflate:VerifyDictionary(dictionary32768_str, dictionary32768, -222133129
+	, 32768)
 
 local _CheckCompressAndDecompressCounter = 0
 local function CheckCompressAndDecompress(string_or_filename, is_file, levels
@@ -741,7 +742,7 @@ local function CreateAndCheckDictionary(str)
 	-- adler32 as the argument to VerifyDictionary should instead
 	-- NOT calculate as runtime, but hardcode as a constant,
 	-- so we actually verifying stuffs.
-	LibDeflate:VerifyDictionary(str, dictionary, LibDeflate:Adler32(str))
+	LibDeflate:VerifyDictionary(str, dictionary, LibDeflate:Adler32(str), #str)
 
 	lu.assertTrue(LibDeflate.internals.IsValidDictionary(dictionary, true))
 	for i=1, strlen do
@@ -772,7 +773,7 @@ local function CreateDictionaryWithoutVerify(str)
 	-- Dont do this in the real program.
 	-- Dont calculate adler32 in runtime. Do hardcode it as constant.
 	-- This is just for test purpose
-	LibDeflate:VerifyDictionary(str, dict, LibDeflate:Adler32(str))
+	LibDeflate:VerifyDictionary(str, dict, LibDeflate:Adler32(str), #str)
 	return dict
 end
 
@@ -2404,7 +2405,7 @@ TestErrors = {}
 				msg_prefix
 				.."'dictionary' - Unverified dictionary."
 				.." You must call LibDeflate:VerifyDictionary"
-				.."(str, dictionary, adler32) at least once"
+				.."(str, dictionary, adler32, strlen) at least once"
 				.." before using the dictionary."
 				.." 'adler32' should be a constant which is not calculated"
 				.." at runtime, to ensure 'str' is not modified unintentionally"
@@ -2481,67 +2482,87 @@ TestErrors = {}
 	end
 	function TestErrors:TestVerifyDictionary()
 		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32):"
+			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32"
+			..", strlen):"
 			.." 'str' - string expected got 'nil'."
 			, function() LibDeflate:VerifyDictionary() end)
 		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32):"
+			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32"
+			..", strlen):"
 			.." 'str' - string expected got 'table'."
 			, function() LibDeflate:VerifyDictionary({}) end)
 		local dict = LibDeflate:CreateDictionary("1") -- adler32: 0x00320032
 		local backup = DeepCopy(dict)
 		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32):"
+			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32"
+			..", strlen):"
 			.." 'adler32' - number expected got 'nil'."
-			, function() LibDeflate:VerifyDictionary("123", dict, nil) end)
+			, function() LibDeflate:VerifyDictionary("123", dict, nil, 1) end)
 		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32):"
+			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32"
+			..", strlen):"
 			.." 'adler32' - number expected got 'table'."
-			, function() LibDeflate:VerifyDictionary("123", dict, {}) end)
+			, function() LibDeflate:VerifyDictionary("123", dict, {}, 1) end)
+		lu.assertErrorMsgContains(
+			("Usage: LibDeflate:VerifyDictionary"
+			.."(str, dictionary, adler32, strlen):"
+			.." 'strlen' - number expected got 'nil'.")
+			, function() LibDeflate:VerifyDictionary("123", dict, 0x00320031)
+		end)
 		lu.assertErrorMsgContains(
 			"Usage: LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32):"
+			.."(str, dictionary, adler32, strlen):"
 			.." 'adler32' does not match the actual adler32 of 'str'."
 			.." expected: 3276849 actual: 3276850 ."
 			.." Please check if str is modified unintentionally."
 			, function()
-				LibDeflate:VerifyDictionary("1", dict, 0x00320031)
+				LibDeflate:VerifyDictionary("1", dict, 0x00320031, 1)
 			end)-- unmatch adler32
-		LibDeflate:VerifyDictionary("1", dict, 0x00320032)
+		LibDeflate:VerifyDictionary("1", dict, 0x00320032, 1)
 		-- Verify again is not an error
-		LibDeflate:VerifyDictionary("1", dict, 0x00320032)
+		LibDeflate:VerifyDictionary("1", dict, 0x00320032, 1)
 		dict.string_table[1] = string.byte("1")
-		LibDeflate:VerifyDictionary("1", dict, 0x00320032)
+		LibDeflate:VerifyDictionary("1", dict, 0x00320032, 1)
 		dict.string_table[1] = string.byte("2")
+
 		lu.assertErrorMsgContains(
 			"Usage: LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32):"
+					.."(str, dictionary, adler32, strlen):"
+					.." 'strlen' does not match the actual length of 'str'."
+					.." expected: 2 actual: 1 ."
+					.." Please check if str is modified unintentionally."
+			, function() LibDeflate:VerifyDictionary("1", dict, 0x00320031, 2)
+		end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:VerifyDictionary"
+			.."(str, dictionary, adler32, strlen):"
 			.." str and dictionary don't match. Please check if the dictionary"
 			.." is produced by LibDeflate:CreateDictionary(str)."
 			, function()
-				LibDeflate:VerifyDictionary("1", dict, 0x00320032)
+				LibDeflate:VerifyDictionary("1", dict, 0x00320032, 1)
 			end)
 		dict = backup
-		LibDeflate:VerifyDictionary("1", dict, 0x00320032)
+		LibDeflate:VerifyDictionary("1", dict, 0x00320032, 1)
 		backup = DeepCopy(dict)
 		dict.strlen = 2
 		dict.string_table[2] = string.byte("2")
 		lu.assertErrorMsgContains(
 			"Usage: LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32):"
+			.."(str, dictionary, adler32, strlen):"
 			.." str and dictionary don't match. Please check if the dictionary"
 			.." is produced by LibDeflate:CreateDictionary(str)."
 			, function()
-				LibDeflate:VerifyDictionary("1", dict, 0x00320032)
+				LibDeflate:VerifyDictionary("1", dict, 0x00320032, 1)
 			end)
 		dict = backup
-		LibDeflate:VerifyDictionary("1", dict, 0x00320032)
+		LibDeflate:VerifyDictionary("1", dict, 0x00320032, 1)
 
 		TestCorruptedDictionary(
 			"Usage: LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32): "
+			.."(str, dictionary, adler32, strlen): "
 			, function(dict2)
-				return LibDeflate:VerifyDictionary("1", dict2, 0x00320032) end
+				return LibDeflate:VerifyDictionary("1", dict2, 0x00320032, 1)
+			end
 			, dict)
 	end
 	function TestErrors:TestCompressDeflate()
@@ -2692,7 +2713,7 @@ TestCommandLine = {}
 		lu.assertEquals(stderr, "")
 	end
 
-	function TestCommandLine:TestHelp()
+	function TestCommandLine:TestCopyright()
 		local returned_status, stdout, stderr = RunCommandline("-v")
 		lu.assertEquals(returned_status, 0)
 
@@ -2707,30 +2728,124 @@ TestCommandLine = {}
 		lu.assertEquals(stderr, "")
 	end
 
-	function TestCommandLine:TestComrpessDeflate()
-		local returned_status, stdout, stderr =
-			RunCommandline("tests/data/reference/item_strings.txt"
-					.." test_commandline.tmp")
+	function TestCommandLine:TestErrors()
+		local returned_status, stdout, stderr
+
+		returned_status, stdout, stderr =
+			RunCommandline("-invalid")
+		lu.assertEquals(returned_status, 1)
 		lu.assertEquals(stdout, "")
-		lu.assertStrContains(stderr, ("Successfully writes %d bytes"):format(
-			GetFileData("test_commandline.tmp"):len()))
-		lu.assertEquals(returned_status, 0)
-		lu.assertEquals(GetFileData("test_commandline.tmp"),
-			LibDeflate:CompressDeflate(GetFileData(
-				"tests/data/reference/item_strings.txt")))
+		lu.assertStrContains(stderr, ("LibDeflate: Invalid argument: %s")
+				:format("-invalid"))
+
+		returned_status, stdout, stderr =
+			RunCommandline("tests/data/reference/item_strings.txt --dict")
+		lu.assertEquals(returned_status, 1)
+		lu.assertEquals(stdout, "")
+		lu.assertStrContains(stderr, "You must speicify the dict filename")
+
+		returned_status, stdout, stderr =
+			RunCommandline("tests/data/reference/item_strings.txt --dict ..")
+		lu.assertEquals(returned_status, 1)
+		lu.assertEquals(stdout, "")
+		lu.assertStrContains(stderr,
+			("LibDeflate: Cannot read the dictionary file '%s':")
+			:format(".."))
+
+		returned_status, stdout, stderr =
+			RunCommandline(". ..")
+		lu.assertEquals(returned_status, 1)
+		lu.assertEquals(stdout, "")
+		lu.assertStrContains(stderr, "LibDeflate: Cannot read the file '.':")
+
+		returned_status, stdout, stderr =
+			RunCommandline("tests/data/reference/item_strings.txt ..")
+		lu.assertEquals(returned_status, 1)
+		lu.assertEquals(stdout, "")
+		lu.assertStrContains(stderr, "LibDeflate: Cannot write the file '..':")
+
+		returned_status, stdout, stderr =
+			RunCommandline("tests/data/reference/item_strings.txt")
+		lu.assertEquals(returned_status, 1)
+		lu.assertEquals(stdout, "")
+		lu.assertStrContains(stderr, "LibDeflate:"
+			.." You must specify both input and output files.")
+
+		returned_status, stdout, stderr =
+			RunCommandline("-d tests/data/reference/item_strings.txt"
+						.." tests/test_commandline.tmp")
+		lu.assertEquals(returned_status, 1)
+		lu.assertEquals(stdout, "")
+		lu.assertStrContains(stderr, "LibDeflate: Decompress fails.")
 	end
 
-	function TestCommandLine:TestComrpessZlib()
-		local returned_status, stdout, stderr =
-			RunCommandline("--zlib tests/data/reference/item_strings.txt"
-					.." test_commandline.tmp")
-		lu.assertEquals(stdout, "")
-		lu.assertStrContains(stderr, ("Successfully writes %d bytes"):format(
-			GetFileData("test_commandline.tmp"):len()))
-		lu.assertEquals(returned_status, 0)
-		lu.assertEquals(GetFileData("test_commandline.tmp"),
-			LibDeflate:CompressZlib(GetFileData(
-				"tests/data/reference/item_strings.txt")))
+	function TestCommandLine:TestCompressAndDecompress()
+		local funcs = {"CompressDeflate", "CompressDeflateWithDict"
+					, "CompressZlib", "CompressZlibWithDict"
+					, "DecompressDeflate", "DecompressDeflateWithDict"
+					, "DecompressZlib", "DecompressZlibWithDict"}
+		local args = {"", "--dict tests/dictionary32768.txt"
+					, "--zlib", "--zlib --dict tests/dictionary32768.txt"
+					, "-d", "-d --dict tests/dictionary32768.txt"
+					, "-d --zlib", "-d --zlib --dict tests/dictionary32768.txt"}
+		local inputs = {"tests/data/reference/item_strings.txt"
+						,"tests/data/reference/item_strings.txt"
+						, "tests/data/reference/item_strings.txt"
+						, "tests/data/reference/item_strings.txt"
+						, "tests/data/reference/item_strings_deflate.txt"
+					, "tests/data/reference/item_strings_deflate_with_dict.txt"
+					, "tests/data/reference/item_strings_zlib.txt"
+					, "tests/data/reference/item_strings_zlib_with_dict.txt"}
+		local addition_args = {
+			"-0 "
+			, "-1 --strategy huffman_only"
+			, "-5 --strategy dynamic"
+			, "-9 --strategy fixed"
+			, ""
+		}
+		local addition_configs = {
+			{level = 0}
+			, {level = 1, strategy = "huffman_only"}
+			, {level = 5, strategy = "dynamic"}
+			, {level = 9, strategy = "fixed"}
+			, nil
+		}
+		for k, func_name in ipairs(funcs) do
+			local configs
+			local addition_arg
+			for i = 1, #addition_args do
+				configs = addition_configs[i]
+				addition_arg = addition_args[i]
+				if not configs then
+					print(("Testing TestCommandline: %s")
+						:format(func_name))
+				else
+					print(
+					("Testing TestCommandline: %s level: %s strategy: %s")
+						:format(func_name, tostring(configs.level)
+						, tostring(configs.strategy)))
+				end
+				local returned_status, stdout, stderr =
+					RunCommandline(args[k].." "..addition_arg
+							.." "..inputs[k]
+							.." tests/test_commandline.tmp")
+				lu.assertEquals(stdout, "")
+				lu.assertStrContains(stderr, ("Successfully writes %d bytes")
+					:format(GetFileData("tests/test_commandline.tmp"):len()))
+				lu.assertEquals(returned_status, 0)
+				local result
+				if func_name:find("Dict") then
+					result = LibDeflate[func_name](LibDeflate, GetFileData(
+						inputs[k]), dictionary32768, configs)
+				else
+					result = LibDeflate[func_name](LibDeflate, GetFileData(
+						inputs[k]), configs)
+				end
+				lu.assertNotNil(result)
+				lu.assertEquals(GetFileData("tests/test_commandline.tmp")
+					, result)
+			end
+		end
 	end
 
 TestCompressRatio = {}
@@ -2778,18 +2893,28 @@ end
 -- Run "luajit -lluacov tests/Test.lua CodeCoverage" for test coverage test.
 CodeCoverage = {}
 	AddAllToCoverageTest(TestBasicStrings)
-	AddAllToCoverageTest(TestMyData)
 	AddAllToCoverageTest(TestDecompress)
 	AddAllToCoverageTest(TestInternals)
 	AddAllToCoverageTest(TestPresetDict)
 	AddAllToCoverageTest(TestEncode)
 	AddAllToCoverageTest(TestErrors)
+	AddToCoverageTest(TestMyData, "TestSmallTest")
 	AddToCoverageTest(TestThirdPartyBig, "Testptt5")
 	AddToCoverageTest(TestThirdPartyBig, "TestGeoProtodata")
 	AddToCoverageTest(TestCompressStrategy, "TestIsFixedStrategyInEffect")
 	AddToCoverageTest(TestCompressStrategy, "TestIsDynamicStrategyInEffect")
 	AddToCoverageTest(TestCompressStrategy, "TestIsHuffmanOnlyStrategyInEffect")
 
+-- Run "lua tests/Test.lua CommandLineCodeCoverage "
+-- for test coverage test and CommandLineCodeCoverage
+-- DONT run with "luajit -lluaconv"
+CommandLineCodeCoverage = {}
+	for k, v in pairs(TestCommandLine) do
+		CommandLineCodeCoverage[k] = function(_, ...)
+			lua_program = "lua -lluacov"
+			return TestCommandLine[k](TestCommandLine, ...)
+		end
+	end
 -- Check if decompress can give any lua error for random string.
 DecompressInfinite = {}
 	function DecompressInfinite:Test()
@@ -2820,7 +2945,6 @@ for k, v in pairs(_G) do
 		end
 	end
 end
-
 
 
 local runner = lu.LuaUnit.new()

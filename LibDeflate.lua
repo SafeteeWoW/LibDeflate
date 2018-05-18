@@ -408,7 +408,7 @@ end
 -- 0 < str:len() <= 32768
 --
 -- **IMPORTANT**
--- You must call LibDeflate:VerifyDictionary(str, dictionary, adler32)
+-- You must call LibDeflate:VerifyDictionary(str, dictionary, adler32, strlen)
 -- after this function. Otherwise, the dictionary is not ready to use.
 --
 -- The example HOWTO create a dictionary.
@@ -423,7 +423,7 @@ end
 -- 4. Each time your program starts, "dict = LibDeflate:CreateDictionary(str)"
 --		to create the dictionary.
 -- 5. Each time your program starts, then "LibDeflate:VerifyDictionary
--- 		(str, dict, adler32)", where adler32 is the hardcoded constants
+-- 		(str, dict, adler32, strlen)", where adler32 is the hardcoded constants
 -- 		which is not calcuated at runtime. Now "dict" is ready to use in
 -- 		compression and decompression. The purppose of VerifyDictionary() is
 -- 		to make sure you don't accidentally modify "str" during the program
@@ -528,7 +528,7 @@ local function IsValidDictionary(dictionary, verifying)
 	if verifying ~= true and type(dictionary.adler32) ~= "number" then
 		return false, ("'dictionary' - Unverified dictionary."
 			.." You must call LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32) at least once"
+			.."(str, dictionary, adler32, strlen) at least once"
 			.." before using the dictionary."
 			.." 'adler32' should be a constant which is not calculated"
 			.." at runtime, to ensure 'str' is not modified unintentionally"
@@ -612,20 +612,39 @@ end
 -- @param dictionary The dictionary produced by LibDeflate:CreateDictionary(str)
 -- @param The adler32 value of str. You should pass in this argument as
 -- 		a hardcoded constant, so this function does its job.
-function LibDeflate:VerifyDictionary(str, dictionary, adler32)
+-- @param The length of the string
+function LibDeflate:VerifyDictionary(str, dictionary, adler32, strlen)
 	if type(str) ~= "string" then
-		error(("Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32):"
+		error(("Usage: LibDeflate:VerifyDictionary"
+			.."(str, dictionary, adler32, strlen):"
 			.." 'str' - string expected got '%s'."):format(type(str)), 2)
 	end
 	if type(adler32) ~= "number" then
-		error(("Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32):"
+		error(("Usage: LibDeflate:VerifyDictionary"
+			.."(str, dictionary, adler32, strlen):"
 			.." 'adler32' - number expected got '%s'.")
 			:format(type(adler32)), 2)
 	end
+	if type(strlen) ~= "number" then
+		error(("Usage: LibDeflate:VerifyDictionary"
+			.."(str, dictionary, adler32, strlen):"
+			.." 'strlen' - number expected got '%s'.")
+			:format(type(strlen)), 2)
+	end
 	local dict_valid, dict_err = IsValidDictionary(dictionary, true)
 	if not dict_valid then
-		error("Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32):"
+		error("Usage: LibDeflate:VerifyDictionary"
+			.."(str, dictionary, adler32, strlen):"
 			.." "..dict_err)
+	end
+
+	if strlen ~= #str then
+		error(("Usage: LibDeflate:VerifyDictionary"
+				.."(str, dictionary, adler32, strlen):"
+				.." 'strlen' does not match the actual length of 'str'."
+				.." expected: %u actual: %u ."
+				.." Please check if str is modified unintentionally.")
+			:format(strlen, #str))
 	end
 
 	local string_unmatch = false
@@ -639,7 +658,7 @@ function LibDeflate:VerifyDictionary(str, dictionary, adler32)
 
 	if dictionary.strlen ~= #str or string_unmatch then
 		error("Usage: LibDeflate:VerifyDictionary"
-		.."(str, dictionary, adler32):"
+		.."(str, dictionary, adler32, strlen):"
 		.." str and dictionary don't match. Please check if the dictionary is"
 		.." produced by LibDeflate:CreateDictionary(str).")
 	end
@@ -647,7 +666,7 @@ function LibDeflate:VerifyDictionary(str, dictionary, adler32)
 	local actual_adler32 = self:Adler32(str)
 	if not IsEqualAdler32(adler32, actual_adler32) then
 		error(("Usage: LibDeflate:VerifyDictionary"
-				.."(str, dictionary, adler32):"
+				.."(str, dictionary, adler32, strlen):"
 				.." 'adler32' does not match the actual adler32 of 'str'."
 				.." expected: %u actual: %u ."
 				.." Please check if str is modified unintentionally.")
@@ -3258,7 +3277,7 @@ if io and os and debug and _G.arg then
 				if not dict_file then
 					io.stderr:write(
 					("LibDeflate: Cannot read the dictionary file '%s': %s")
-					:format(dict_file, dict_status))
+					:format(dict_filename, dict_status))
 				end
 				local dict_str = dict_file:read("*all")
 				dict_file:close()
@@ -3268,7 +3287,7 @@ if io and os and debug and _G.arg then
 				-- unintentionally during the program development. I do this
 				-- here just because no verify in commandline.
 				LibDeflate:VerifyDictionary(dict_str, dictionary,
-					LibDeflate:Adler32(dict_str))
+					LibDeflate:Adler32(dict_str), #dict_str)
 			elseif a == "--strategy" then
 				-- Not sure if I should check error here
 				-- If I do, redudant code.
@@ -3304,7 +3323,7 @@ if io and os and debug and _G.arg then
 
 		if not input or not output then
 			io.stderr:write("LibDeflate:"
-				.." You must specify both input and output file.")
+				.." You must specify both input and output files.")
 			os.exit(1)
 		end
 
@@ -3353,7 +3372,7 @@ if io and os and debug and _G.arg then
 		end
 
 		if not output_data then
-			io.stderr:write("Decompress fails.")
+			io.stderr:write("LibDeflate: Decompress fails.")
 			os.exit(1)
 		end
 
