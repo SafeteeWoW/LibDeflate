@@ -378,6 +378,7 @@ local _CheckCompressAndDecompressCounter = 0
 local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 	, strategy)
 
+	local dict_for_wow
 	-- For 100% code coverage
 	if _CheckCompressAndDecompressCounter % 3 == 0 then
 		LibDeflate.internals.InternalClearCache()
@@ -387,11 +388,21 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 		-- , to help memory leak check in the following codes.
 		LibDeflate:EncodeForWoWAddonChannel("")
 		LibDeflate:EncodeForWoWChatChannel("")
+		lu.assertNotNil(LibDeflate:GetDictForWoW())
 	else
 		LibDeflate:DecodeForWoWAddonChannel("")
 		LibDeflate:DecodeForWoWChatChannel("")
+		lu.assertNotNil(LibDeflate:GetDictForWoW())
 	end
 	_CheckCompressAndDecompressCounter = _CheckCompressAndDecompressCounter + 1
+
+	dict_for_wow = LibDeflate:GetDictForWoW()
+	local dict_for_wow_str = {}
+	for k=1, dict_for_wow.strlen do
+		dict_for_wow_str[#dict_for_wow_str+1]
+			= string.char(dict_for_wow.string_table[k])
+	end
+	dict_for_wow_str = table_concat(dict_for_wow_str)
 
 	local origin
 	if is_file then
@@ -432,6 +443,8 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 			local compress_to_run = {
 				{"CompressDeflate", origin, configs},
 				{"CompressDeflateWithDict", origin, dictionary32768
+					, configs},
+				{"CompressDeflateWithDict", origin, LibDeflate:GetDictForWoW()
 					, configs},
 				{"CompressZlib", origin, configs},
 				{"CompressZlibWithDict", origin, dictionary32768, configs},
@@ -510,14 +523,19 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 					{"DecompressDeflate", compress_data},
 					{"DecompressDeflateWithDict", compress_data
 						, dictionary32768, configs},
+					{"DecompressDeflateWithDict", compress_data
+						, LibDeflate:GetDictForWoW(), configs},
 					{"DecompressZlib", compress_data, configs},
 					{"DecompressZlibWithDict", compress_data
 						, dictionary32768, configs},
 				}
 				lu.assertEquals(#decompress_to_run, #compress_to_run)
+
+				WriteToFile("tests/dict_for_wow.tmp", dict_for_wow_str)
 				local zdeflate_decompress_to_run = {
 					"zdeflate -d <",
 					"zdeflate -d --dict tests/dictionary32768.txt <",
+					"zdeflate -d --dict tests/dict_for_wow.tmp <",
 					"zdeflate --zlib -d <",
 					"zdeflate --zlib -d --dict tests/dictionary32768.txt <",
 				}
@@ -2699,6 +2717,8 @@ TestCommandLine = {}
 			.."  --strategy <fixed/huffman_only/dynamic>"
 			.." specify a special compression strategy.\n"
 			.."  -v    print the version and copyright info.\n"
+			.."  --wowdict Use the preset dictionary designed"
+			.." for World of Warcraft by LibDeflate.\n"
 			.."  --zlib  use zlib format instead of raw deflate.\n"
 			.."\n"
 			.."  With no INPUT, or when INPUT is -, read stdin.\n"
@@ -2733,40 +2753,40 @@ TestCommandLine = {}
 
 		returned_status, stdout, stderr =
 			RunCommandline("-invalid")
-		lu.assertEquals(returned_status, 1)
+		lu.assertNotEquals(returned_status, 0)
 		lu.assertEquals(stdout, "")
 		lu.assertStrContains(stderr, ("LibDeflate: Invalid argument: %s")
 				:format("-invalid"))
 
 		returned_status, stdout, stderr =
 			RunCommandline("tests/data/reference/item_strings.txt --dict")
-		lu.assertEquals(returned_status, 1)
+		lu.assertNotEquals(returned_status, 0)
 		lu.assertEquals(stdout, "")
 		lu.assertStrContains(stderr, "You must speicify the dict filename")
 
 		returned_status, stdout, stderr =
-			RunCommandline("tests/data/reference/item_strings.txt --dict ..")
-		lu.assertEquals(returned_status, 1)
+			RunCommandline("tests/data/reference/item_strings.txt --dict DNE")
+		lu.assertNotEquals(returned_status, 0)
 		lu.assertEquals(stdout, "")
 		lu.assertStrContains(stderr,
 			("LibDeflate: Cannot read the dictionary file '%s':")
-			:format(".."))
+			:format("DNE"))
 
 		returned_status, stdout, stderr =
-			RunCommandline(". ..")
-		lu.assertEquals(returned_status, 1)
+			RunCommandline("DNE DNE")
+		lu.assertNotEquals(returned_status, 0)
 		lu.assertEquals(stdout, "")
-		lu.assertStrContains(stderr, "LibDeflate: Cannot read the file '.':")
+		lu.assertStrContains(stderr, "LibDeflate: Cannot read the file 'DNE':")
 
 		returned_status, stdout, stderr =
 			RunCommandline("tests/data/reference/item_strings.txt ..")
-		lu.assertEquals(returned_status, 1)
+		lu.assertNotEquals(returned_status, 0)
 		lu.assertEquals(stdout, "")
 		lu.assertStrContains(stderr, "LibDeflate: Cannot write the file '..':")
 
 		returned_status, stdout, stderr =
 			RunCommandline("tests/data/reference/item_strings.txt")
-		lu.assertEquals(returned_status, 1)
+		lu.assertNotEquals(returned_status, 0)
 		lu.assertEquals(stdout, "")
 		lu.assertStrContains(stderr, "LibDeflate:"
 			.." You must specify both input and output files.")
@@ -2774,28 +2794,48 @@ TestCommandLine = {}
 		returned_status, stdout, stderr =
 			RunCommandline("-d tests/data/reference/item_strings.txt"
 						.." tests/test_commandline.tmp")
-		lu.assertEquals(returned_status, 1)
+		lu.assertNotEquals(returned_status, 0)
 		lu.assertEquals(stdout, "")
 		lu.assertStrContains(stderr, "LibDeflate: Decompress fails.")
 	end
 
 	function TestCommandLine:TestCompressAndDecompress()
+		-- TODO: remove following two lines when wow preset dict
+		-- is frozen.
+		RunCommandline("--wowdict"
+				.." tests/data/reference/item_strings.txt"
+				.." tests/data/reference/item_strings_deflate_with_wowdict.txt")
+		RunCommandline("--zlib --wowdict"
+				.." tests/data/reference/item_strings.txt"
+				.." tests/data/reference/item_strings_zlib_with_wowdict.txt")
 		local funcs = {"CompressDeflate", "CompressDeflateWithDict"
+					, "CompressDeflateWithDict"
 					, "CompressZlib", "CompressZlibWithDict"
+					, "CompressZlibWithDict"
 					, "DecompressDeflate", "DecompressDeflateWithDict"
-					, "DecompressZlib", "DecompressZlibWithDict"}
+					, "DecompressDeflateWithDict"
+					, "DecompressZlib", "DecompressZlibWithDict"
+					, "DecompressZlibWithDict"}
 		local args = {"", "--dict tests/dictionary32768.txt"
+					, "--wowdict"
 					, "--zlib", "--zlib --dict tests/dictionary32768.txt"
+					, "--zlib --wowdict"
 					, "-d", "-d --dict tests/dictionary32768.txt"
-					, "-d --zlib", "-d --zlib --dict tests/dictionary32768.txt"}
+					, "-d --wowdict"
+					, "-d --zlib", "-d --zlib --dict tests/dictionary32768.txt"
+					, "-d --zlib --wowdict"}
 		local inputs = {"tests/data/reference/item_strings.txt"
 						,"tests/data/reference/item_strings.txt"
 						, "tests/data/reference/item_strings.txt"
 						, "tests/data/reference/item_strings.txt"
+						, "tests/data/reference/item_strings.txt"
+						, "tests/data/reference/item_strings.txt"
 						, "tests/data/reference/item_strings_deflate.txt"
 					, "tests/data/reference/item_strings_deflate_with_dict.txt"
-					, "tests/data/reference/item_strings_zlib.txt"
-					, "tests/data/reference/item_strings_zlib_with_dict.txt"}
+				, "tests/data/reference/item_strings_deflate_with_wowdict.txt"
+				, "tests/data/reference/item_strings_zlib.txt"
+				, "tests/data/reference/item_strings_zlib_with_dict.txt"
+				, "tests/data/reference/item_strings_zlib_with_wowdict.txt"}
 		local addition_args = {
 			"-0 "
 			, "-1 --strategy huffman_only"
@@ -2825,6 +2865,9 @@ TestCommandLine = {}
 						:format(func_name, tostring(configs.level)
 						, tostring(configs.strategy)))
 				end
+				if args[k]:find("--wowdict") then
+					print("^ with wow dict")
+				end
 				local returned_status, stdout, stderr =
 					RunCommandline(args[k].." "..addition_arg
 							.." "..inputs[k]
@@ -2834,7 +2877,10 @@ TestCommandLine = {}
 					:format(GetFileData("tests/test_commandline.tmp"):len()))
 				lu.assertEquals(returned_status, 0)
 				local result
-				if func_name:find("Dict") then
+				if args[k]:find("--wowdict") then
+					result = LibDeflate[func_name](LibDeflate, GetFileData(
+						inputs[k]), LibDeflate:GetDictForWoW(), configs)
+				elseif func_name:find("Dict") then
 					result = LibDeflate[func_name](LibDeflate, GetFileData(
 						inputs[k]), dictionary32768, configs)
 				else

@@ -3203,10 +3203,43 @@ function LibDeflate:Decode6Bit(str)
 	return table_concat(buffer)
 end
 
+local _wow_preset_dictionary
+
+local function CreateWowPresetDictionary()
+	local tmp = {
+		"Version:", "version:", "Test", "test"
+		, "local ", "function()", "end", "for", "if ", "then", "elseif"
+		, "string.", "table.", "gsub", "find", " == ", " ~= ", " <= ", " >= "
+		, " > ", " < "
+		, "print()"
+		, "player:", "PLAYER:"
+		, "item:::::::::::::", "DBM", "BigWigs", "TMW", "WeakAuras"
+		, "^N0", "^N1", "^N2", "^N3", "^N4", "^N5", "^N6", "^N7", "^N8", "^N9"
+		, "^1^N", "^1^S", "^1^T",
+	}
+	local str = table_concat(tmp)
+	local dict = LibDeflate:CreateDictionary(str)
+
+	-- TODO: dont write code like this in public version
+	LibDeflate:VerifyDictionary(str, dict, LibDeflate:Adler32(str)
+		, #str)
+	return dict
+end
+
+--- WORK IN PROGRESS. SUBJECT TO CHANGE.
+function LibDeflate:GetDictForWoW()
+	if not _wow_preset_dictionary then
+		_wow_preset_dictionary = CreateWowPresetDictionary()
+	end
+	return _wow_preset_dictionary
+end
+
 local function InternalClearCache()
 	_chat_channel_encode_table = nil
 	_addon_channel_encode_table = nil
+	_wow_preset_dictionary = nil
 end
+
 -- For test. Don't use the functions in this table for real application.
 -- Stuffs in this table is subject to change.
 LibDeflate.internals = {
@@ -3254,6 +3287,8 @@ if io and os and debug and _G.arg then
 					.."  --strategy <fixed/huffman_only/dynamic>"
 					.." specify a special compression strategy.\n"
 					.."  -v    print the version and copyright info.\n"
+					.."  --wowdict Use the preset dictionary designed"
+					.." for World of Warcraft by LibDeflate.\n"
 					.."  --zlib  use zlib format instead of raw deflate.\n"
 					.."\n"
 					.."  With no INPUT, or when INPUT is -, read stdin.\n"
@@ -3278,6 +3313,7 @@ if io and os and debug and _G.arg then
 					io.stderr:write(
 					("LibDeflate: Cannot read the dictionary file '%s': %s")
 					:format(dict_filename, dict_status))
+					os.exit(1)
 				end
 				local dict_str = dict_file:read("*all")
 				dict_file:close()
@@ -3293,6 +3329,8 @@ if io and os and debug and _G.arg then
 				-- If I do, redudant code.
 				i = i + 1
 				strategy = arg[i]
+			elseif a == "--wowdict" then
+				dictionary = LibDeflate:GetDictForWoW()
 			elseif a == "--zlib" then
 				is_zlib = true
 			elseif a:find("^%-") then
