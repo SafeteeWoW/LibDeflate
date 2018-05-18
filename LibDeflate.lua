@@ -122,7 +122,9 @@ local LibDeflate
 
 do
 	local _COPYRIGHT =
-	"LibDeflate 0.1.0-alpha1 Copyright 2018 Haoqian He. Licensed under GPLv3"
+	"LibDeflate 0.1.0-alpha1"
+	.." Copyright (C) 2018 Haoqian He."
+	.." License GPLv3+: GNU GPL version 3 or later"
 	-- Semantic version. all lowercase.
 	-- Suffix can be alpha1, alpha2, beta1, beta2, rc1, rc2, etc.
 	local _VERSION = "0.1.0-alpha1"
@@ -3196,5 +3198,177 @@ LibDeflate.internals = {
 	_6bit_to_byte = _6bit_to_byte,
 	InternalClearCache = InternalClearCache,
 }
+
+-- Commandline
+-- currently no plan to support stdin and stdout.
+-- Because Lua in Windows does not set stdout with binary mode.
+if io and os and debug and _G.arg then
+	local io = io
+	local os = os
+	local debug = debug
+	local arg = _G.arg
+	local debug_info = debug.getinfo(1)
+	if debug_info.source == arg[0]
+		or debug_info.short_src == arg[0] then
+	-- We are indeed runnning THIS file from the commandline.
+		local input
+		local output
+		local i = 1
+		local status
+		local is_zlib = false
+		local is_decompress = false
+		local level
+		local strategy
+		local dictionary
+		while (arg[i]) do
+			local a = arg[i]
+			if a == "-h" then
+				print(LibDeflate._COPYRIGHT
+					.."\nUsage: LibDeflate.lua [OPTION] [INPUT] [OUTPUT]\n"
+					.."  -0    store only. no compression.\n"
+					.."  -1    fastest compression.\n"
+					.."  -9    slowest and best compression.\n"
+					.."  -d    do decompression instead of compression.\n"
+					.."  --dict <filename> specify the file that contains"
+					.." the entire preset dictionary.\n"
+					.."  -h    give this help.\n"
+					.."  --strategy <fixed/huffman_only/dynamic>"
+					.." specify a special compression strategy.\n"
+					.."  -v    print the version and copyright info.\n"
+					.."  --zlib  use zlib format instead of raw deflate.\n"
+					.."\n"
+					.."  With no INPUT, or when INPUT is -, read stdin.\n"
+					.."  With no OUTPUT, write to stdout.\n")
+				os.exit(0)
+			elseif a == "-v" then
+				print(LibDeflate._COPYRIGHT)
+				os.exit(0)
+			elseif a:find("^%-[0-9]$") then
+				level = tonumber(a:sub(2, 2))
+			elseif a == "-d" then
+				is_decompress = true
+			elseif a == "--dict" then
+				i = i + 1
+				local dict_filename = arg[i]
+				if not dict_filename then
+					io.stderr:write("You must speicify the dict filename")
+					os.exit(1)
+				end
+				local dict_file, dict_status = io.open(dict_filename, "rb")
+				if not dict_file then
+					io.stderr:write(
+					("LibDeflate: Cannot read the dictionary file '%s': %s")
+					:format(dict_file, dict_status))
+				end
+				local dict_str = dict_file:read("*all")
+				dict_file:close()
+				dictionary = LibDeflate:CreateDictionary(dict_str)
+				-- In your lua program, you should pass in adler32 as a CONSTANT
+				-- , so it actually prevent you from modifying dictionary
+				-- unintentionally during the program development. I do this
+				-- here just because no verify in commandline.
+				LibDeflate:VerifyDictionary(dict_str, dictionary,
+					LibDeflate:Adler32(dict_str))
+			elseif a == "--strategy" then
+				-- Not sure if I should check error here
+				-- If I do, redudant code.
+				i = i + 1
+				strategy = arg[i]
+			elseif a == "--zlib" then
+				is_zlib = true
+			elseif a:find("^%-") then
+				io.stderr:write(("LibDeflate: Invalid argument: %s")
+						:format(a))
+				os.exit(1)
+			else
+				if not input then
+					input, status = io.open(a, "rb")
+					if not input then
+						io.stderr:write(
+							("LibDeflate: Cannot read the file '%s': %s")
+							:format(a, tostring(status)))
+						os.exit(1)
+					end
+				elseif not output then
+					output, status = io.open(a, "wb")
+					if not output then
+						io.stderr:write(
+							("LibDeflate: Cannot write the file '%s': %s")
+							:format(a, tostring(status)))
+						os.exit(1)
+					end
+				end
+			end
+			i = i + 1
+		end -- while (arg[i])
+
+		if not input or not output then
+			io.stderr:write("LibDeflate:"
+				.." You must specify both input and output file.")
+			os.exit(1)
+		end
+
+		local input_data = input:read("*all")
+		local configs = {
+			level = level,
+			strategy = strategy,
+		}
+		local output_data
+		if not is_decompress then
+			if not is_zlib then
+				if not dictionary then
+					output_data =
+					LibDeflate:CompressDeflate(input_data, configs)
+				else
+					output_data =
+					LibDeflate:CompressDeflateWithDict(input_data, dictionary
+						, configs)
+				end
+			else
+				if not dictionary then
+					output_data =
+					LibDeflate:CompressZlib(input_data, configs)
+				else
+					output_data =
+					LibDeflate:CompressZlibWithDict(input_data, dictionary
+						, configs)
+				end
+			end
+		else
+			if not is_zlib then
+				if not dictionary then
+					output_data = LibDeflate:DecompressDeflate(input_data)
+				else
+					output_data = LibDeflate:DecompressDeflateWithDict(
+						input_data, dictionary)
+				end
+			else
+				if not dictionary then
+					output_data = LibDeflate:DecompressZlib(input_data)
+				else
+					output_data = LibDeflate:DecompressZlibWithDict(
+						input_data, dictionary)
+				end
+			end
+		end
+
+		if not output_data then
+			io.stderr:write("Decompress fails.")
+			os.exit(1)
+		end
+
+		output:write(output_data)
+		if input and input ~= io.stdin then
+			input:close()
+		end
+		if output and output ~= io.stdout then
+			output:close()
+		end
+
+		io.stderr:write(("Successfully writes %d bytes"):format(
+			output_data:len()))
+		os.exit(0)
+	end
+end
 
 return LibDeflate

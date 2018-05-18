@@ -23,3 +23,6 @@ zdeflate
 *.compress
 *.decompress
 *.dict
+*.stdin
+*.stderr
+*.stdout

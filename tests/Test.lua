@@ -2630,6 +2630,109 @@ TestErrors = {}
 		lu.assertNil(err)
 	end
 
+
+
+local lua_program = "lua"
+local function RunCommandline(args, stdin)
+	local input_filename = "tests/test.stdin"
+	if stdin then
+		WriteToFile(input_filename, stdin)
+	else
+		WriteToFile(input_filename, "")
+	end
+	local stdout_filename = "tests/test.stderr"
+	local stderr_filename = "tests/test.stdout"
+	local status, _, ret = os.execute(lua_program.." LibDeflate.lua "..args
+		.." >"..input_filename
+		.. "> "..stdout_filename.." 2> "..stderr_filename)
+	local returned_status
+	if type(status) == "number" then -- lua 5.1
+		returned_status = status
+	else -- Lua 5.2/5.3
+		returned_status = ret
+		if not status and ret == 0 then
+			returned_status = -1
+			-- Lua bug on Windows when the returned value is -1, ret is 0
+		end
+	end
+
+	local stdout = GetFileData(stdout_filename)
+	local stderr = GetFileData(stderr_filename)
+	return returned_status, stdout, stderr
+end
+
+TestCommandLine = {}
+	function TestCommandLine:TestHelp()
+		local returned_status, stdout, stderr = RunCommandline("-h")
+		lu.assertEquals(returned_status, 0)
+
+		local str = LibDeflate._COPYRIGHT
+			.."\nUsage: LibDeflate.lua [OPTION] [INPUT] [OUTPUT]\n"
+			.."  -0    store only. no compression.\n"
+			.."  -1    fastest compression.\n"
+			.."  -9    slowest and best compression.\n"
+			.."  -d    do decompression instead of compression.\n"
+			.."  --dict <filename> specify the file that contains"
+			.." the entire preset dictionary.\n"
+			.."  -h    give this help.\n"
+			.."  --strategy <fixed/huffman_only/dynamic>"
+			.." specify a special compression strategy.\n"
+			.."  -v    print the version and copyright info.\n"
+			.."  --zlib  use zlib format instead of raw deflate.\n"
+			.."\n"
+			.."  With no INPUT, or when INPUT is -, read stdin.\n"
+			.."  With no OUTPUT, write to stdout.\n"
+
+		if stdout:find(str, 1, true) then
+			lu.assertStrContains(stdout, str)
+		else
+			str = str:gsub("\n", "\r\n")
+			lu.assertStrContains(stdout, str)
+		end
+		lu.assertEquals(stderr, "")
+	end
+
+	function TestCommandLine:TestHelp()
+		local returned_status, stdout, stderr = RunCommandline("-v")
+		lu.assertEquals(returned_status, 0)
+
+		local str = LibDeflate._COPYRIGHT
+
+		if stdout:find(str, 1, true) then
+			lu.assertStrContains(stdout, str)
+		else
+			str = str:gsub("\n", "\r\n")
+			lu.assertStrContains(stdout, str)
+		end
+		lu.assertEquals(stderr, "")
+	end
+
+	function TestCommandLine:TestComrpessDeflate()
+		local returned_status, stdout, stderr =
+			RunCommandline("tests/data/reference/item_strings.txt"
+					.." test_commandline.tmp")
+		lu.assertEquals(stdout, "")
+		lu.assertStrContains(stderr, ("Successfully writes %d bytes"):format(
+			GetFileData("test_commandline.tmp"):len()))
+		lu.assertEquals(returned_status, 0)
+		lu.assertEquals(GetFileData("test_commandline.tmp"),
+			LibDeflate:CompressDeflate(GetFileData(
+				"tests/data/reference/item_strings.txt")))
+	end
+
+	function TestCommandLine:TestComrpessZlib()
+		local returned_status, stdout, stderr =
+			RunCommandline("--zlib tests/data/reference/item_strings.txt"
+					.." test_commandline.tmp")
+		lu.assertEquals(stdout, "")
+		lu.assertStrContains(stderr, ("Successfully writes %d bytes"):format(
+			GetFileData("test_commandline.tmp"):len()))
+		lu.assertEquals(returned_status, 0)
+		lu.assertEquals(GetFileData("test_commandline.tmp"),
+			LibDeflate:CompressZlib(GetFileData(
+				"tests/data/reference/item_strings.txt")))
+	end
+
 TestCompressRatio = {}
 	-- May need to modify number if algorithm changes.
 	function TestCompressRatio:TestSmallTest()
@@ -2711,7 +2814,7 @@ for k, v in pairs(_G) do
 		for kk, vv in pairs(v) do
 			assert(type(kk) == "string"
 				and kk:find("^Test"), "All members in test table"
-				.." s keymust start with Test: "..tostring(kk))
+				.." s key must start with Test: "..tostring(kk))
 			assert(type(vv) == "function", "All members in test table"
 				.." must be function")
 		end
