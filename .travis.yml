@@ -36,7 +36,7 @@ script:
   - if [[ "$LUA" == "luajit" && "$TRAVIS_OS_NAME" == "linux" ]]; then lua tests/Test.lua CommandLineCodeCoverage --verbose; fi
   - if [[ "$LUA" == "luajit" && "$TRAVIS_OS_NAME" == "linux" ]]; then lua -lluacov tests/Test.lua CodeCoverage --verbose; fi
 after_success:
-  - if [[ "$LUA" == "luajit" && "$TRAVIS_OS_NAME" == "linux" ]]; then bash <(curl --retry 10 --retry-delay 10 -s https://codecov.io/bash); fi
+  - if [[ "$LUA" == "luajit" && "$TRAVIS_OS_NAME" == "linux" ]]; then luacov && bash <(curl --retry 10 --retry-delay 10 -s https://codecov.io/bash); fi
   - if [[ "$LUA" == "luajit" && "$TRAVIS_OS_NAME" == "linux" ]]; then luacov-coveralls -v --include %./LibDeflate.lua; fi
 
 
