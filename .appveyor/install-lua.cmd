@@ -118,4 +118,6 @@ set LUA_PATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree
 set LUA_CPATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\lib\lua\5.1\?.dll;%APPVEYOR_BUILD_FOLDER%\?.dll;%LUA_CPATH%;
 luarocks install luaunit
 set PATH=%cd%;%PATH%
-mklink /H lua %LUA%
+if NOT EXIST "lua.exe" (
+    mklink /H lua.exe %LUA%
+)
