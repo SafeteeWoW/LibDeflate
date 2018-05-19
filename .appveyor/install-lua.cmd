@@ -121,7 +121,6 @@ if NOT EXIST "lua.exe" (
 )
 where lua
 lua -v
-
 choco install luarocks
 set LUA_PATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\share\lua\5.1\?.lua;C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\share\lua\5.1\?\init.lua;%APPVEYOR_BUILD_FOLDER%\?.lua;%LUA_PATH%
 set LUA_CPATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\lib\lua\5.1\?.dll;%APPVEYOR_BUILD_FOLDER%\?.dll;%LUA_CPATH%;
