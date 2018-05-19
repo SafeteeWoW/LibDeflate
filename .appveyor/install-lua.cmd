@@ -113,13 +113,15 @@ if NOT EXIST "luajit21\luajit.exe" (
 set LUA=luajit21\luajit.exe
 
 :AFTERLUA
-choco install luarocks
-set LUA_PATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\share\lua\5.1\?.lua;C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\share\lua\5.1\?\init.lua;%APPVEYOR_BUILD_FOLDER%\?.lua;%LUA_PATH%
-set LUA_CPATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\lib\lua\5.1\?.dll;%APPVEYOR_BUILD_FOLDER%\?.dll;%LUA_CPATH%;
-luarocks install luaunit
 set PATH=%cd%;%PATH%
 if NOT EXIST "lua.exe" (
     mklink lua.exe %LUA%
 )
 where lua
 lua -v
+
+choco install luarocks
+set LUA_PATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\share\lua\5.1\?.lua;C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\share\lua\5.1\?\init.lua;%APPVEYOR_BUILD_FOLDER%\?.lua;%LUA_PATH%
+set LUA_CPATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\lib\lua\5.1\?.dll;%APPVEYOR_BUILD_FOLDER%\?.dll;%LUA_CPATH%;
+luarocks install luaunit
+cd %APPVEYOR_BUILD_FOLDER%
