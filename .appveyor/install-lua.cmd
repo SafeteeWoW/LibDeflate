@@ -22,7 +22,8 @@ if NOT EXIST "C:\Program Files (x86)\Lua\5.1\lua.exe" (
     @echo on
     echo Using cached version of Lua
 )
-set LUA="C:\Program Files (x86)\Lua\5.1\lua.exe"
+set LUA="C:\Program Files (x86)\Lua\5.1\lua.exe
+set PATH=C:\Program Files (x86)\Lua\5.1;%PATH%
 @echo off
 goto :AFTERLUA
 
@@ -39,6 +40,8 @@ if NOT EXIST "lua514\lua5.1.exe" (
     echo Using cached version of Lua v5.1.4
 )
 set LUA=lua514\lua5.1.exe
+rename %LUA% lua514\lua.exe
+set PATH=%cd%\lua514;%PATH%
 @echo off
 goto :AFTERLUA
 
@@ -55,6 +58,8 @@ if NOT EXIST "lua515\lua5.1.exe" (
     echo Using cached version of Lua v5.1.5
 )
 set LUA=lua515\lua5.1.exe
+rename %LUA% lua515\lua.exe
+set PATH=%cd%\lua515;%PATH%
 @echo off
 goto :AFTERLUA
 
@@ -72,6 +77,8 @@ if NOT EXIST "lua524\lua524.exe" (
 )
 @echo on
 set LUA=lua524\lua52.exe
+rename %LUA% lua524\lua.exe
+set PATH=%cd%\lua524;%PATH%
 @echo off
 goto :AFTERLUA
 
@@ -89,6 +96,8 @@ if NOT EXIST "lua533\lua533.exe" (
 )
 @echo on
 set LUA=lua533\lua53.exe
+rename %LUA% lua533\lua.exe
+set PATH=%cd%\lua533;%PATH%
 @echo off
 goto :AFTERLUA
 
@@ -101,6 +110,8 @@ if NOT EXIST "luajit20\luajit.exe" (
     echo Using cached version of LuaJIT 2.0
 )
 set LUA=luajit20\luajit.exe
+rename %LUA% luajit20\lua.exe
+set PATH=%cd%\luajit20;%PATH%
 goto :AFTERLUA
 
 :luajit21
@@ -111,18 +122,14 @@ if NOT EXIST "luajit21\luajit.exe" (
     echo Using cached version of LuaJIT 2.1
 )
 set LUA=luajit21\luajit.exe
+rename %LUA% luajit21\lua.exe
+set PATH=%cd%\luajit21;%PATH%
 
 :AFTERLUA
 @echo on
-set PATH=%cd%;%PATH%
 echo %PATH%
-if NOT EXIST "lua.exe" (
-    mklink lua.exe %LUA%
-)
 where lua
 lua -v
-lua.exe -v
-%LUA% -v
 choco install luarocks
 set LUA_PATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\share\lua\5.1\?.lua;C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\share\lua\5.1\?\init.lua;%APPVEYOR_BUILD_FOLDER%\?.lua;%LUA_PATH%
 set LUA_CPATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\lib\lua\5.1\?.dll;%APPVEYOR_BUILD_FOLDER%\?.dll;%LUA_CPATH%;
