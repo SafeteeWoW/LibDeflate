@@ -121,3 +121,5 @@ set PATH=%cd%;%PATH%
 if NOT EXIST "lua.exe" (
     mklink lua.exe %LUA%
 )
+where lua
+lua -v
