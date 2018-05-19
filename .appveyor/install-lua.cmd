@@ -40,7 +40,7 @@ if NOT EXIST "lua514\lua5.1.exe" (
     echo Using cached version of Lua v5.1.4
 )
 set LUA=lua514\lua5.1.exe
-rename %LUA% lua514\lua.exe
+move %LUA% lua514\lua.exe
 set PATH=%cd%\lua514;%PATH%
 @echo off
 goto :AFTERLUA
@@ -58,7 +58,7 @@ if NOT EXIST "lua515\lua5.1.exe" (
     echo Using cached version of Lua v5.1.5
 )
 set LUA=lua515\lua5.1.exe
-rename %LUA% lua515\lua.exe
+move %LUA% lua515\lua.exe
 set PATH=%cd%\lua515;%PATH%
 @echo off
 goto :AFTERLUA
@@ -77,7 +77,7 @@ if NOT EXIST "lua524\lua524.exe" (
 )
 @echo on
 set LUA=lua524\lua52.exe
-rename %LUA% lua524\lua.exe
+move %LUA% lua524\lua.exe
 set PATH=%cd%\lua524;%PATH%
 @echo off
 goto :AFTERLUA
@@ -96,7 +96,7 @@ if NOT EXIST "lua533\lua533.exe" (
 )
 @echo on
 set LUA=lua533\lua53.exe
-rename %LUA% lua533\lua.exe
+move %LUA% lua533\lua.exe
 set PATH=%cd%\lua533;%PATH%
 @echo off
 goto :AFTERLUA
@@ -110,7 +110,7 @@ if NOT EXIST "luajit20\luajit.exe" (
     echo Using cached version of LuaJIT 2.0
 )
 set LUA=luajit20\luajit.exe
-rename %LUA% luajit20\lua.exe
+move %LUA% luajit20\lua.exe
 set PATH=%cd%\luajit20;%PATH%
 goto :AFTERLUA
 
@@ -122,7 +122,7 @@ if NOT EXIST "luajit21\luajit.exe" (
     echo Using cached version of LuaJIT 2.1
 )
 set LUA=luajit21\luajit.exe
-rename %LUA% luajit21\lua.exe
+move %LUA% luajit21\lua.exe
 set PATH=%cd%\luajit21;%PATH%
 
 :AFTERLUA
