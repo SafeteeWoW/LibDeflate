@@ -2681,7 +2681,7 @@ local function RunCommandline(args, stdin)
 	end
 	local stdout_filename = "tests/test.stderr"
 	local stderr_filename = "tests/test.stdout"
-	local status, _, ret = os.execute(lua_program.." LibDeflate.lua "..args
+	local status, _, ret = os.execute(lua_program.." ./LibDeflate.lua "..args
 		.." >"..input_filename
 		.. "> "..stdout_filename.." 2> "..stderr_filename)
 	local returned_status
