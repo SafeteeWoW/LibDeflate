@@ -113,7 +113,9 @@ if NOT EXIST "luajit21\luajit.exe" (
 set LUA=luajit21\luajit.exe
 
 :AFTERLUA
+@echo on
 set PATH=%cd%;%PATH%
+echo %PATH%
 if NOT EXIST "lua.exe" (
     mklink lua.exe %LUA%
 )
@@ -125,3 +127,4 @@ set LUA_PATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree
 set LUA_CPATH=C:\ProgramData\chocolatey\lib\luarocks\luarocks-2.4.4-win32\systree\lib\lua\5.1\?.dll;%APPVEYOR_BUILD_FOLDER%\?.dll;%LUA_CPATH%;
 luarocks install luaunit
 cd %APPVEYOR_BUILD_FOLDER%
+@echo off
