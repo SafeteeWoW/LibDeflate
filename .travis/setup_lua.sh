@@ -188,7 +188,6 @@ else # -e $LUA_HOME_DIR
     luarocks install luaunit
     luarocks install luacov-coveralls
     luarocks install cluacov
-    luarocks install luadoc
     luarocks install ldoc
 fi # -e $LUA_HOME_DIR
 
