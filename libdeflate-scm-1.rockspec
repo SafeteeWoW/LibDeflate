@@ -17,7 +17,7 @@ build = {
       LibDeflate = "LibDeflate.lua",
    },
    copy_directories = {
-      "doc",
+      "docs",
       "examples",
    }
 }
