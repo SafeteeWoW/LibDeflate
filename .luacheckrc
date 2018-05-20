@@ -5,6 +5,7 @@ max_code_line_length = 120
 max_string_line_length = 120
 max_comment_line_length = 120
 files['tests/LibDeflateTest.lua'].global = false
+exclude_files = {".release/LibDeflate/LibStub"}
 
 stds.wow = {
    read_globals = {"LibStub"}

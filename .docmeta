@@ -1,0 +1,4 @@
+-
+    type: luadoc
+    input-file: "LibDeflate.lua"
+    output-page: "API"

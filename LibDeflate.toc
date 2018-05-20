@@ -1,5 +1,4 @@
 ﻿## Interface: 80000
-
 ## Title: Lib: LibDeflate
 ## Notes: Pure Lua DEFLATE/zlib compressors and decompressors.
 ## Author: Haoqian He (WoW: Safetyy at Illidan-US (Horde))

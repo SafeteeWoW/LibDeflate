@@ -11,10 +11,8 @@ env:
   matrix:
     - LUA=lua5.1.4  LUANUMBER=double
     - LUA=luajit     # latest stable version (2.0.x)
-    - LUA=lua5.1.5  LUANUMBER=double
     - LUA=lua5.2.4  LUANUMBER=double
     - LUA=lua5.3.3  LUANUMBER=double
-    - LUA=luajit2.0  # current head of 2.0 branch
     - LUA=luajit2.1  # current head of 2.1 branch
 
 matrix:
@@ -30,6 +28,7 @@ before_install:
 
 script:
   - luacheck -g -u .
+  - tests/release.sh
   - luadoc -d tests
   - cd doc && ldoc . && cd ..
   - lua tests/Test.lua --verbose --shuffle
