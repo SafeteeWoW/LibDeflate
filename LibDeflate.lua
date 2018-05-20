@@ -1,6 +1,6 @@
 --[[--
 LibDeflate:
-Pure Lua compressors and decompressors in DEFLATE/zlib format.
+Pure Lua DEFLATE/zlib compressors and decompressors.
 
 @file LibDeflate.lua
 @author Haoqian He (Github: SafeteeWoW; World of Warcraft: Safetyy-Illidan(US))

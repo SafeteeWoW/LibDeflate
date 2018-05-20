@@ -1,4 +1,4 @@
-description='A pure Lua compressors and decompressors in DEFLATE/zlib format'
+description='Pure Lua DEFLATE/zlib compressors and decompressors.'
 dir='../doc'
 file='../LibDeflate.lua'
 format='discount'
