@@ -13,5 +13,5 @@ manual-changelog:
 
 ignore:
     - tests
-    - doc/config.ld
+    - docs/config.ld
     - *.rockspec
