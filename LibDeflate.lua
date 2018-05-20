@@ -1,5 +1,5 @@
 --[[--
-LibDeflate:
+LibDeflate v0.9-alpha1
 Pure Lua DEFLATE/zlib compressors and decompressors.
 
 @file LibDeflate.lua
@@ -43,12 +43,21 @@ Credits:
 1. zlib, by Jean-loup Gailly (compression) and Mark Adler (decompression).
 	http://www.zlib.net/
 	Licensed under zlib License. http://www.zlib.net/zlib_license.html
-2. puff, by Mark Adler. http://www.zlib.net/
+	For the compression algorithm.
+2. puff, by Mark Adler. https://github.com/madler/zlib/tree/master/contrib/puff
 	Licensed under zlib License. http://www.zlib.net/zlib_license.html
+	For the decompression algorithm
 3. LibCompress, by jjsheets and Galmok of European Stormrage (Horde)
 	https://www.wowace.com/projects/libcompress
 	Licensed under GPLv2.
 	https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+	For the code to create codec
+4. WeakAuras2,
+	https://github.com/WeakAuras/WeakAuras2
+	Licensed under GPLv2.
+	For the 6bit encoding and decoding.
+
+All related codes are modified by LibDeflate.
 ]]
 local LibDeflate
 
@@ -3139,12 +3148,15 @@ local _6bit_to_byte = {
 	[52]=56,[53]=57,[54]=58,[55]=59,[56]=60,[57]=61,[40]=62,[41]=63,
 }
 
---- Encode the string so it only includes 64 printable ASCII characters. <br>
+--- Encode the string so it does not only contains characters other than
+-- 6bit = 64 printable ASCII characters. <br>
+-- Credis to WeakAuras2, this function is equivalant to the implementation
+-- it is using right now. <br>
 -- The encoded string will be 25% larger than the origin string. However, every
 -- single byte of the encoded string will be one of 64 printable ASCII
 -- characters, which are can be easier copied, pasted and displayed.
 -- (26 lowercase letters, 26 uppercase letters, 10 numbers digits,
--- left parenthese, orright parenthese)
+-- left parenthese, or right parenthese)
 -- @param str [string] The string to be encoded.
 -- @return [string] The encoded string.
 function LibDeflate:Encode6Bit(str)

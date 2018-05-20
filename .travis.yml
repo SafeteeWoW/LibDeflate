@@ -28,7 +28,7 @@ before_install:
 
 script:
   - luacheck -g -u .
-  - tests/release.sh
+  - bash tests/release.sh
   - luadoc -d tests
   - cd doc && ldoc . && cd ..
   - lua tests/Test.lua --verbose --shuffle

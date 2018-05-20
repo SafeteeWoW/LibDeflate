@@ -7,6 +7,10 @@ externals:
         url: svn://svn.wowace.com/wow/libstub/mainline/trunk
         tag: latest
 
+manual-changelog:
+    filename: changelog.md
+    markup-type: markdown
+
 ignore:
     - tests
     - doc/config.ld
