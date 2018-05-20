@@ -1082,8 +1082,8 @@ do
 	end
 end
 
-local _libcompress_addon_encode_table = LibCompress:GetAddonEncodeTable()
-local _libcompress_chat_encode_table = LibCompress:GetChatEncodeTable()
+local _libcompress_addon_codec = LibCompress:GetAddonEncodeTable()
+local _libcompress_chat_codec = LibCompress:GetChatEncodeTable()
 
 -- Check if LibDeflate's encoding works properly
 local function CheckEncodeAndDecode(str, reserved_chars, escape_chars
@@ -1093,7 +1093,7 @@ local function CheckEncodeAndDecode(str, reserved_chars, escape_chars
 			LibCompress:GetEncodeTable(reserved_chars
 			, escape_chars, map_chars)
 		local encode_decode_table, message =
-			LibDeflate:GetEncodeDecodeTable(reserved_chars
+			LibDeflate:CreateCodec(reserved_chars
 			, escape_chars, map_chars)
 		if not encode_decode_table then
 			print(message)
@@ -1108,14 +1108,14 @@ local function CheckEncodeAndDecode(str, reserved_chars, escape_chars
 
 	local encoded_addon = LibDeflate:EncodeForWoWAddonChannel(str)
 	local encoded_addon_libcompress =
-		_libcompress_addon_encode_table:Encode(str)
+		_libcompress_addon_codec:Encode(str)
 	AssertLongStringEqual(encoded_addon, encoded_addon_libcompress
 		, "Encoded addon channel result does not match libcompress")
 	AssertLongStringEqual(LibDeflate:DecodeForWoWAddonChannel(encoded_addon)
 		, str, "Encoded for addon channel str cant be decoded to origin")
 
 	local encoded_chat = LibDeflate:EncodeForWoWChatChannel(str)
-	local encoded_chat_libcompress = _libcompress_chat_encode_table:Encode(str)
+	local encoded_chat_libcompress = _libcompress_chat_codec:Encode(str)
 	AssertLongStringEqual(encoded_chat, encoded_chat_libcompress
 		, "Encoded chat channel result does not match libcompress")
 	AssertLongStringEqual(LibDeflate:DecodeForWoWChatChannel(encoded_chat), str
@@ -2224,29 +2224,63 @@ TestEncode = {}
 		end
 	end
 
-	function TestEncode:TestFailGetEncodeDecodeTable()
+	function TestEncode:TestDecodeError()
+		for _ = 0, 100 do
+			local tmp = GetRandomStringUniqueChars(256)
+			local reserved = tmp:sub(1, 10)
+			local escaped = tmp:sub(11, 11)
+			local str = GetRandomStringUniqueChars(math.random(256, 1000))
+			local t = LibDeflate:CreateCodec(reserved, escaped, "")
+			local encode_funcs = {
+					{t.Encode, t},
+					{LibDeflate.EncodeForWoWAddonChannel, LibDeflate},
+					{LibDeflate.EncodeForWoWChatChannel, LibDeflate},
+			}
+			local decode_funcs = {
+					{t.Decode, t},
+					{LibDeflate.DecodeForWoWAddonChannel, LibDeflate},
+					{LibDeflate.DecodeForWoWChatChannel, LibDeflate},
+			}
+			local reserved_chars = {
+				reserved,
+				"\000",
+				"sS\000\010\013\124%",
+			}
+			for j, func in ipairs(encode_funcs) do
+				local encoded = func[1](func[2], str)
+				reserved = reserved_chars[j]
+				local random = math.random(1, #reserved)
+				local reserved_char = reserved:sub(random, random)
+				random = math.random(1, #encoded)
+				encoded = encoded:sub(1, random-1)
+					..reserved_char..encoded:sub(random, #encoded)
+				lu.assertNil(decode_funcs[j][1](decode_funcs[j][2], encoded))
+			end
+		end
+	end
+	function TestEncode:TestFailCreateCodec()
 		local t, err
-		t, err = LibDeflate:GetEncodeDecodeTable("1", "", "2")
+		t, err = LibDeflate:CreateCodec("1", "", "2")
 		lu.assertNil(t)
 		lu.assertEquals(err, "No escape characters supplied.")
-		t, err = LibDeflate:GetEncodeDecodeTable("1", "a", "23")
+		t, err = LibDeflate:CreateCodec("1", "a", "23")
 		lu.assertNil(t)
 		lu.assertEquals(err, "The number of reserved characters must be"
 			.." at least as many as the number of mapped chars.")
-		t, err = LibDeflate:GetEncodeDecodeTable("", "1", "")
+		t, err = LibDeflate:CreateCodec("", "1", "")
 		lu.assertNil(t)
 		lu.assertEquals(err, "No characters to encode.")
-		t, err = LibDeflate:GetEncodeDecodeTable("1", "2", "1")
+		t, err = LibDeflate:CreateCodec("1", "2", "1")
 		lu.assertNil(t)
 		lu.assertEquals(err, "There must be no duplicate characters in the"
 			.." concatenation of reserved_chars, escape_chars and"
 			.." map_chars.")
-		t, err = LibDeflate:GetEncodeDecodeTable("2", "1", "1")
+		t, err = LibDeflate:CreateCodec("2", "1", "1")
 		lu.assertNil(t)
 		lu.assertEquals(err, "There must be no duplicate characters in the"
 			.." concatenation of reserved_chars, escape_chars and"
 			.." map_chars.")
-		t, err = LibDeflate:GetEncodeDecodeTable("1", "1", "2")
+		t, err = LibDeflate:CreateCodec("1", "1", "2")
 		lu.assertNil(t)
 		lu.assertEquals(err, "There must be no duplicate characters in the"
 			.." concatenation of reserved_chars, escape_chars and"
@@ -2256,11 +2290,11 @@ TestEncode = {}
 			r[#r+1] = string.char(i)
 		end
 		local reserved_chars = "sS\000\010\013\124%"..table_concat(r)
-		t, err = LibDeflate:GetEncodeDecodeTable(reserved_chars, "\029"
+		t, err = LibDeflate:CreateCodec(reserved_chars, "\029"
 			, "\015\020")
 		lu.assertNil(t)
 		lu.assertEquals(err, "Out of escape characters.")
-		t, err = LibDeflate:GetEncodeDecodeTable(reserved_chars, "\029\031"
+		t, err = LibDeflate:CreateCodec(reserved_chars, "\029\031"
 			, "\015\020")
 		lu.assertIsTable(t)
 		lu.assertNil(err)
@@ -2643,29 +2677,29 @@ TestErrors = {}
 				return LibDeflate:DecompressZlibWithDict(str, dict) end
 			, true, false)
 	end
-	function TestErrors:TestGetEncodeDecodeTable()
+	function TestErrors:TestCreateCodec()
 		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:GetEncodeDecodeTable(reserved_chars,"
+			"Usage: LibDeflate:CreateCodec(reserved_chars,"
 			.." escape_chars, map_chars):"
 			.." All arguments must be string."
 			, function()
-				LibDeflate:GetEncodeDecodeTable(nil, "", "")
+				LibDeflate:CreateCodec(nil, "", "")
 			end)
 		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:GetEncodeDecodeTable(reserved_chars,"
+			"Usage: LibDeflate:CreateCodec(reserved_chars,"
 			.." escape_chars, map_chars):"
 			.." All arguments must be string."
 			, function()
-				LibDeflate:GetEncodeDecodeTable("", nil, "")
+				LibDeflate:CreateCodec("", nil, "")
 			end)
 		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:GetEncodeDecodeTable(reserved_chars,"
+			"Usage: LibDeflate:CreateCodec(reserved_chars,"
 			.." escape_chars, map_chars):"
 			.." All arguments must be string."
 			, function()
-				LibDeflate:GetEncodeDecodeTable("", "", nil)
+				LibDeflate:CreateCodec("", "", nil)
 			end)
-		local t, err = LibDeflate:GetEncodeDecodeTable("1", "2", "")
+		local t, err = LibDeflate:CreateCodec("1", "2", "")
 		lu.assertNil(err)
 	end
 
@@ -2706,7 +2740,7 @@ TestCommandLine = {}
 		lu.assertEquals(returned_status, 0)
 
 		local str = LibDeflate._COPYRIGHT
-			.."\nUsage: LibDeflate.lua [OPTION] [INPUT] [OUTPUT]\n"
+			.."\nUsage: lua LibDeflate.lua [OPTION] [INPUT] [OUTPUT]\n"
 			.."  -0    store only. no compression.\n"
 			.."  -1    fastest compression.\n"
 			.."  -9    slowest and best compression.\n"
@@ -2718,11 +2752,8 @@ TestCommandLine = {}
 			.." specify a special compression strategy.\n"
 			.."  -v    print the version and copyright info.\n"
 			.."  --wowdict Use the preset dictionary designed"
-			.." for World of Warcraft by LibDeflate.\n"
+			.." for World of Warcraft shipped with LibDeflate.\n"
 			.."  --zlib  use zlib format instead of raw deflate.\n"
-			.."\n"
-			.."  With no INPUT, or when INPUT is -, read stdin.\n"
-			.."  With no OUTPUT, write to stdout.\n"
 
 		if stdout:find(str, 1, true) then
 			lu.assertStrContains(stdout, str)

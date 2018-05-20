@@ -30,6 +30,8 @@ before_install:
 
 script:
   - luacheck -g -u .
+  - luadoc -d tests
+  - cd doc && ldoc . && cd ..
   - lua tests/Test.lua --verbose --shuffle
   # converage test makes it too slow. so only run once in luajit linux
   # Don't shuffle coverage test so we see progress

@@ -16,8 +16,5 @@ puff.exe: puff.c puff.h pufftest.c
 zdeflate.exe: zdeflate.c
 	cl /O2 /Fe:zdeflate zdeflate.c /I $(ZLIB_PATH) /MD /link $(ZLIB_PATH)\zlib.lib
 
-test: ../LibDeflate.lua LibDeflateTest.lua
-	cd .. && lua tests\LibDeflateTest.lua
-
 clean:
 	del /F /Q puff.exe puff.obj pufftest.obj zdeflate.obj zdeflate.exe

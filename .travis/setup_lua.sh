@@ -189,7 +189,8 @@ else # -e $LUA_HOME_DIR
     luarocks install luacov-coveralls
     luarocks install cluacov
     luarocks install luaprofiler
-
+    luarocks install luadoc
+    luarocks install ldoc
 fi # -e $LUA_HOME_DIR
 
 cd $TRAVIS_BUILD_DIR
