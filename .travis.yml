@@ -30,6 +30,7 @@ script:
   - luacheck -g -u .
   - bash tests/release.sh
   - cd docs && ldoc . && cd ..
+  - lua examples/example.lua
   - lua tests/Test.lua --verbose --shuffle
   # converage test makes it too slow. so only run once in luajit linux
   # Don't shuffle coverage test so we see progress

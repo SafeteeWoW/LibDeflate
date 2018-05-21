@@ -1,5 +1,5 @@
 --[[--
-LibDeflate v0.9-alpha1
+LibDeflate v0.9-alpha2
 Pure Lua DEFLATE/zlib compressors and decompressors.
 
 @file LibDeflate.lua
@@ -64,7 +64,11 @@ local LibDeflate
 do
 	-- Semantic version. all lowercase.
 	-- Suffix can be alpha1, alpha2, beta1, beta2, rc1, rc2, etc.
-	local _VERSION = "0.9.0-alpha1"
+	-- NOTE: Three version number needs to modify.
+	-- 1. On the top of LibDeflate.lua
+	-- 2. HERE
+	-- 3. README.md
+	local _VERSION = "0.9.0-alpha2"
 
 	local _COPYRIGHT =
 	"LibDeflate ".._VERSION
@@ -306,7 +310,8 @@ end
 -- See RFC1950 Page 9 https://tools.ietf.org/html/rfc1950 for the
 -- definition of Adler-32 checksum.
 -- @param str [string] the input string to calcuate its Adler-32 checksum.
--- @return [integer] The Adler-32 checksum.
+-- @return [integer] The Adler-32 checksum, which is greater or equal to 0,
+-- and less than 2^32 (4294967296).
 function LibDeflate:Adler32(str)
 	-- This function is loop unrolled by better performance.
 	--
@@ -343,57 +348,99 @@ function LibDeflate:Adler32(str)
 		b = (b + a) % 65521
 		i = i + 1
 	end
-	return b*65536+a
+	return (b*65536+a) % 4294967296
+end
+
+-- Compare adler32 checksum.
+-- adler32 should be compared with a mod to avoid sign problem
+-- 4072834167 (unsigned) is the same adler32 as -222133129
+local function IsEqualAdler32(actual, expected)
+	return (actual % 4294967296) == (expected % 4294967296)
 end
 
 --- Create a preset dictionary.
--- <br>
--- You must call LibDeflate:VerifyDictionary(str, dictionary, adler32, strlen)
--- after this function. Otherwise, the dictionary is not ready to use. <br>
 --
 -- This function is not fast, and the memory consumption of the produced
 -- dictionary is about 50 times of the input string. Therefore, it is suggestted
 -- to run this function only once in your program.
 --
+-- It is very important to know that if you do use a preset dictionary,
+-- compressors and decompressors MUST USE THE EQUIVALENT dictionary. That is,
+-- dictionary must be created using the same string. If you update your program
+-- with a new dictionary, people with the old version won't be able to transmit
+-- data with people with the new version. Therefore, changing the dictionary
+-- must be very careful, and the parameter of the function helps you to avoid
+-- accidentally modify the the definition of the dictionary during the program
+-- development.
+--
 -- @usage local dict_str = "1234567890"
--- local dict = LibDeflate:CreateDictionary(dict_str)
 --
--- -- print(LibDeflate:Adler32(dict_str), dict_str:len())
+-- -- print(dict_str:len(), LibDeflate:Adler32(dict_str))
+-- -- Hardcode the print result below to verify it to avoid acciently
+-- -- modification of 'str' during the program development.
+-- -- string length: 10, Adler-32: 187433486,
+-- -- Don't calculate string length and its Adler-32 at run-time.
 --
--- -- Hardcode the result below to verify it to avoid acciently modification
--- -- during the program development.
---
--- -- Adler-32: 187433486, string length: 10
---
--- LibDeflate:VerifyDictionary(dict_str, dict, 187433486, 10)
+-- local dict = LibDeflate:CreateDictionary(dict_str, 10, 187433486)
 --
 -- @param str [string] The string used as the preset dictionary. <br>
 -- You should put stuffs that frequently appears in the dictionary
 -- string and preferablely put more frequently appeared stuffs toward the end
 -- of the string. <br>
 -- Empty string and string longer than 32768 bytes are not allowed.
+-- @param strlen [integer] The length of 'str'. Please pass in this parameter
+-- as a hardcoded constant, in order to verify the content of 'str'.
+-- @param adler32 [integer] The Adler-32 checksum of 'str'. Please pass in this
+-- parameter as a hardcoded constant, in order to verify the content of 'str'.
 -- @return  [table] The dictionary used for preset dictionary compression and
 -- decompression.
--- @see LibDeflate:VerifyDictionary
-function LibDeflate:CreateDictionary(str)
+-- @raise error if 'strlen' does not match the length of the 'str',
+-- or if 'adler32' does not match the Adler-32 checksum of the 'str'.
+function LibDeflate:CreateDictionary(str, strlen, adler32)
 	if type(str) ~= "string" then
-		error(("Usage: LibDeflate:CreateDictionary(str):"
+		error(("Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
 			.." 'str' - string expected got '%s'."):format(type(str)), 2)
 	end
-	local strlen = #str
+	if type(strlen) ~= "number" then
+		error(("Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
+			.." 'strlen' - number expected got '%s'."):format(
+			type(strlen)), 2)
+	end
+	if type(adler32) ~= "number" then
+		error(("Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
+			.." 'adler32' - number expected got '%s'."):format(
+			type(adler32)), 2)
+	end
+	if strlen ~= #str then
+		error(("Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
+				.." 'strlen' does not match the actual length of 'str'."
+				.." 'strlen': %u, '#str': %u ."
+				.." Please check if 'str' is modified unintentionally.")
+			:format(strlen, #str))
+	end
 	if strlen == 0 then
-		error(("Usage: LibDeflate:CreateDictionary(str):"
+		error(("Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
 			.." 'str' - Empty string is not allowed."), 2)
 	end
 	if strlen > 32768 then
-		error(("Usage: LibDeflate:CreateDictionary(str):"
+		error(("Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
 			.." 'str' - string longer than 32768 bytes is not allowed."
 			 .." Got %d bytes."):format(strlen), 2)
 	end
+	local actual_adler32 = self:Adler32(str)
+	if not IsEqualAdler32(adler32, actual_adler32) then
+		error(("Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
+				.." 'adler32' does not match the actual adler32 of 'str'."
+				.." 'adler32': %u, 'Adler32(str)': %u ."
+				.." Please check if 'str' is modified unintentionally.")
+			:format(adler32, actual_adler32))
+	end
+
 	local dictionary = {}
+	dictionary.adler32 = adler32
+	dictionary.hash_tables = {}
 	dictionary.string_table = {}
 	dictionary.strlen = strlen
-	dictionary.hash_tables = {}
 	local string_table = dictionary.string_table
 	local hash_tables = dictionary.hash_tables
 	string_table[1] = string_byte(str, 1, 1)
@@ -443,24 +490,15 @@ end
 
 -- Check if the dictionary is valid.
 -- @param dictionary The preset dictionary for compression and decompression.
--- @param verifying used internally in LibDeflate:VerifyDictionary()
 -- @return true if valid, false if not valid.
 -- @return if not valid, the error message.
-local function IsValidDictionary(dictionary, verifying)
+local function IsValidDictionary(dictionary)
 	if type(dictionary) ~= "table" then
 		return false, ("'dictionary' - table expected got '%s'.")
 			:format(type(dictionary))
 	end
-	if verifying ~= true and type(dictionary.adler32) ~= "number" then
-		return false, ("'dictionary' - Unverified dictionary."
-			.." You must call LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32, strlen) at least once"
-			.." before using the dictionary."
-			.." 'adler32' should be a constant which is not calculated"
-			.." at runtime, to ensure 'str' is not modified unintentionally"
-			.." during the program development.")
-	end
-	if type(dictionary.string_table) ~= "table"
+	if type(dictionary.adler32) ~= "number"
+		or type(dictionary.string_table) ~= "table"
 		or type(dictionary.strlen) ~= "number"
 		or dictionary.strlen <= 0
 		or dictionary.strlen > 32768
@@ -577,88 +615,7 @@ local function IsValidArguments(str,
 	return true, ""
 end
 
--- Compare adler32 checksum.
--- adler32 should be compared with a mod to avoid sign problem
--- 4072834167 (unsigned) is the same adler32 as -222133129
-local function IsEqualAdler32(actual, expected)
-	return (actual % 4294967296) == (expected % 4294967296)
-end
 
---- Verify newly created dictionary so it is ready to use. <br>
--- This is to make sure dictionary string is not accidentally
--- corrupted in the programming development. <br>
--- Dictionary created by LibDeflate:CreateDictionary
--- won't be usable by compression or decompression until it
--- is verified by this function.
--- @param str [string] the dictionary string.
--- @param dictionary [table] The dictionary produced by
--- LibDeflate:CreateDictionary(str)
--- @param adler32 [integer] The adler32 value of str. You should pass in this
--- argument as a hardcoded constant.
--- @param strlen [integer] The length of str. You should pass in this argument
--- as a hardcoded constant.
--- @see LibDeflate:CreateDictionary
-function LibDeflate:VerifyDictionary(str, dictionary, adler32, strlen)
-	if type(str) ~= "string" then
-		error(("Usage: LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32, strlen):"
-			.." 'str' - string expected got '%s'."):format(type(str)), 2)
-	end
-	if type(adler32) ~= "number" then
-		error(("Usage: LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32, strlen):"
-			.." 'adler32' - number expected got '%s'.")
-			:format(type(adler32)), 2)
-	end
-	if type(strlen) ~= "number" then
-		error(("Usage: LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32, strlen):"
-			.." 'strlen' - number expected got '%s'.")
-			:format(type(strlen)), 2)
-	end
-	local dict_valid, dict_err = IsValidDictionary(dictionary, true)
-	if not dict_valid then
-		error("Usage: LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32, strlen):"
-			.." "..dict_err)
-	end
-
-	if strlen ~= #str then
-		error(("Usage: LibDeflate:VerifyDictionary"
-				.."(str, dictionary, adler32, strlen):"
-				.." 'strlen' does not match the actual length of 'str'."
-				.." expected: %u actual: %u ."
-				.." Please check if str is modified unintentionally.")
-			:format(strlen, #str))
-	end
-
-	local string_unmatch = false
-	for i = 1, #str do
-		local string_table = dictionary.string_table
-		if string_table[i] ~= string_byte(str, i) then
-			string_unmatch = true
-			break
-		end
-	end
-
-	if dictionary.strlen ~= #str or string_unmatch then
-		error("Usage: LibDeflate:VerifyDictionary"
-		.."(str, dictionary, adler32, strlen):"
-		.." str and dictionary don't match. Please check if the dictionary is"
-		.." produced by LibDeflate:CreateDictionary(str).")
-	end
-
-	local actual_adler32 = self:Adler32(str)
-	if not IsEqualAdler32(adler32, actual_adler32) then
-		error(("Usage: LibDeflate:VerifyDictionary"
-				.."(str, dictionary, adler32, strlen):"
-				.." 'adler32' does not match the actual adler32 of 'str'."
-				.." expected: %u actual: %u ."
-				.." Please check if str is modified unintentionally.")
-			:format(adler32, actual_adler32))
-	end
-	dictionary.adler32 = adler32
-end
 
 --[[ --------------------------------------------------------------------------
 	Compress code
@@ -2031,7 +1988,6 @@ end
 -- to the compressed data.
 -- @see compression_configs
 -- @see LibDeflate:CreateDictionary
--- @see LibDeflate:VerifyDictionary
 -- @see LibDeflate:DecompressDeflateWithDict
 function LibDeflate:CompressDeflateWithDict(str, dictionary, configs)
 	local arg_valid, arg_err = IsValidArguments(str, true, dictionary
@@ -2073,7 +2029,6 @@ end
 -- Should always be 0.
 -- @see compression_configs
 -- @see LibDeflate:CreateDictionary
--- @see LibDeflate:VerifyDictionary
 -- @see LibDeflate:DecompressZlibWithDict
 function LibDeflate:CompressZlibWithDict(str, dictionary, configs)
 	local arg_valid, arg_err = IsValidArguments(str, true, dictionary
@@ -3252,41 +3207,9 @@ function LibDeflate:Decode6Bit(str)
 	return table_concat(buffer)
 end
 
-local _wow_preset_dictionary
-
-local function CreateWowPresetDictionary()
-	local tmp = {
-"active", "all", "alpha", "always", "aura_env.", "auto", "awarded", "BigWigs", "blue", "bosses", "bottom", "BOTTOM", "candidates", "charges", "check", "color", "complete", "condition", "config", "cooldown", "council", "custom", "damage", "date", "DBM", "dead", "Death Knight", "DEATHKNIGHT", "Demon Hunter", "DEMONHUNTER", "destGUID", "details", "difference", "difficulty", "difficulty", "disable", "disenchant", "display", "DPS", "Druid", "DRUID", "duration", "elseif", "enable", "ENCOUNTER_END", "ENCOUNTER_START", "end", "equipLoc", "error", "exists", "faction", "fail", "false", "female", ":find", "font", "for", "found", "full", "function()", "gear", "gear1", "gear2", "GetTime()", ":gsub", "green", "group", "group", "guild", "health", "height", "history", "https://", "Hunter", "HUNTER", "icon", "ilvl", "information", "init", "ipairs", "isRelic", "kill", "last", "last", "left", "LEFT", "level", "link", "load", "local\032", "logs", "lootSlot", "lootTable", "Mage", "MAGE", "mana", "master", "math.", "max", "message", "middle", "MIDDLE", "min", "Monk", "MONK", "multi", "name", "nameplate1", "never", "next", "nil", "offset", "Options", "outline", "owned", "Paladin", "PALADIN", "party1", "pass", "personalloot", "player", "PLAYER-", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "position", "Priest", "PRIEST", "print", "profile", "progress", "pvptalent", "raid1", "range", "rank", "realm", "receive", "red", "regions", "relativePoint", "relic", "remaining", "request", "reroll", "response", "return", "right", "RIGHT", "Rogue", "ROGUE", "scale", "select(", "send", "Shaman", "SHAMAN", "show", "single", "sound", "sourceGUID", "specID", "spellid", "start", "status", "subTypeID", "syncAck", "table.", "text1", "texture", "tests", "the", "then", "timer", "top", "TOP", "type", "typeID", "Unit", "UnitBuff", "UnitDebuff", "untrigger", "update", "use", "version", "voice", "votes", "Warlock", "WARLOCK", "Warrior", "WARRIOR", "width", "percent", "animation", "method", "only", "everyone", "settings", "^SCOMBAT_LOG_EVENT_UNFILTERED", "^SGet", "^SSet", "class", "true", "count", "events", "add", "delete", "remove", ":110:",":120:", ":125:", "130:", "3561:1517:3337:::3563:1527:3336:1497:1522", "3319:1507:3528:1512:1572:", "TANK", "DAMAGER", "HEALER", "|cffff8000|Hitem:", "|cffa335ee|Hitem::::::::::::::::::::::|h", ",_,_,_,_,_,_,_,_,_,_,_,", "~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~`~^t^t^S", -- luacheck: ignore
-			}
-	local str = table_concat(tmp)
-	local dict = LibDeflate:CreateDictionary(str)
-
-	LibDeflate:VerifyDictionary(str, dict, 2935835377, 1555)
-	return dict
-end
-
---- (WILL BE CHANGE IN v1.0) Get the dictionary designed for world of warcraft
--- shipped with LibDeflate. <br>
--- LibDeflate caches the result of the function, so the cost to repeatedly
--- run this function is tiny. <br>
--- WARNING: This function is scheduled to be changed without backward
--- compatibilty in v1.0, which will be released before BFA.
--- Just do not use this function in production right now. <br>
--- @return [table] The dictionary for WoW shipped with LibDeflate which can be
--- directly used as the dictionary for compression and decompression. <br>
--- There is NO need to call LibDeflate:VerifyDictionary for the dictionary
--- returned by this function.
-function LibDeflate:GetDictForWoW()
-	if not _wow_preset_dictionary then
-		_wow_preset_dictionary = CreateWowPresetDictionary()
-	end
-	return _wow_preset_dictionary
-end
-
 local function InternalClearCache()
 	_chat_channel_codec = nil
 	_addon_channel_codec = nil
-	_wow_preset_dictionary = nil
 end
 
 -- For test. Don't use the functions in this table for real application.
@@ -3352,8 +3275,6 @@ if io and os and debug and _G.arg then
 					.."  --strategy <fixed/huffman_only/dynamic>"
 					.." specify a special compression strategy.\n"
 					.."  -v    print the version and copyright info.\n"
-					.."  --wowdict Use the preset dictionary designed"
-					.." for World of Warcraft shipped with LibDeflate.\n"
 					.."  --zlib  use zlib format instead of raw deflate.\n")
 				os.exit(0)
 			elseif a == "-v" then
@@ -3379,20 +3300,17 @@ if io and os and debug and _G.arg then
 				end
 				local dict_str = dict_file:read("*all")
 				dict_file:close()
-				dictionary = LibDeflate:CreateDictionary(dict_str)
 				-- In your lua program, you should pass in adler32 as a CONSTANT
 				-- , so it actually prevent you from modifying dictionary
 				-- unintentionally during the program development. I do this
-				-- here just because no verify in commandline.
-				LibDeflate:VerifyDictionary(dict_str, dictionary,
-					LibDeflate:Adler32(dict_str), #dict_str)
+				-- here just because no convenient way to verify in commandline.
+				dictionary = LibDeflate:CreateDictionary(dict_str,
+					#dict_str, LibDeflate:Adler32(dict_str))
 			elseif a == "--strategy" then
 				-- Not sure if I should check error here
 				-- If I do, redudant code.
 				i = i + 1
 				strategy = arg[i]
-			elseif a == "--wowdict" then
-				dictionary = LibDeflate:GetDictForWoW()
 			elseif a == "--zlib" then
 				is_zlib = true
 			elseif a:find("^%-") then

@@ -370,15 +370,13 @@ local function PutRandomBitsInPaddingBits(compressed_data, padding_bitlen)
 end
 
 local dictionary32768_str = GetFileData("tests/dictionary32768.txt")
-local dictionary32768 = LibDeflate:CreateDictionary(dictionary32768_str)
-LibDeflate:VerifyDictionary(dictionary32768_str, dictionary32768, -222133129
-	, 32768)
+local dictionary32768 = LibDeflate:CreateDictionary(dictionary32768_str
+	, 32768, 4072834167)
 
 local _CheckCompressAndDecompressCounter = 0
 local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 	, strategy)
 
-	local dict_for_wow
 	-- For 100% code coverage
 	if _CheckCompressAndDecompressCounter % 3 == 0 then
 		LibDeflate.internals.InternalClearCache()
@@ -388,21 +386,11 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 		-- , to help memory leak check in the following codes.
 		LibDeflate:EncodeForWoWAddonChannel("")
 		LibDeflate:EncodeForWoWChatChannel("")
-		lu.assertNotNil(LibDeflate:GetDictForWoW())
 	else
 		LibDeflate:DecodeForWoWAddonChannel("")
 		LibDeflate:DecodeForWoWChatChannel("")
-		lu.assertNotNil(LibDeflate:GetDictForWoW())
 	end
 	_CheckCompressAndDecompressCounter = _CheckCompressAndDecompressCounter + 1
-
-	dict_for_wow = LibDeflate:GetDictForWoW()
-	local dict_for_wow_str = {}
-	for k=1, dict_for_wow.strlen do
-		dict_for_wow_str[#dict_for_wow_str+1]
-			= string.char(dict_for_wow.string_table[k])
-	end
-	dict_for_wow_str = table_concat(dict_for_wow_str)
 
 	local origin
 	if is_file then
@@ -443,8 +431,6 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 			local compress_to_run = {
 				{"CompressDeflate", origin, configs},
 				{"CompressDeflateWithDict", origin, dictionary32768
-					, configs},
-				{"CompressDeflateWithDict", origin, LibDeflate:GetDictForWoW()
 					, configs},
 				{"CompressZlib", origin, configs},
 				{"CompressZlibWithDict", origin, dictionary32768, configs},
@@ -523,19 +509,16 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 					{"DecompressDeflate", compress_data},
 					{"DecompressDeflateWithDict", compress_data
 						, dictionary32768, configs},
-					{"DecompressDeflateWithDict", compress_data
-						, LibDeflate:GetDictForWoW(), configs},
+
 					{"DecompressZlib", compress_data, configs},
 					{"DecompressZlibWithDict", compress_data
 						, dictionary32768, configs},
 				}
 				lu.assertEquals(#decompress_to_run, #compress_to_run)
 
-				WriteToFile("tests/dict_for_wow.tmp", dict_for_wow_str)
 				local zdeflate_decompress_to_run = {
 					"zdeflate -d <",
 					"zdeflate -d --dict tests/dictionary32768.txt <",
-					"zdeflate -d --dict tests/dict_for_wow.tmp <",
 					"zdeflate --zlib -d <",
 					"zdeflate --zlib -d --dict tests/dictionary32768.txt <",
 				}
@@ -752,17 +735,19 @@ local function CheckZlibDecompressIncludingError(compress, decompress)
 	return CheckDecompressIncludingError(compress, decompress, true)
 end
 
+local function CreateDictionaryWithoutVerify(str)
+	-- Dont do this in the real program.
+	-- Dont calculate adler32 in runtime. Do hardcode it as constant.
+	-- This is just for test purpose
+	local dict = LibDeflate:CreateDictionary(str, #str, LibDeflate:Adler32(str))
+	return dict
+end
+
 local function CreateAndCheckDictionary(str)
 	local strlen = #str
-	local dictionary = LibDeflate:CreateDictionary(str)
+	local dictionary = CreateDictionaryWithoutVerify(str)
 
-	-- Don't do this in a real program. This is just for testing purpose.
-	-- adler32 as the argument to VerifyDictionary should instead
-	-- NOT calculate as runtime, but hardcode as a constant,
-	-- so we actually verifying stuffs.
-	LibDeflate:VerifyDictionary(str, dictionary, LibDeflate:Adler32(str), #str)
-
-	lu.assertTrue(LibDeflate.internals.IsValidDictionary(dictionary, true))
+	lu.assertTrue(LibDeflate.internals.IsValidDictionary(dictionary))
 	for i=1, strlen do
 		lu.assertEquals(dictionary.string_table[i], string_byte(str, i, i))
 	end
@@ -786,14 +771,7 @@ local function CreateAndCheckDictionary(str)
 	return dictionary
 end
 
-local function CreateDictionaryWithoutVerify(str)
-	local dict = LibDeflate:CreateDictionary(str)
-	-- Dont do this in the real program.
-	-- Dont calculate adler32 in runtime. Do hardcode it as constant.
-	-- This is just for test purpose
-	LibDeflate:VerifyDictionary(str, dict, LibDeflate:Adler32(str), #str)
-	return dict
-end
+
 
 -- the input dictionary must can make compressed data smaller.
 -- otherwise, set dontCheckEffectivenss
@@ -2418,6 +2396,8 @@ TestErrors = {}
 				dict.hash_tables = 1
 			elseif i == 8 then
 				dict.hash_tables = nil
+			elseif i == 9 then
+				dict.adler32 = nil
 			else
 				break
 			end
@@ -2453,20 +2433,8 @@ TestErrors = {}
 		local dict = CreateDictionaryWithoutVerify(
 			GetRandomString(math.random(1, 32768)))
 		if check_dictionary then
-			lu.assertErrorMsgContains(
-				msg_prefix
-				.."'dictionary' - Unverified dictionary."
-				.." You must call LibDeflate:VerifyDictionary"
-				.."(str, dictionary, adler32, strlen) at least once"
-				.." before using the dictionary."
-				.." 'adler32' should be a constant which is not calculated"
-				.." at runtime, to ensure 'str' is not modified unintentionally"
-				.." during the program development."
-				, function() return func(str
-					, LibDeflate:CreateDictionary("123")
-					, 1) end)
 			TestCorruptedDictionary(msg_prefix,
-			function(dict2) return func(str, dict2, {}) end, dict)
+				function(dict2) return func(str, dict2, {}) end, dict)
 		else
 			func(str, nil, {})
 		end
@@ -2516,106 +2484,54 @@ TestErrors = {}
 		LibDeflate:Adler32("") -- No error
 	end
 	function TestErrors:TestCreateDictionary()
-		lu.assertErrorMsgContains("Usage: LibDeflate:CreateDictionary(str):"
+		LibDeflate:CreateDictionary("1", 1, 0x00320032)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
 			.." 'str' - string expected got 'nil'."
-			, function() LibDeflate:CreateDictionary() end)
-		lu.assertErrorMsgContains("Usage: LibDeflate:CreateDictionary(str):"
+			, function() LibDeflate:CreateDictionary(nil, 1, 0x00320032) end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
 			.." 'str' - string expected got 'table'."
-			, function() LibDeflate:CreateDictionary({}) end)
-		lu.assertErrorMsgContains("Usage: LibDeflate:CreateDictionary(str):"
+			, function() LibDeflate:CreateDictionary({}, 1, 0x00320032) end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
+			.." 'strlen' - number expected got 'nil'."
+			, function() LibDeflate:CreateDictionary("1", nil, 0x00320032) end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
+			.." 'adler32' - number expected got 'nil'."
+			, function() LibDeflate:CreateDictionary("1", 1, nil) end)
+		lu.assertEquals(LibDeflate:Adler32(""), 1)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
 			.." 'str' - Empty string is not allowed."
-			, function() LibDeflate:CreateDictionary("") end)
-		LibDeflate:CreateDictionary("1")
-		lu.assertErrorMsgContains("Usage: LibDeflate:CreateDictionary(str):"
+			, function() LibDeflate:CreateDictionary("", 0, 1) end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
 			.." 'str' - string longer than 32768 bytes is not allowed."
 			 .." Got 32769 bytes."
-			, function() LibDeflate:CreateDictionary(("\000"):rep(32769)) end)
-		LibDeflate:CreateDictionary(("\000"):rep(32768))
-	end
-	function TestErrors:TestVerifyDictionary()
+			, function() LibDeflate:CreateDictionary(("\000"):rep(32769)
+					, 32769, LibDeflate:Adler32(("\000"):rep(32769))) end)
+				-- ^ Dont calculate Adler32 in run-time in real problem plz.
+		LibDeflate:CreateDictionary(("\000"):rep(32768)
+					, 32768, LibDeflate:Adler32(("\000"):rep(32768)))
 		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32"
-			..", strlen):"
-			.." 'str' - string expected got 'nil'."
-			, function() LibDeflate:VerifyDictionary() end)
+			"Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
+			.." 'strlen' does not match the actual length of 'str'."
+			.." 'strlen': 32767, '#str': 32768 ."
+			.." Please check if 'str' is modified unintentionally."
+			, function() LibDeflate:CreateDictionary(("\000"):rep(32768)
+						, 32767, LibDeflate:Adler32(("\000"):rep(32768))) end)
+		-- ^ Dont calculate Adler32 in run-time in real problem plz.
 		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32"
-			..", strlen):"
-			.." 'str' - string expected got 'table'."
-			, function() LibDeflate:VerifyDictionary({}) end)
-		local dict = LibDeflate:CreateDictionary("1") -- adler32: 0x00320032
-		local backup = DeepCopy(dict)
-		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32"
-			..", strlen):"
-			.." 'adler32' - number expected got 'nil'."
-			, function() LibDeflate:VerifyDictionary("123", dict, nil, 1) end)
-		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:VerifyDictionary(str, dictionary, adler32"
-			..", strlen):"
-			.." 'adler32' - number expected got 'table'."
-			, function() LibDeflate:VerifyDictionary("123", dict, {}, 1) end)
-		lu.assertErrorMsgContains(
-			("Usage: LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32, strlen):"
-			.." 'strlen' - number expected got 'nil'.")
-			, function() LibDeflate:VerifyDictionary("123", dict, 0x00320031)
-		end)
-		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32, strlen):"
-			.." 'adler32' does not match the actual adler32 of 'str'."
-			.." expected: 3276849 actual: 3276850 ."
-			.." Please check if str is modified unintentionally."
-			, function()
-				LibDeflate:VerifyDictionary("1", dict, 0x00320031, 1)
-			end)-- unmatch adler32
-		LibDeflate:VerifyDictionary("1", dict, 0x00320032, 1)
-		-- Verify again is not an error
-		LibDeflate:VerifyDictionary("1", dict, 0x00320032, 1)
-		dict.string_table[1] = string.byte("1")
-		LibDeflate:VerifyDictionary("1", dict, 0x00320032, 1)
-		dict.string_table[1] = string.byte("2")
-
-		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:VerifyDictionary"
-					.."(str, dictionary, adler32, strlen):"
-					.." 'strlen' does not match the actual length of 'str'."
-					.." expected: 2 actual: 1 ."
-					.." Please check if str is modified unintentionally."
-			, function() LibDeflate:VerifyDictionary("1", dict, 0x00320031, 2)
-		end)
-		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32, strlen):"
-			.." str and dictionary don't match. Please check if the dictionary"
-			.." is produced by LibDeflate:CreateDictionary(str)."
-			, function()
-				LibDeflate:VerifyDictionary("1", dict, 0x00320032, 1)
-			end)
-		dict = backup
-		LibDeflate:VerifyDictionary("1", dict, 0x00320032, 1)
-		backup = DeepCopy(dict)
-		dict.strlen = 2
-		dict.string_table[2] = string.byte("2")
-		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32, strlen):"
-			.." str and dictionary don't match. Please check if the dictionary"
-			.." is produced by LibDeflate:CreateDictionary(str)."
-			, function()
-				LibDeflate:VerifyDictionary("1", dict, 0x00320032, 1)
-			end)
-		dict = backup
-		LibDeflate:VerifyDictionary("1", dict, 0x00320032, 1)
-
-		TestCorruptedDictionary(
-			"Usage: LibDeflate:VerifyDictionary"
-			.."(str, dictionary, adler32, strlen): "
-			, function(dict2)
-				return LibDeflate:VerifyDictionary("1", dict2, 0x00320032, 1)
-			end
-			, dict)
+			("Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
+				.." 'adler32' does not match the actual adler32 of 'str'."
+				.." 'adler32': %u, 'Adler32(str)': %u ."
+				.." Please check if 'str' is modified unintentionally.")
+				:format(LibDeflate:Adler32(("\000"):rep(32768))+1
+					, LibDeflate:Adler32(("\000"):rep(32768)))
+			, function() LibDeflate:CreateDictionary(("\000"):rep(32768)
+					, 32768, LibDeflate:Adler32(("\000"):rep(32768))+1) end)
 	end
 	function TestErrors:TestCompressDeflate()
 		TestInvalidCompressDecompressArgs(
@@ -2715,9 +2631,14 @@ local function RunCommandline(args, stdin)
 	end
 	local stdout_filename = "tests/test.stderr"
 	local stderr_filename = "tests/test.stdout"
-	local status, _, ret = os.execute(lua_program.." ./LibDeflate.lua "..args
-		.." >"..input_filename
+	local libdeflate_file = "./LibDeflate.lua"
+	if os.getenv("OS") and os.getenv("OS"):find("Windows") then
+		libdeflate_file = "LibDeflate.lua"
+	end
+	local status, _, ret = os.execute(lua_program.." "..libdeflate_file.." "
+		..args.." >"..input_filename
 		.. "> "..stdout_filename.." 2> "..stderr_filename)
+
 	local returned_status
 	if type(status) == "number" then -- lua 5.1
 		returned_status = status
@@ -2751,8 +2672,6 @@ TestCommandLine = {}
 			.."  --strategy <fixed/huffman_only/dynamic>"
 			.." specify a special compression strategy.\n"
 			.."  -v    print the version and copyright info.\n"
-			.."  --wowdict Use the preset dictionary designed"
-			.." for World of Warcraft shipped with LibDeflate.\n"
 			.."  --zlib  use zlib format instead of raw deflate.\n"
 
 		if stdout:find(str, 1, true) then
@@ -2831,42 +2750,22 @@ TestCommandLine = {}
 	end
 
 	function TestCommandLine:TestCompressAndDecompress()
-		-- TODO: remove following two lines when wow preset dict
-		-- is frozen.
-		RunCommandline("--wowdict"
-				.." tests/data/reference/item_strings.txt"
-				.." tests/data/reference/item_strings_deflate_with_wowdict.txt")
-		RunCommandline("--zlib --wowdict"
-				.." tests/data/reference/item_strings.txt"
-				.." tests/data/reference/item_strings_zlib_with_wowdict.txt")
 		local funcs = {"CompressDeflate", "CompressDeflateWithDict"
-					, "CompressDeflateWithDict"
 					, "CompressZlib", "CompressZlibWithDict"
-					, "CompressZlibWithDict"
 					, "DecompressDeflate", "DecompressDeflateWithDict"
-					, "DecompressDeflateWithDict"
-					, "DecompressZlib", "DecompressZlibWithDict"
-					, "DecompressZlibWithDict"}
+					, "DecompressZlib", "DecompressZlibWithDict"}
 		local args = {"", "--dict tests/dictionary32768.txt"
-					, "--wowdict"
 					, "--zlib", "--zlib --dict tests/dictionary32768.txt"
-					, "--zlib --wowdict"
 					, "-d", "-d --dict tests/dictionary32768.txt"
-					, "-d --wowdict"
-					, "-d --zlib", "-d --zlib --dict tests/dictionary32768.txt"
-					, "-d --zlib --wowdict"}
+					, "-d --zlib", "-d --zlib --dict tests/dictionary32768.txt"}
 		local inputs = {"tests/data/reference/item_strings.txt"
 						,"tests/data/reference/item_strings.txt"
 						, "tests/data/reference/item_strings.txt"
 						, "tests/data/reference/item_strings.txt"
-						, "tests/data/reference/item_strings.txt"
-						, "tests/data/reference/item_strings.txt"
 						, "tests/data/reference/item_strings_deflate.txt"
 					, "tests/data/reference/item_strings_deflate_with_dict.txt"
-				, "tests/data/reference/item_strings_deflate_with_wowdict.txt"
 				, "tests/data/reference/item_strings_zlib.txt"
-				, "tests/data/reference/item_strings_zlib_with_dict.txt"
-				, "tests/data/reference/item_strings_zlib_with_wowdict.txt"}
+				, "tests/data/reference/item_strings_zlib_with_dict.txt"}
 		local addition_args = {
 			"-0 "
 			, "-1 --strategy huffman_only"
@@ -2896,9 +2795,6 @@ TestCommandLine = {}
 						:format(func_name, tostring(configs.level)
 						, tostring(configs.strategy)))
 				end
-				if args[k]:find("--wowdict") then
-					print("^ with wow dict")
-				end
 				local returned_status, stdout, stderr =
 					RunCommandline(args[k].." "..addition_arg
 							.." "..inputs[k]
@@ -2908,10 +2804,7 @@ TestCommandLine = {}
 					:format(GetFileData("tests/test_commandline.tmp"):len()))
 				lu.assertEquals(returned_status, 0)
 				local result
-				if args[k]:find("--wowdict") then
-					result = LibDeflate[func_name](LibDeflate, GetFileData(
-						inputs[k]), LibDeflate:GetDictForWoW(), configs)
-				elseif func_name:find("Dict") then
+				if func_name:find("Dict") then
 					result = LibDeflate[func_name](LibDeflate, GetFileData(
 						inputs[k]), dictionary32768, configs)
 				else
@@ -2951,6 +2844,38 @@ TestCompressRatio = {}
 			<= 5820)
 		lu.assertTrue(LibDeflate:CompressDeflate(fileData, {level=9}):len()
 			<= 5820)
+	end
+
+TestExported = {}
+	function TestExported:TestExported()
+		local exported = {
+			EncodeForWoWChatChannel = "function",
+			_COPYRIGHT = "string",
+			DecodeForWoWAddonChannel = "function",
+			CompressDeflate  = "function",
+			DecompressDeflate = "function",
+			CompressDeflateWithDict = "function",
+			DecompressZlibWithDict = "function",
+			CreateCodec = "function",
+			DecodeForWoWChatChannel = "function",
+			internals = "table",
+			_VERSION = "string",
+			Adler32 = "function",
+			CreateDictionary = "function",
+			CompressZlibWithDict = "function",
+			Encode6Bit = "function",
+			CompressZlib = "function",
+			Decode6Bit = "function",
+			DecompressDeflateWithDict = "function",
+			EncodeForWoWAddonChannel = "function",
+			DecompressZlib = "function",
+		}
+		for k, v in pairs(exported) do
+			lu.assertEquals(v, type(LibDeflate[k]))
+		end
+		for k, v in pairs(LibDeflate) do
+			lu.assertEquals(type(v), exported[k])
+		end
 	end
 --------------------------------------------------------------
 -- Coverage Tests --------------------------------------------

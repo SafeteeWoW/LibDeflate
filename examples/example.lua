@@ -52,15 +52,15 @@ assert(decompress_deflate_with_level == example_input)
 
 -- Compress with a preset dictionary
 local dict_str = "121231234" -- example preset dictionary string.
-local dict = LibDeflate:CreateDictionary(dict_str)
 -- print(LibDeflate:Adler32(dict_str), #dict_str)
--- 147325380   9
+-- 9 147325380
 -- hardcode the print result above, the ensure it is not modified
 -- accidenttaly during the program development.
-LibDeflate:VerifyDictionary(dict_str, dict, 147325380, 9)
+--
 -- WARNING: The compressor and decompressor must use the same dictionary.
 -- You should be aware of this when tranmitting compressed data over the
 -- internet.
+local dict = LibDeflate:CreateDictionary(dict_str, 9, 147325380)
 
 -- Using the dictionary with raw deflate format
 local compress_deflate_with_dict = LibDeflate:CompressDeflateWithDict(
@@ -77,5 +77,3 @@ assert(#compress_zlib_with_dict < #compress_zlib)
 local decompress_zlib_with_dict = LibDeflate:DecompressZlibWithDict(
 	compress_zlib_with_dict, dict)
 assert(decompress_zlib_with_dict == example_input)
-
-

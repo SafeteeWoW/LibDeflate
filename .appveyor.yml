@@ -19,8 +19,8 @@ install:
 build: off
 
 test_script:
-- cmd: >-
-    lua tests\Test.lua --verbose --shuffle -o junit -n testresult.xml
+- cmd: lua examples\example.lua
+- cmd: lua tests\Test.lua --verbose --shuffle -o junit -n testresult.xml
 
 after_test:
 - ps: $wc = New-Object 'System.Net.WebClient'

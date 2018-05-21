@@ -43,6 +43,7 @@
 </ul>
 <h2>Topics</h2>
 <ul class="">
+  <li><a href="../topics/changelog.md.html">changelog</a></li>
   <li><a href="../topics/readme.md.html">readme</a></li>
 </ul>
 <h2>Examples</h2>
@@ -55,7 +56,7 @@
 <div id="content">
 
 <h1>File <code>LibDeflate.lua</code></h1>
-<p>LibDeflate v0.9-alpha1
+<p>LibDeflate v0.9-alpha2
 Pure Lua DEFLATE/zlib compressors and decompressors.</p>
 <p>
 
@@ -112,7 +113,7 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
 	<td class="summary">Create a custom codec with encoder and decoder.</td>
 	</tr>
 	<tr>
-	<td class="name" ><a href="#LibDeflate:CreateDictionary">LibDeflate:CreateDictionary (str)</a></td>
+	<td class="name" ><a href="#LibDeflate:CreateDictionary">LibDeflate:CreateDictionary (str, strlen, adler32)</a></td>
 	<td class="summary">Create a preset dictionary.</td>
 	</tr>
 	<tr>
@@ -158,15 +159,6 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
 	<td class="summary">Encode the string to make it ready to be transmitted in World of
  Warcraft chat channel.</td>
 	</tr>
-	<tr>
-	<td class="name" ><a href="#LibDeflate:GetDictForWoW">LibDeflate:GetDictForWoW ()</a></td>
-	<td class="summary">(WILL BE CHANGE IN v1.0) Get the dictionary designed for world of warcraft
- shipped with LibDeflate.</td>
-	</tr>
-	<tr>
-	<td class="name" ><a href="#LibDeflate:VerifyDictionary">LibDeflate:VerifyDictionary (str, dictionary, adler32, strlen)</a></td>
-	<td class="summary">Verify newly created dictionary so it is ready to use.</td>
-	</tr>
 </table>
 <h2><a href="#Tables">Tables</a></h2>
 <table class="function_list">
@@ -207,7 +199,8 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
     <h3>Returns:</h3>
     <ol>
 
-        [integer] The Adler-32 checksum.
+        [integer] The Adler-32 checksum, which is greater or equal to 0,
+ and less than 2^32 (4294967296).
     </ol>
 
 
@@ -295,7 +288,6 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
     <ul>
          <li><a href="../source/LibDeflate.lua.html#compression_configs">compression_configs</a></li>
          <li><a href="../source/LibDeflate.lua.html#LibDeflate:CreateDictionary">LibDeflate:CreateDictionary</a></li>
-         <li><a href="../source/LibDeflate.lua.html#LibDeflate:VerifyDictionary">LibDeflate:VerifyDictionary</a></li>
          <li><a href="../source/LibDeflate.lua.html#LibDeflate:DecompressDeflateWithDict">LibDeflate:DecompressDeflateWithDict</a></li>
     </ul>
 
@@ -378,7 +370,6 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
     <ul>
          <li><a href="../source/LibDeflate.lua.html#compression_configs">compression_configs</a></li>
          <li><a href="../source/LibDeflate.lua.html#LibDeflate:CreateDictionary">LibDeflate:CreateDictionary</a></li>
-         <li><a href="../source/LibDeflate.lua.html#LibDeflate:VerifyDictionary">LibDeflate:VerifyDictionary</a></li>
          <li><a href="../source/LibDeflate.lua.html#LibDeflate:DecompressZlibWithDict">LibDeflate:DecompressZlibWithDict</a></li>
     </ul>
 
@@ -437,17 +428,23 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
 </dd>
     <dt>
     <a name = "LibDeflate:CreateDictionary"></a>
-    <strong>LibDeflate:CreateDictionary (str)</strong>
+    <strong>LibDeflate:CreateDictionary (str, strlen, adler32)</strong>
     </dt>
     <dd>
-    Create a preset dictionary.
- <br>
- You must call LibDeflate:VerifyDictionary(str, dictionary, adler32, strlen)
- after this function. Otherwise, the dictionary is not ready to use. <br></p>
+    Create a preset dictionary. </p>
 
 <p> This function is not fast, and the memory consumption of the produced
  dictionary is about 50 times of the input string. Therefore, it is suggestted
- to run this function only once in your program.
+ to run this function only once in your program.</p>
+
+<p> It is very important to know that if you do use a preset dictionary,
+ compressors and decompressors MUST USE THE EQUIVALENT dictionary. That is,
+ dictionary must be created using the same string. If you update your program
+ with a new dictionary, people with the old version won't be able to transmit
+ data with people with the new version. Therefore, changing the dictionary
+ must be very careful, and the parameter of the function helps you to avoid
+ accidentally modify the the definition of the dictionary during the program
+ development.
 
 
     <h3>Parameters:</h3>
@@ -459,6 +456,14 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
  of the string. <br>
  Empty string and string longer than 32768 bytes are not allowed.
         </li>
+        <li><span class="parameter">strlen</span>
+         [integer] The length of 'str'. Please pass in this parameter
+ as a hardcoded constant, in order to verify the content of 'str'.
+        </li>
+        <li><span class="parameter">adler32</span>
+         [integer] The Adler-32 checksum of 'str'. Please pass in this
+ parameter as a hardcoded constant, in order to verify the content of 'str'.
+        </li>
     </ul>
 
     <h3>Returns:</h3>
@@ -468,25 +473,22 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
  decompression.
     </ol>
 
+    <h3>Raises:</h3>
+    error if 'strlen' does not match the length of the 'str',
+ or if 'adler32' does not match the Adler-32 checksum of the 'str'.
 
-    <h3>See also:</h3>
-    <ul>
-         <a href="../source/LibDeflate.lua.html#LibDeflate:VerifyDictionary">LibDeflate:VerifyDictionary</a>
-    </ul>
 
     <h3>Usage:</h3>
     <ul>
         <pre class="example"><span class="keyword">local</span> dict_str = <span class="string">"1234567890"</span>
-<span class="keyword">local</span> dict = LibDeflate:CreateDictionary(dict_str)
 
-<span class="comment">-- print(LibDeflate:Adler32(dict_str), dict_str:len())
+<span class="comment">-- print(dict_str:len(), LibDeflate:Adler32(dict_str))
+</span><span class="comment">-- Hardcode the print result below to verify it to avoid acciently
+</span><span class="comment">-- modification of 'str' during the program development.
+</span><span class="comment">-- string length: 10, Adler-32: 187433486,
+</span><span class="comment">-- Don't calculate string length and its Adler-32 at run-time.
 </span>
-<span class="comment">-- Hardcode the result below to verify it to avoid acciently modification
-</span><span class="comment">-- during the program development.
-</span>
-<span class="comment">-- Adler-32: 187433486, string length: 10
-</span>
-LibDeflate:VerifyDictionary(dict_str, dict, <span class="number">187433486</span>, <span class="number">10</span>)</pre>
+<span class="keyword">local</span> dict = LibDeflate:CreateDictionary(dict_str, <span class="number">10</span>, <span class="number">187433486</span>)</pre>
     </ul>
 
 </dd>
@@ -818,75 +820,6 @@ LibDeflate:VerifyDictionary(dict_str, dict, <span class="number">187433486</span
 
 
 </dd>
-    <dt>
-    <a name = "LibDeflate:GetDictForWoW"></a>
-    <strong>LibDeflate:GetDictForWoW ()</strong>
-    </dt>
-    <dd>
-    (WILL BE CHANGE IN v1.0) Get the dictionary designed for world of warcraft
- shipped with LibDeflate.  <br>
- LibDeflate caches the result of the function, so the cost to repeatedly
- run this function is tiny. <br>
- WARNING: This function is scheduled to be changed without backward
- compatibilty in v1.0, which will be released before BFA.
- Just do not use this function in production right now. <br>
-
-
-
-    <h3>Returns:</h3>
-    <ol>
-
-         [table] The dictionary for WoW shipped with LibDeflate which can be
- directly used as the dictionary for compression and decompression. <br>
- There is NO need to call LibDeflate:VerifyDictionary for the dictionary
- returned by this function.
-    </ol>
-
-
-
-
-</dd>
-    <dt>
-    <a name = "LibDeflate:VerifyDictionary"></a>
-    <strong>LibDeflate:VerifyDictionary (str, dictionary, adler32, strlen)</strong>
-    </dt>
-    <dd>
-    Verify newly created dictionary so it is ready to use.  <br>
- This is to make sure dictionary string is not accidentally
- corrupted in the programming development. <br>
- Dictionary created by LibDeflate:CreateDictionary
- won't be usable by compression or decompression until it
- is verified by this function.
-
-
-    <h3>Parameters:</h3>
-    <ul>
-        <li><span class="parameter">str</span>
-         [string] the dictionary string.
-        </li>
-        <li><span class="parameter">dictionary</span>
-         [table] The dictionary produced by
- LibDeflate:CreateDictionary(str)
-        </li>
-        <li><span class="parameter">adler32</span>
-         [integer] The adler32 value of str. You should pass in this
- argument as a hardcoded constant.
-        </li>
-        <li><span class="parameter">strlen</span>
-         [integer] The length of str. You should pass in this argument
- as a hardcoded constant.
-        </li>
-    </ul>
-
-
-
-    <h3>See also:</h3>
-    <ul>
-         <a href="../source/LibDeflate.lua.html#LibDeflate:CreateDictionary">LibDeflate:CreateDictionary</a>
-    </ul>
-
-
-</dd>
 </dl>
     <h2 class="section-header "><a name="Tables"></a>Tables</h2>
 
@@ -955,7 +888,7 @@ LibDeflate:VerifyDictionary(dict_str, dict, <span class="number">187433486</span
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
-<i style="float:right;">Last updated 2018-05-21 01:06:36 </i>
+<i style="float:right;">Last updated 2018-05-22 01:56:17 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>

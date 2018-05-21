@@ -6,7 +6,7 @@
 ![LuaRocks](https://img.shields.io/luarocks/v/safeteeWoW/LibDeflate.svg)
 
 
-# LibDeflate v0.9.0-alpha1
+# LibDeflate v0.9.0-alpha2
 ## Pure Lua DEFLATE/zlib compressors and decompressors.
 
 Copyright (C) 2018 Haoqian He

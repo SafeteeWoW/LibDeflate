@@ -1,4 +1,5 @@
 files['.luacheckrc'].global = false
+files['*.rockspec'].global = false
 self = false
 max_line_length	= 120
 max_code_line_length = 120
