@@ -3,7 +3,8 @@
 [![AppVeyor tests branch](https://img.shields.io/appveyor/tests/SafeteeWoW/LibDeflate/master.svg)](https://ci.appveyor.com/project/SafeteeWoW/libdeflate/branch/master)
 [![codecov.io](http://codecov.io/github/safeteeWoW/LibDeflate/branch/master/graphs/badge.svg)](http://codecov.io/github/safeteeWoW/LibDeflate)
 [![license](https://img.shields.io/github/license/SafeteeWoW/LibDeflate.svg)](LICENSE.txt)
-![LuaRocks](https://img.shields.io/luarocks/v/safeteeWoW/LibDeflate.svg)
+[![GitHub issues](https://img.shields.io/github/issues/SafeteeWoW/LibDeflate.svg)](https://github.com/SafeteeWoW/LibDeflate/issues)
+
 
 
 # LibDeflate
