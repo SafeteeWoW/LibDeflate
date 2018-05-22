@@ -29,9 +29,9 @@ of MetaBytes, please use a C compressor, or a Lua compressor with C binding.
 
 ## Performance
 Below is a simple benchmark compared with another pure Lua compressor [LibCompress](https://www.wowace.com/projects/libcompress).
-LibDeflate with compressino level 1 compresses as fast as LibCompress, but already produces significantly smaller file than LibCompress. High compression level takes a bit more time to get better compression.
+LibDeflate with compression level 1 compresses as fast as LibCompress, but already produces significantly smaller file than LibCompress. High compression level takes a bit more time to get better compression.
 
-The size of [The input data](https://gist.github.com/SafeteeWoW/d9770e08a6989032de01b7d61b53d981) is 158492 bytes. The benchmark runs on Lua 5.1.4 interprefer.
+The size of [The input data](https://gist.github.com/SafeteeWoW/d9770e08a6989032de01b7d61b53d981) is 158492 bytes. The benchmark runs on Lua 5.1.4 interpreter.
 
 NOTE: The compression method used by LibDeflate here is LibDeflate:CompressDeflate (Compress using raw DEFLATE format)
 
