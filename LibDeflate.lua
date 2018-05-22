@@ -1978,7 +1978,7 @@ end
 --- Compress using the raw deflate format with a preset dictionary.
 -- @param str [string] The data to be compressed.
 -- @param dictionary [table] The preset dictionary produced by
---					LibDeflate:CreateDictionary
+-- LibDeflate:CreateDictionary
 -- @param configs [table/nil] The configuration table to control the compression
 -- . If nil, use the default configuration.
 -- @return [string] The compressed data
@@ -2021,7 +2021,7 @@ end
 --- Compress using the zlib format with a preset dictionary
 -- @param str [string] the data to be compressed.
 -- @param dictionary [table] A preset dictionary produced
--- 			by LibDeflate:CreateDictionary()
+-- by LibDeflate:CreateDictionary()
 -- @param configs [table/nil] The configuration table to control the compression
 -- . If nil, use the default configuration.
 -- @return [string] The compressed data
@@ -2834,7 +2834,7 @@ end
 --
 -- local encoded = codec:Encode(SOME_STRING)
 -- local decoded = codec:Decode(encoded)
--- -- decoded == SOME_STRING
+-- -- assert(decoded == SOME_STRING)
 function LibDeflate:CreateCodec(reserved_chars, escape_chars
 	, map_chars)
 	-- select a default escape character
