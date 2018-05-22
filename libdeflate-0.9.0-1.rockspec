@@ -1,7 +1,8 @@
 package = "LibDeflate"
-version = "scm-1"
+version = "0.9.0-1"
 source = {
-   url = "git+https://github.com/safeteeWow/LibDeflate.git"
+   url = "git+https://github.com/safeteeWow/LibDeflate.git",
+   tag = "0.9.0-beta1",
 }
 description = {
    detailed = [[Pure Lua compressor and decompressor with high compression ratio using DEFLATE/zlib format.]],
