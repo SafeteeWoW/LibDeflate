@@ -60,6 +60,15 @@ Credits:
 
 All related codes are modified by LibDeflate.
 ]]
+
+--[[
+	Curseforge auto-packaging replacements:
+
+	Project Date: @project-date-iso@
+	Project Hash: @project-hash@
+	Project Version: @project-version@
+--]]
+
 local LibDeflate
 
 do
