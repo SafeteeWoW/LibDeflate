@@ -3,15 +3,17 @@ package-as: LibDeflate
 enable-nolib-creation: no
 
 externals:
-    LibStub:
-        url: svn://svn.wowace.com/wow/libstub/mainline/trunk
-        tag: latest
+  LibStub:
+    url: svn://svn.wowace.com/wow/libstub/mainline/trunk
+    tag: latest
 
-manual-changelog:
-    filename: changelog.md
-    markup-type: markdown
+manual-changelog: changelog.md
+
+license-output: LICENSE.txt
 
 ignore:
     - tests
-    - docs/config.ld
+    - docs
+    - examples
     - *.rockspec
+    - README.md
