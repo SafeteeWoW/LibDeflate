@@ -6,13 +6,13 @@
 ![LuaRocks](https://img.shields.io/luarocks/v/safeteeWoW/LibDeflate.svg)
 
 
-# LibDeflate v0.9.0-alpha2
-## Pure Lua DEFLATE/zlib compressors and decompressors.
+# LibDeflate
+## Pure Lua compressors and decompressors with high compression ratio using DEFLATE/zlib format.
 
 Copyright (C) 2018 Haoqian He
 
 ## Introduction
-LibDeflate is a pure Lua DEFLATE/zlib compressors and decompressors, which compress
+LibDeflate is pure Lua compressor and decompressor with high compression ratio, which compresses
 almost as good as [zlib](https://github.com/madler/zlib). LibDeflate does not have any dependencies except you need to have a working Lua interpreter.
 
 ## Supported Lua Versions
@@ -23,13 +23,13 @@ for Linux, MaxOS and Windows. See the badge on the top of this README for the te
 [Documentation](https://safeteewow.github.io/LibDeflate/) is in the Github repository.
 
 ## Limitation
-Though many performance optimization has been done in the source code, as a pure lua implementation, its speed is significantly slower than a C compressor. LibDeflate aims to compress small files, and it is suggestted
-to not compress files bigger than 1MB. If you need to compress files hundreds
+Though many performance optimization has been done in the source code, as a pure lua implementation, its speed is significantly slower than a C compressor. LibDeflate aims to compress small files, and it is suggested
+to not compress files with the order of several Megabytes. If you need to compress files hundreds
 of MetaBytes, please use a C compressor, or a Lua compressor with C binding.
 
 ## Performance
 Below is a simple benchmark compared with another pure Lua compressor [LibCompress](https://www.wowace.com/projects/libcompress).
-LibDeflate with compression level 1 compresses as fast as LibCompress, but already produces significantly smaller file than LibCompress. High compression level takes a bit more time to get better compression.
+
 
 The size of [The input data](https://gist.github.com/SafeteeWoW/d9770e08a6989032de01b7d61b53d981) is 158492 bytes. The benchmark runs on Lua 5.1.4 interpreter.
 
@@ -82,12 +82,16 @@ NOTE: The compression method used by LibDeflate here is LibDeflate:CompressDefla
 </tbody>
 </table>
 
+LibDeflate with compression level 1 compresses as fast as LibCompress, but already produces significantly smaller file than LibCompress. High compression level takes a bit more time to get better compression.
+
 ## Download And Install
-The [official repository](https://github.com/SafeteeWoW/LibDeflate) locates on Github.
++ The [official repository](https://github.com/SafeteeWoW/LibDeflate) locates on Github.
 [LibDeflate.lua](https://github.com/SafeteeWoW/LibDeflate/blob/master/LibDeflate.lua) is the only file of LibDeflate. Copy the file
 to your LUA_PATH to install it.
 
-To download as a World of Warcraft library, goto [LibDeflate Curseforge Page](https://wow.curseforge.com/projects/libdeflate)
++ To download as a World of Warcraft library, goto [LibDeflate Curseforge Page](https://wow.curseforge.com/projects/libdeflate)
+
++ You can also install via Luarocks using the command "luarocks install libdeflate"
 
 
 ## Usage

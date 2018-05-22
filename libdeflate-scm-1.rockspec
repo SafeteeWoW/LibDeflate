@@ -4,7 +4,7 @@ source = {
    url = "git+https://github.com/safeteeWow/LibDeflate.git"
 }
 description = {
-   detailed = [[Pure Lua DEFLATE/zlib compressors and decompressors.]],
+   detailed = [[Pure Lua compressor and decompressor with high compression ratio using DEFLATE/zlib format.]],
    homepage = "https://github.com/safeteeWow/LibDeflate",
    license = "GPLv3",
 }

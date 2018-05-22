@@ -1,6 +1,7 @@
 --[[--
 LibDeflate v0.9-alpha2
-Pure Lua DEFLATE/zlib compressors and decompressors.
+Pure Lua compressor and decompressor with high compression ratio using
+DEFLATE/zlib format.
 
 @file LibDeflate.lua
 @author Haoqian He (Github: SafeteeWoW; World of Warcraft: Safetyy-Illidan(US))
@@ -67,7 +68,6 @@ do
 	-- NOTE: Three version number needs to modify.
 	-- 1. On the top of LibDeflate.lua
 	-- 2. HERE
-	-- 3. README.md
 	local _VERSION = "0.9.0-alpha2"
 
 	local _COPYRIGHT =
