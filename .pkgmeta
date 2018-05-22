@@ -15,5 +15,5 @@ ignore:
     - tests
     - docs
     - examples
-    - *.rockspec
+    - libdeflate-scm-1.rockspec
     - README.md
