@@ -1,9 +1,9 @@
 -
     type: luadoc
-    input-file: "LibDeflate.lua"
-    output-page: "API"
+    input-file: LibDeflate.lua
+    output-page: API
 
 -
    type: markdown
-   input-file: "README.md"
-   output-page: "Main"
+   input-file: README.md
+   output-page: Main
