@@ -20,7 +20,7 @@ LibDeflate supports and is fully tested under Lua 5.1/5.2/5.3, LuaJIT 2.0/2.1,
 for Linux, MaxOS and Windows. See the badge on the top of this README for the test result.
 
 ## Documentation
-[Documentation](https://safeteewow.github.io/LibDeflate/) is in the Github repository.
+[Documentation](https://safeteewow.github.io/LibDeflate/) is hosted on Github.
 
 ## Limitation
 Though many performance optimization has been done in the source code, as a pure lua implementation, its speed is significantly slower than a C compressor. LibDeflate aims to compress small files, and it is suggested
