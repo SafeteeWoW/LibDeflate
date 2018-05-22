@@ -1,7 +1,9 @@
 -
     type: luadoc
-    input-file: LibDeflate.lua
-    output-page: API
+    input-files:
+        LibDeflate.lua
+    output-directory:
+        API
 
 -
    type: markdown
