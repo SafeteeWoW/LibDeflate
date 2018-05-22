@@ -94,6 +94,9 @@ to your LUA_PATH to install it.
 
 + You can also install via Luarocks using the command "luarocks install libdeflate"
 
++ To use after installation, ```require("LibDeflate")``` (case sensitive) in your Lua interpreter,
+or ```LibStub:GetLibrary("LibDeflate")``` (case sensitive) for World of Warcraft.
+
 
 ## Usage
 See examples/example.lua

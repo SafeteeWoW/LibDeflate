@@ -1,5 +1,5 @@
 --[[--
-LibDeflate v0.9.0-beta1
+LibDeflate 0.9.0-beta2   <br>
 Pure Lua compressor and decompressor with high compression ratio using
 DEFLATE/zlib format.
 
@@ -74,10 +74,10 @@ local LibDeflate
 do
 	-- Semantic version. all lowercase.
 	-- Suffix can be alpha1, alpha2, beta1, beta2, rc1, rc2, etc.
-	-- NOTE: Three version number needs to modify.
+	-- NOTE: Two version numbers needs to modify.
 	-- 1. On the top of LibDeflate.lua
 	-- 2. HERE
-	local _VERSION = "0.9.0-beta1"
+	local _VERSION = "0.9.0-beta2"
 
 	local _COPYRIGHT =
 	"LibDeflate ".._VERSION
@@ -3112,8 +3112,8 @@ local _6bit_to_byte = {
 	[52]=56,[53]=57,[54]=58,[55]=59,[56]=60,[57]=61,[40]=62,[41]=63,
 }
 
---- Encode the string so it does not only contains characters other than
--- 6bit = 64 printable ASCII characters. <br>
+--- Encode the string to make it printable. <br>
+--
 -- Credis to WeakAuras2, this function is equivalant to the implementation
 -- it is using right now. <br>
 -- The encoded string will be 25% larger than the origin string. However, every
@@ -3123,7 +3123,7 @@ local _6bit_to_byte = {
 -- left parenthese, or right parenthese)
 -- @param str [string] The string to be encoded.
 -- @return [string] The encoded string.
-function LibDeflate:Encode6Bit(str)
+function LibDeflate:EncodeForPrint(str)
 	local strlen = #str
 	local strlenMinus2 = strlen - 2
 	local i = 1
@@ -3164,10 +3164,10 @@ function LibDeflate:Encode6Bit(str)
 	return table_concat(buffer)
 end
 
---- Decode the string produced by LibDeflate:Encode6Bit
+--- Decode the string produced by LibDeflate:EncodeForPrint
 -- @param str [string] The string to be decoded
 -- @return [string/nil] The decoded string if succeeds. nil if fails.
-function LibDeflate:Decode6Bit(str)
+function LibDeflate:DecodeForPrint(str)
 	local strlen = #str
 	if strlen == 1 then
 		return nil

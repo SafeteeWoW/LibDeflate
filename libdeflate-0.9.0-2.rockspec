@@ -1,13 +1,13 @@
 package = "LibDeflate"
-version = "0.9.0-1"
+version = "0.9.0-2"
 source = {
    url = "git+https://github.com/safeteeWow/LibDeflate.git",
-   tag = "0.9.0-beta1",
+   tag = "0.9.0-beta2",
 }
 description = {
    detailed = [[Pure Lua compressor and decompressor with high compression ratio using DEFLATE/zlib format.]],
    homepage = "https://github.com/safeteeWow/LibDeflate",
-   license = "GPLv3",
+   license = "GPL-3",
 }
 dependencies = {
    "lua >= 5.1, < 5.4"

@@ -2,7 +2,6 @@
 -- @author Haoqian He
 -- @file example.lua
 
-
 local LibDeflate
 
 if LibStub then -- You are using LibDeflate as WoW addon
@@ -33,7 +32,19 @@ local decompress_deflate = LibDeflate:DecompressDeflate(data_decoded_WoW_addon)
 -- need to write this assertion in your code, unless you want to test if
 -- LibDeflate has any bug.
 assert(decompress_deflate == example_input)
------------------------------------------------------------------------
+
+-- The compressed output is not printable. EncodeForPrint will convert to
+-- a printable format. This encoding will make the output 25% bigger.
+local printable_compressed = LibDeflate:EncodeForPrint(compress_deflate)
+
+-- DecodeForPrint to convert back.
+assert(LibDeflate:DecodeForPrint(printable_compressed) == compress_deflate)
+
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 --- Compress and decompress using zlib format
 local compress_zlib = LibDeflate:CompressZlib(example_input)

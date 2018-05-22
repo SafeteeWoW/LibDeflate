@@ -2172,32 +2172,39 @@ TestEncode = {}
 		end
 	end
 
-	local function CheckEncode6Bit(str)
-		AssertLongStringEqual(LibDeflate:Decode6Bit(LibDeflate:Encode6Bit(str))
+	local function CheckEncodeForPrint(str)
+		AssertLongStringEqual(LibDeflate:DecodeForPrint(LibDeflate
+			:EncodeForPrint(str))
 			, str)
 	end
-	function TestEncode:Test6Bit()
-		CheckEncode6Bit("")
-		for i = 0, 255 do
-			CheckEncode6Bit(string.char(i))
+	function TestEncode:TestEncodeForPrint()
+		CheckEncodeForPrint("")
+		for _ = 1, 100 do
+			CheckEncodeForPrint(GetRandomStringUniqueChars(
+				math.random(1, 10)))
 		end
-		for _ = 1, 200 do
-			CheckEncode6Bit(GetRandomStringUniqueChars(math.random(100, 1000)))
+		for i = 0, 255 do
+			CheckEncodeForPrint(string.char(i))
+		end
+		for _ = 1, 400 do
+			CheckEncodeForPrint(GetRandomStringUniqueChars(
+				math.random(100, 1000)))
 		end
 		local encode_6bit_weakaura =
 			GetFileData("tests/data/reference/encode_6bit_weakaura.txt")
 		local decode_6bit_weakaura =
 			GetFileData("tests/data/reference/decode_6bit_weakaura.txt")
-		AssertLongStringEqual(LibDeflate:Encode6Bit(decode_6bit_weakaura)
+		AssertLongStringEqual(LibDeflate:EncodeForPrint(decode_6bit_weakaura)
 			, encode_6bit_weakaura)
 	end
-	function TestEncode:Test6BitErrors()
+	function TestEncode:TestEncodeForPrintErrors()
 		for i = 0, 255 do
-			lu.assertNil(LibDeflate:Decode6Bit(string.char(i)))
+			lu.assertNil(LibDeflate:DecodeForPrint(string.char(i)))
 		end
 		for i = 0, 255 do
 			if not LibDeflate.internals._6bit_to_byte[i] then
-				lu.assertNil(LibDeflate:Decode6Bit((string.char(i)):rep(100)))
+				lu.assertNil(LibDeflate:DecodeForPrint((
+					string.char(i)):rep(100)))
 			end
 		end
 	end
@@ -2863,9 +2870,9 @@ TestExported = {}
 			Adler32 = "function",
 			CreateDictionary = "function",
 			CompressZlibWithDict = "function",
-			Encode6Bit = "function",
+			EncodeForPrint = "function",
 			CompressZlib = "function",
-			Decode6Bit = "function",
+			DecodeForPrint = "function",
 			DecompressDeflateWithDict = "function",
 			EncodeForWoWAddonChannel = "function",
 			DecompressZlib = "function",

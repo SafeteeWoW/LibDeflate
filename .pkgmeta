@@ -15,4 +15,4 @@ license-output: LICENSE.txt
 
 ignore:
     - tests
-    - libdeflate-0.9.0-1.rockspec
+    - libdeflate-0.9.0-2.rockspec
