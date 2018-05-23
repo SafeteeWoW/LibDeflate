@@ -1,3 +1,11 @@
+### v0.9.0-beta3
+* 2018/5/23
+* Fix an issue in "DecodeForPrint" that certain undecodable string
+  could cause an Lua error.
+* Add an parameter to "DecodeForPrint". If set, remove trailing spaces in the
+input string before decode it.
+* Add input type checks for all encode/decode functions.
+
 ### v0.9.0-beta2
 
 * 2018/5/22

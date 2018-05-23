@@ -2176,6 +2176,21 @@ TestEncode = {}
 		AssertLongStringEqual(LibDeflate:DecodeForPrint(LibDeflate
 			:EncodeForPrint(str))
 			, str)
+		-- test remove_trailing
+		for _, byte in pairs({9, 10, 11, 12, 13, 32}) do
+			local char = string.char(byte)
+			AssertLongStringEqual(LibDeflate:DecodeForPrint(LibDeflate
+				:EncodeForPrint(str)..char, true)
+				, str)
+			AssertLongStringEqual(LibDeflate:DecodeForPrint(LibDeflate
+				:EncodeForPrint(str)..char..char, true)
+				, str)
+			AssertLongStringEqual(LibDeflate:DecodeForPrint(LibDeflate
+				:EncodeForPrint(str)..char..char..char, true)
+				, str)
+		end
+		lu.assertNil(LibDeflate:DecodeForPrint(" 1"..LibDeflate
+			:EncodeForPrint(str), true)) -- pre spaces should cause an error.
 	end
 	function TestEncode:TestEncodeForPrint()
 		CheckEncodeForPrint("")
@@ -2197,7 +2212,7 @@ TestEncode = {}
 		AssertLongStringEqual(LibDeflate:EncodeForPrint(decode_6bit_weakaura)
 			, encode_6bit_weakaura)
 	end
-	function TestEncode:TestEncodeForPrintErrors()
+	function TestEncode:TestDecodeForPrintErrors()
 		for i = 0, 255 do
 			lu.assertNil(LibDeflate:DecodeForPrint(string.char(i)))
 		end
@@ -2205,6 +2220,15 @@ TestEncode = {}
 			if not LibDeflate.internals._6bit_to_byte[i] then
 				lu.assertNil(LibDeflate:DecodeForPrint((
 					string.char(i)):rep(100)))
+			end
+		end
+		-- Test multiple string lengths.
+		for i = 0, 255 do
+			for reps = 1, 16 do
+				if not LibDeflate.internals._6bit_to_byte[i] then
+					lu.assertNil(LibDeflate:DecodeForPrint((
+						string.char(i)):rep(reps)))
+				end
 			end
 		end
 	end
@@ -2624,6 +2648,41 @@ TestErrors = {}
 			end)
 		local t, err = LibDeflate:CreateCodec("1", "2", "")
 		lu.assertNil(err)
+	end
+	function TestErrors:TestEncodeDecode()
+		local codec = LibDeflate:CreateCodec("\000", "\001", "")
+		lu.assertErrorMsgContains(
+			"Usage: codec:Encode(str):"
+			.." 'str' - string expected got 'nil'."
+			, function() codec:Encode() end)
+		lu.assertErrorMsgContains(
+			"Usage: codec:Decode(str):"
+			.." 'str' - string expected got 'nil'."
+			, function() codec:Decode() end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:EncodeForWoWAddonChannel(str):"
+			.." 'str' - string expected got 'nil'."
+			, function() LibDeflate:EncodeForWoWAddonChannel() end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:DecodeForWoWAddonChannel(str):"
+			.." 'str' - string expected got 'nil'."
+			, function() LibDeflate:DecodeForWoWAddonChannel() end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:EncodeForWoWChatChannel(str):"
+			.." 'str' - string expected got 'nil'."
+			, function() LibDeflate:EncodeForWoWChatChannel() end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:DecodeForWoWChatChannel(str):"
+			.." 'str' - string expected got 'nil'."
+			, function() LibDeflate:DecodeForWoWChatChannel() end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:EncodeForPrint(str):"
+			.." 'str' - string expected got 'nil'."
+			, function() LibDeflate:EncodeForPrint() end)
+		lu.assertErrorMsgContains(
+			"Usage: LibDeflate:DecodeForPrint(str, remove_trailing):"
+			.." 'str' - string expected got 'nil'."
+			, function() LibDeflate:DecodeForPrint() end)
 	end
 
 

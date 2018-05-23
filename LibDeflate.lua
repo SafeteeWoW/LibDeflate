@@ -1,5 +1,5 @@
 --[[--
-LibDeflate 0.9.0-beta2   <br>
+LibDeflate 0.9.0-beta3   <br>
 Pure Lua compressor and decompressor with high compression ratio using
 DEFLATE/zlib format.
 
@@ -77,7 +77,7 @@ do
 	-- NOTE: Two version numbers needs to modify.
 	-- 1. On the top of LibDeflate.lua
 	-- 2. HERE
-	local _VERSION = "0.9.0-beta2"
+	local _VERSION = "0.9.0-beta3"
 
 	local _COPYRIGHT =
 	"LibDeflate ".._VERSION
@@ -2850,7 +2850,7 @@ function LibDeflate:CreateCodec(reserved_chars, escape_chars
 	if type(reserved_chars) ~= "string"
 		or type(escape_chars) ~= "string"
 		or type(map_chars) ~= "string" then
-			return error(
+			error(
 				"Usage: LibDeflate:CreateCodec(reserved_chars,"
 				.." escape_chars, map_chars):"
 				.." All arguments must be string.", 2)
@@ -2974,6 +2974,10 @@ function LibDeflate:CreateCodec(reserved_chars, escape_chars
 	local encode_repl = encode_translate
 
 	function codec:Encode(str)
+		if type(str) ~= "string" then
+			error(("Usage: codec:Encode(str):"
+				.." 'str' - string expected got '%s'."):format(type(str)), 2)
+		end
 		return string_gsub(str, encode_pattern, encode_repl)
 	end
 
@@ -2982,6 +2986,10 @@ function LibDeflate:CreateCodec(reserved_chars, escape_chars
 		.. escape_for_gsub(reserved_chars).."])"
 
 	function codec:Decode(str)
+		if type(str) ~= "string" then
+			error(("Usage: codec:Decode(str):"
+				.." 'str' - string expected got '%s'."):format(type(str)), 2)
+		end
 		if string_find(str, decode_fail_pattern) then
 			return nil
 		end
@@ -3007,6 +3015,10 @@ end
 -- @return The encoded string.
 -- @see LibDeflate:DecodeForWoWAddonChannel
 function LibDeflate:EncodeForWoWAddonChannel(str)
+	if type(str) ~= "string" then
+		error(("Usage: LibDeflate:EncodeForWoWAddonChannel(str):"
+			.." 'str' - string expected got '%s'."):format(type(str)), 2)
+	end
 	if not _addon_channel_codec then
 		_addon_channel_codec = GenerateWoWAddonChannelCodec()
 	end
@@ -3018,6 +3030,10 @@ end
 -- @return [string/nil] The decoded string if succeeds. nil if fails.
 -- @see LibDeflate:EncodeForWoWAddonChannel
 function LibDeflate:DecodeForWoWAddonChannel(str)
+	if type(str) ~= "string" then
+		error(("Usage: LibDeflate:DecodeForWoWAddonChannel(str):"
+			.." 'str' - string expected got '%s'."):format(type(str)), 2)
+	end
 	if not _addon_channel_codec then
 		_addon_channel_codec = GenerateWoWAddonChannelCodec()
 	end
@@ -3068,6 +3084,10 @@ local _chat_channel_codec
 -- @return [string] The encoded string.
 -- @see LibDeflate:DecodeForWoWChatChannel
 function LibDeflate:EncodeForWoWChatChannel(str)
+	if type(str) ~= "string" then
+		error(("Usage: LibDeflate:EncodeForWoWChatChannel(str):"
+			.." 'str' - string expected got '%s'."):format(type(str)), 2)
+	end
 	if not _chat_channel_codec then
 		_chat_channel_codec = GenerateWoWChatChannelCodec()
 	end
@@ -3079,6 +3099,10 @@ end
 -- @return [string/nil] The decoded string if succeeds. nil if fails.
 -- @see LibDeflate:EncodeForWoWChatChannel
 function LibDeflate:DecodeForWoWChatChannel(str)
+	if type(str) ~= "string" then
+		error(("Usage: LibDeflate:DecodeForWoWChatChannel(str):"
+			.." 'str' - string expected got '%s'."):format(type(str)), 2)
+	end
 	if not _chat_channel_codec then
 		_chat_channel_codec = GenerateWoWChatChannelCodec()
 	end
@@ -3124,6 +3148,10 @@ local _6bit_to_byte = {
 -- @param str [string] The string to be encoded.
 -- @return [string] The encoded string.
 function LibDeflate:EncodeForPrint(str)
+	if type(str) ~= "string" then
+		error(("Usage: LibDeflate:EncodeForPrint(str):"
+			.." 'str' - string expected got '%s'."):format(type(str)), 2)
+	end
 	local strlen = #str
 	local strlenMinus2 = strlen - 2
 	local i = 1
@@ -3165,9 +3193,24 @@ function LibDeflate:EncodeForPrint(str)
 end
 
 --- Decode the string produced by LibDeflate:EncodeForPrint
+-- Decode fails if the string contains any characters cant be produced by
+-- LibDeflate:EncodeForPrint. That means, decode fails if the string contains a
+-- characters NOT one of 26 lowercase letters, 26 uppercase letters,
+-- 10 numbers digits, left parenthese, or right parenthese.
 -- @param str [string] The string to be decoded
+-- @param remove_trailing [boolean] if true, trailing space characters
+-- in str will be removed before decode it. Those characters are defined by the
+-- pattern "%s" in Lua. (space, tabs, newline, newpage; ASCII 9-13 and 32).
 -- @return [string/nil] The decoded string if succeeds. nil if fails.
-function LibDeflate:DecodeForPrint(str)
+function LibDeflate:DecodeForPrint(str, remove_trailing)
+	if type(str) ~= "string" then
+		error(("Usage: LibDeflate:DecodeForPrint(str, remove_trailing):"
+			.." 'str' - string expected got '%s'."):format(type(str)), 2)
+	end
+	if remove_trailing then
+		str = str:gsub("%s+$", "")
+	end
+
 	local strlen = #str
 	if strlen == 1 then
 		return nil
@@ -3200,7 +3243,11 @@ function LibDeflate:DecodeForPrint(str)
 	local cache_bitlen = 0
 	while i <= strlen do
 		local x = string_byte(str, i, i)
-		cache = cache + _6bit_to_byte[x] * _pow2[cache_bitlen]
+		x =  _6bit_to_byte[x]
+		if not x then
+			return nil
+		end
+		cache = cache + x * _pow2[cache_bitlen]
 		cache_bitlen = cache_bitlen + 6
 		i = i + 1
 	end
