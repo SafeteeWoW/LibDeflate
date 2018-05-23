@@ -27,3 +27,4 @@ zdeflate
 *.stdin
 *.stderr
 *.stdout
+*.rock
