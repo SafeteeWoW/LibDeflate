@@ -2176,21 +2176,26 @@ TestEncode = {}
 		AssertLongStringEqual(LibDeflate:DecodeForPrint(LibDeflate
 			:EncodeForPrint(str))
 			, str)
-		-- test remove_trailing
-		for _, byte in pairs({9, 10, 11, 12, 13, 32}) do
+		-- test prefixed and trailig control characters or space.
+		for _, byte in pairs({0, 1, 9, 10, 11, 12, 13, 31, 32, 127}) do
 			local char = string.char(byte)
 			AssertLongStringEqual(LibDeflate:DecodeForPrint(LibDeflate
-				:EncodeForPrint(str)..char, true)
+				:EncodeForPrint(str)..char)
 				, str)
 			AssertLongStringEqual(LibDeflate:DecodeForPrint(LibDeflate
-				:EncodeForPrint(str)..char..char, true)
+				:EncodeForPrint(str)..char..char)
 				, str)
 			AssertLongStringEqual(LibDeflate:DecodeForPrint(LibDeflate
-				:EncodeForPrint(str)..char..char..char, true)
+				:EncodeForPrint(str)..char..char..char)
+				, str)
+			AssertLongStringEqual(LibDeflate:DecodeForPrint(char..LibDeflate
+				:EncodeForPrint(str))
+				, str)
+			AssertLongStringEqual(LibDeflate:DecodeForPrint(char..char..
+				LibDeflate:EncodeForPrint(str))
 				, str)
 		end
-		lu.assertNil(LibDeflate:DecodeForPrint(" 1"..LibDeflate
-			:EncodeForPrint(str), true)) -- pre spaces should cause an error.
+
 	end
 	function TestEncode:TestEncodeForPrint()
 		CheckEncodeForPrint("")
@@ -2214,20 +2219,24 @@ TestEncode = {}
 	end
 	function TestEncode:TestDecodeForPrintErrors()
 		for i = 0, 255 do
-			lu.assertNil(LibDeflate:DecodeForPrint(string.char(i)))
+			if string.char(i):find("[%c ]") then
+				lu.assertEquals(LibDeflate:DecodeForPrint(string.char(i)), "")
+			else
+				lu.assertNil(LibDeflate:DecodeForPrint(string.char(i)))
+			end
 		end
 		for i = 0, 255 do
 			if not LibDeflate.internals._6bit_to_byte[i] then
-				lu.assertNil(LibDeflate:DecodeForPrint((
-					string.char(i)):rep(100)))
+				lu.assertNil(LibDeflate:DecodeForPrint(("1"
+					..string.char(i)):rep(100).."1"))
 			end
 		end
 		-- Test multiple string lengths.
 		for i = 0, 255 do
 			for reps = 1, 16 do
 				if not LibDeflate.internals._6bit_to_byte[i] then
-					lu.assertNil(LibDeflate:DecodeForPrint((
-						string.char(i)):rep(reps)))
+					lu.assertNil(LibDeflate:DecodeForPrint("2"..(
+						string.char(i)):rep(reps).."3"))
 				end
 			end
 		end
@@ -2680,7 +2689,7 @@ TestErrors = {}
 			.." 'str' - string expected got 'nil'."
 			, function() LibDeflate:EncodeForPrint() end)
 		lu.assertErrorMsgContains(
-			"Usage: LibDeflate:DecodeForPrint(str, remove_trailing):"
+			"Usage: LibDeflate:DecodeForPrint(str):"
 			.." 'str' - string expected got 'nil'."
 			, function() LibDeflate:DecodeForPrint() end)
 	end

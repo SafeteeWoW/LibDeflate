@@ -1,3 +1,7 @@
+### v0.9.0-beta4
+* 2018/5/25
+* "DecodeForPrint" always remove prefixed or trailing control or space characters before decoding. This makes this API easier to use.
+
 ### v0.9.0-beta3
 * 2018/5/23
 * Fix an issue in "DecodeForPrint" that certain undecodable string

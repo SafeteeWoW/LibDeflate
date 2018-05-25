@@ -1,5 +1,5 @@
 --[[--
-LibDeflate 0.9.0-beta3   <br>
+LibDeflate 0.9.0-beta4   <br>
 Pure Lua compressor and decompressor with high compression ratio using
 DEFLATE/zlib format.
 
@@ -77,7 +77,7 @@ do
 	-- NOTE: Two version numbers needs to modify.
 	-- 1. On the top of LibDeflate.lua
 	-- 2. HERE
-	local _VERSION = "0.9.0-beta3"
+	local _VERSION = "0.9.0-beta4"
 
 	local _COPYRIGHT =
 	"LibDeflate ".._VERSION
@@ -3192,24 +3192,23 @@ function LibDeflate:EncodeForPrint(str)
 	return table_concat(buffer)
 end
 
---- Decode the string produced by LibDeflate:EncodeForPrint
--- Decode fails if the string contains any characters cant be produced by
+--- Decode the printable string produced by LibDeflate:EncodeForPrint.
+-- "str" will have its prefixed and trailing control characters or space
+-- removed before it is decoded, so it is easier to use if "str" comes form
+-- user copy and paste with some prefixed or trailing spaces.
+-- Then decode fails if the string contains any characters cant be produced by
 -- LibDeflate:EncodeForPrint. That means, decode fails if the string contains a
 -- characters NOT one of 26 lowercase letters, 26 uppercase letters,
 -- 10 numbers digits, left parenthese, or right parenthese.
 -- @param str [string] The string to be decoded
--- @param remove_trailing [boolean] if true, trailing space characters
--- in str will be removed before decode it. Those characters are defined by the
--- pattern "%s" in Lua. (space, tabs, newline, newpage; ASCII 9-13 and 32).
 -- @return [string/nil] The decoded string if succeeds. nil if fails.
-function LibDeflate:DecodeForPrint(str, remove_trailing)
+function LibDeflate:DecodeForPrint(str)
 	if type(str) ~= "string" then
-		error(("Usage: LibDeflate:DecodeForPrint(str, remove_trailing):"
+		error(("Usage: LibDeflate:DecodeForPrint(str):"
 			.." 'str' - string expected got '%s'."):format(type(str)), 2)
 	end
-	if remove_trailing then
-		str = str:gsub("%s+$", "")
-	end
+	str = str:gsub("^[%c ]+", "")
+	str = str:gsub("[%c ]+$", "")
 
 	local strlen = #str
 	if strlen == 1 then

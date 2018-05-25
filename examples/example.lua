@@ -7,19 +7,20 @@ local LibDeflate
 if LibStub then -- You are using LibDeflate as WoW addon
 	LibDeflate = LibStub:GetLibrary("LibDeflate")
 else
-	package.path = package.path..";../LibDeflate.lua;LibDeflate.lua;"
+	-- package.path = package.path..";../LibDeflate.lua;LibDeflate.lua;"
+	-- ^ above is a way to set the path to find "LibDeflate"
 	LibDeflate = require("LibDeflate")
 end
 
-
 local example_input = "12123123412345123456123456712345678123456789"
 
---- Compress and decompress using raw deflate format
+-- Compress using raw deflate format
 local compress_deflate = LibDeflate:CompressDeflate(example_input)
+-- decompress
+assert(example_input == LibDeflate:DecompressDeflate(compress_deflate))
 
-
--- To transmit through WoW addon channel, data must be encoded so NULL ("\000")
--- is not in the data.
+-- If it is to transmit through WoW addon channel,
+-- compressed data must be encoded so NULL ("\000") is not transmitted.
 local data_to_trasmit_WoW_addon = LibDeflate:EncodeForWoWAddonChannel(
 	compress_deflate)
 -- When the receiver gets the data, decoded it first.
@@ -28,18 +29,17 @@ local data_decoded_WoW_addon = LibDeflate:DecodeForWoWAddonChannel(
 -- Then decomrpess it
 local decompress_deflate = LibDeflate:DecompressDeflate(data_decoded_WoW_addon)
 
--- All assertions in this example are just a test for this example. You dont
--- need to write this assertion in your code, unless you want to test if
--- LibDeflate has any bug.
 assert(decompress_deflate == example_input)
 
 -- The compressed output is not printable. EncodeForPrint will convert to
--- a printable format. This encoding will make the output 25% bigger.
+-- a printable format, in case you want to export to the user to
+-- copy and paste. This encoding will make the data 25% bigger.
 local printable_compressed = LibDeflate:EncodeForPrint(compress_deflate)
 
 -- DecodeForPrint to convert back.
+-- DecodeForPrint will remove prefixed and trailing control or space characters
+-- in the string before decode it.
 assert(LibDeflate:DecodeForPrint(printable_compressed) == compress_deflate)
-
 
 
 -------------------------------------------------------------------------------
