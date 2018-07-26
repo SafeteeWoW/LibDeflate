@@ -14,6 +14,7 @@ profile.out
 tmp
 *.o
 *.obj
+*.lib
 *.exe
 *.out
 *.tmp
@@ -28,5 +29,6 @@ zdeflate
 *.stderr
 *.stdout
 *.rock
+*.log
 tests/huge_data/*
 !tests/huge_data/README.md

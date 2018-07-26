@@ -47,4 +47,10 @@ explorer. Those scripts set the working directory to the root of git repo
 directory first, then run the test commands.
 
 
+## Other environment setup I used
+
+1. Install Git for Windows in the default setup path.
+
+
+
 

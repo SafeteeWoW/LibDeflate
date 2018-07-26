@@ -3,7 +3,7 @@
 -- Don't run two "tests/Test.lua" at the same time,
 -- because they will conflict!!!
 
-package.path = ("?.lua;")..(package.path or "")
+package.path = ("?.lua;tests/LibCompress/?.lua;")..(package.path or "")
 
 do
 	local test_lua = io.open("tests/Test.lua")
@@ -316,7 +316,7 @@ local function AssertLongStringEqual(actual, expected, msg)
 	end
 end
 
-local function MemCheckAndBenchmarkFunc(func_name, ...)
+local function MemCheckAndBenchmarkFunc(lib, func_name, ...)
 	local memory_before
 	local memory_running
 	local memory_after
@@ -330,7 +330,7 @@ local function MemCheckAndBenchmarkFunc(func_name, ...)
 	elapsed_time = -1
 	local repeat_count = 0
 	while elapsed_time < 0.015 do
-		ret = {LibDeflate[func_name](LibDeflate, ...)}
+		ret = {lib[func_name](lib, ...)}
 		elapsed_time = os.clock() - start_time
 		repeat_count = repeat_count + 1
 	end
@@ -454,7 +454,8 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 				local compress_func_name = compress_running[1]
 				local compress_memory_leaked, compress_memory_used
 					, compress_time, compress_data, compress_pad_bitlen =
-					MemCheckAndBenchmarkFunc(unpack(compress_running))
+					MemCheckAndBenchmarkFunc(LibDeflate
+						, unpack(compress_running))
 
 				if compress_running[1]:find("Deflate") then
 					lu.assertTrue(0 <= compress_pad_bitlen
@@ -558,7 +559,8 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 				local decompress_memory_leaked, decompress_memory_used,
 					decompress_time, decompress_data,
 					decompress_unprocess_byte =
-					MemCheckAndBenchmarkFunc(unpack(decompress_to_run[j]))
+					MemCheckAndBenchmarkFunc(LibDeflate
+						, unpack(decompress_to_run[j]))
 				AssertLongStringEqual(decompress_data, origin
 					, compress_func_name
 					.." LibDeflate decompress result not match origin string.")
@@ -644,7 +646,7 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 
 	if total_memory_difference > 0 then
 		local ignore_leak_jit = ""
-		if jit then
+		if _G.jit then
 			ignore_leak_jit = " (Ignore when the test is run by LuaJIT)"
 		end
 		print(
@@ -656,7 +658,7 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 			"\n")
 		-- ^If above "leak" is very small
 		-- , it is very likely that it is false positive.
-		if not jit and total_memory_difference > 64 then
+		if not _G.jit and total_memory_difference > 64 then
 			-- Lua JIT has some problems to garbage collect stuffs
 			-- , so don't consider as failure.
 			lu.assertTrue(false
@@ -868,7 +870,7 @@ end
 -------------------------------------------------------------------------
 -- LibCompress encode code to help verity encode code in LibDeflate -----
 -------------------------------------------------------------------------
-local LibCompress = {}
+local LibCompressEncoder = {}
 do
 	local gsub_escape_table = {
 		['\000'] = "%z",
@@ -890,7 +892,8 @@ do
 		return str:gsub("([%z%(%)%.%%%+%-%*%?%[%]%^%$])",  gsub_escape_table)
 	end
 
-	function LibCompress:GetEncodeTable(reservedChars, escapeChars, mapChars)
+	function LibCompressEncoder:GetEncodeTable(reservedChars, escapeChars
+			, mapChars)
 		reservedChars = reservedChars or ""
 		escapeChars = escapeChars or ""
 		mapChars = mapChars or ""
@@ -1044,7 +1047,7 @@ do
 
 	-- Addons: Call this only once and reuse the returned
 	-- table for all encodings/decodings.
-	function LibCompress:GetAddonEncodeTable(reservedChars
+	function LibCompressEncoder:GetAddonEncodeTable(reservedChars
 		, escapeChars, mapChars )
 		reservedChars = reservedChars or ""
 		escapeChars = escapeChars or ""
@@ -1060,7 +1063,7 @@ do
 
 	-- Addons: Call this only once and reuse the returned
 	-- table for all encodings/decodings.
-	function LibCompress:GetChatEncodeTable(reservedChars
+	function LibCompressEncoder:GetChatEncodeTable(reservedChars
 		, escapeChars, mapChars)
 		reservedChars = reservedChars or ""
 		escapeChars = escapeChars or ""
@@ -1081,15 +1084,15 @@ do
 	end
 end
 
-local _libcompress_addon_codec = LibCompress:GetAddonEncodeTable()
-local _libcompress_chat_codec = LibCompress:GetChatEncodeTable()
+local _libcompress_addon_codec = LibCompressEncoder:GetAddonEncodeTable()
+local _libcompress_chat_codec = LibCompressEncoder:GetChatEncodeTable()
 
 -- Check if LibDeflate's encoding works properly
 local function CheckEncodeAndDecode(str, reserved_chars, escape_chars
 	, map_chars)
 	if reserved_chars then
 		local encode_decode_table_libcompress =
-			LibCompress:GetEncodeTable(reserved_chars
+			LibCompressEncoder:GetEncodeTable(reserved_chars
 			, escape_chars, map_chars)
 		local encode_decode_table, message =
 			LibDeflate:CreateCodec(reserved_chars
@@ -1391,6 +1394,10 @@ TestThirdPartyBig = {}
 TestWoWData = {}
 	function TestWoWData:TestWarlockWeakAuras()
 		CheckCompressAndDecompressFile("tests/data/warlockWeakAuras.txt"
+			, {0,1,2,3,4})
+	end
+	function TestWoWData:TestTotalRp3Data()
+		CheckCompressAndDecompressFile("tests/data/totalrp3.txt"
 			, {0,1,2,3,4})
 	end
 
@@ -1935,7 +1942,7 @@ TestInternals = {}
 		CheckCompressAndDecompressString("aaabbbcccddddddcccbbbaaa", "all")
 		FullMemoryCollect()
 		local memory2 = math.floor(collectgarbage("collect")*1024)
-		if not jit then
+		if not _G.jit then
 			lu.assertTrue((memory2 - memory1 <= 32)
 			, ("Too much Memory leak after LibStub without update: %d")
 				:format(memory2-memory1))
@@ -1959,7 +1966,7 @@ TestInternals = {}
 			, "LibStub unexpectedly recreates the library.")
 		lu.assertTrue(LibStub.minors[MAJOR] > -1000
 			, "LibDeflate is not updated.")
-		if not jit then
+		if not _G.jit then
 			lu.assertTrue((memory4 - memory3 <= 100)
 				, ("Too much Memory leak after LibStub update: %d")
 				:format(memory4-memory3))
@@ -3073,6 +3080,122 @@ for k, v in pairs(_G) do
 	end
 end
 
+--
+-- Performance Evaluation, compared with LibCompress
+--
+local function CheckCompressAndDecompressLibCompress(
+	string_or_filename, is_file)
+
+	FullMemoryCollect()
+	local LibCompress = require("LibCompress")
+
+	local origin
+	if is_file then
+		origin = GetFileData(string_or_filename)
+	else
+		origin = string_or_filename
+	end
+
+	FullMemoryCollect()
+	local total_memory_before = math.floor(collectgarbage("count")*1024)
+
+	do
+		print(
+			(">>>>> %s: %s size: %d B (LibCompress)")
+			:format(is_file and "File" or "String",
+				string_or_filename:sub(1, 40),  origin:len()
+			))
+		local compress_to_run = {
+			{"Compress", origin},
+			{"CompressLZW", origin},
+			{"CompressHuffman", origin},
+		}
+
+		for j, compress_running in ipairs(compress_to_run) do
+		-- Compress by raw deflate
+			local compress_func_name = compress_running[1]
+			local compress_memory_leaked, compress_memory_used
+				, compress_time, compress_data =
+				MemCheckAndBenchmarkFunc(LibCompress
+					, unpack(compress_running))
+
+			local decompress_to_run = {
+				{"Decompress", compress_data},
+				{"Decompress", compress_data},
+				{"Decompress", compress_data},
+			}
+			lu.assertEquals(#decompress_to_run, #compress_to_run)
+
+			-- Try decompress by LibDeflate
+			local decompress_memory_leaked, decompress_memory_used,
+				decompress_time, decompress_data =
+				MemCheckAndBenchmarkFunc(LibCompress
+					, unpack(decompress_to_run[j]))
+			AssertLongStringEqual(decompress_data, origin
+				, compress_func_name
+				.." LibCompress decompress result not match origin string.")
+
+			print(
+				("%s:   Size : %d B,Time: %.3f ms, "
+					.."Speed: %.0f KB/s, Memory: %d B,"
+					.." Mem/input: %.2f, (memleak?: %d B)\n")
+					:format(compress_func_name
+					, compress_data:len(), compress_time
+					, compress_data:len()/compress_time
+					, compress_memory_used
+					, compress_memory_used/origin:len()
+					, compress_memory_leaked
+				),
+				("%s:   cRatio: %.2f,Time: %.3f ms"
+					..", Speed: %.0f KB/s, Memory: %d B,"
+					.." Mem/input: %.2f, (memleak?: %d B)"):format(
+					decompress_to_run[j][1]
+					, origin:len()/compress_data:len(), decompress_time
+					, decompress_data:len()/decompress_time
+					, decompress_memory_used
+					, decompress_memory_used/origin:len()
+					, decompress_memory_leaked
+				)
+			)
+			print("")
+		end
+	end
+
+	FullMemoryCollect()
+	local total_memory_after = math.floor(collectgarbage("count")*1024)
+
+	local total_memory_difference = total_memory_before - total_memory_after
+
+	if total_memory_difference > 0 then
+		local ignore_leak = " (Ignore when the test is for LibCompress)"
+		print(
+			(">>>>> %s: %s size: %d B\n")
+				:format(is_file and "File" or "String"
+				, string_or_filename:sub(1, 40), origin:len()),
+			("Actual Memory Leak in the test: %d"..ignore_leak.."\n")
+				:format(total_memory_difference),
+			"\n")
+	end
+end
+
+local function EvaluatePerformance(filename)
+	local interpreter = _G._VERSION
+	if _G.jit then
+		interpreter = interpreter.."(LuaJIT)"
+	end
+	print(interpreter)
+	print("^^^^^^^^^^^^")
+	CheckCompressAndDecompressLibCompress(filename, true)
+	CheckCompressAndDecompressFile(filename, "all")
+end
+
+PerformanceEvaluation = {}
+	function PerformanceEvaluation:TestEvaluateWarlockWeakAuras()
+		EvaluatePerformance("tests/data/warlockWeakAuras.txt")
+	end
+	function PerformanceEvaluation:TestEvaluateTotalRp3Data()
+		EvaluatePerformance("tests/data/totalrp3.txt")
+	end
 
 local runner = lu.LuaUnit.new()
 local exitCode = runner:runSuite()
