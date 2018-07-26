@@ -28,3 +28,5 @@ zdeflate
 *.stderr
 *.stdout
 *.rock
+tests/huge_data/*
+!tests/huge_data/README.md

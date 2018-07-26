@@ -3,8 +3,14 @@
 -- Don't run two "tests/Test.lua" at the same time,
 -- because they will conflict!!!
 
-package.path = (package.path or "")
-			..(";LibDeflate.lua")
+package.path = ("?.lua;")..(package.path or "")
+
+do
+	local test_lua = io.open("tests/Test.lua")
+	assert(test_lua
+		, "Must run this script in the root folder of LibDeflate repository")
+	test_lua:close()
+end
 
 local old_globals = {}
 for k, v in pairs(_G) do
@@ -20,6 +26,7 @@ end
 
 -- UnitTests
 local lu = require("luaunit")
+assert(lu)
 
 local assert = assert
 local loadstring = loadstring or load
@@ -375,7 +382,7 @@ local dictionary32768 = LibDeflate:CreateDictionary(dictionary32768_str
 
 local _CheckCompressAndDecompressCounter = 0
 local function CheckCompressAndDecompress(string_or_filename, is_file, levels
-	, strategy)
+	, strategy, output_prefix)
 
 	-- For 100% code coverage
 	if _CheckCompressAndDecompressCounter % 3 == 0 then
@@ -410,13 +417,19 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 		end
 
 		local compress_filename
-		if is_file then
-			compress_filename = string_or_filename..".compress"
-		else
-			compress_filename = "tests/string.compress"
-		end
+		local decompress_filename
 
-		local decompress_filename = compress_filename..".decompress"
+		if output_prefix then
+			compress_filename = output_prefix..".compress"
+			decompress_filename = output_prefix..".decompress"
+		else
+			if is_file then
+				compress_filename = string_or_filename..".compress"
+			else
+				compress_filename = "tests/string.compress"
+			end
+			decompress_filename = compress_filename..".decompress"
+		end
 
 		for i=1, #levels+1 do -- also test level == nil
 			local level = levels[i]
@@ -630,11 +643,15 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 	local total_memory_difference = total_memory_before - total_memory_after
 
 	if total_memory_difference > 0 then
+		local ignore_leak_jit = ""
+		if jit then
+			ignore_leak_jit = " (Ignore when the test is run by LuaJIT)"
+		end
 		print(
 			(">>>>> %s: %s size: %d B\n")
 				:format(is_file and "File" or "String"
 				, string_or_filename:sub(1, 40), origin:len()),
-			("Actual Memory Leak in the test: %d\n")
+			("Actual Memory Leak in the test: %d"..ignore_leak_jit.."\n")
 				:format(total_memory_difference),
 			"\n")
 		-- ^If above "leak" is very small
@@ -656,8 +673,10 @@ local function CheckCompressAndDecompressString(str, levels, strategy)
 	return CheckCompressAndDecompress(str, false, levels, strategy)
 end
 
-local function CheckCompressAndDecompressFile(inputFileName, levels, strategy)
-	return CheckCompressAndDecompress(inputFileName, true, levels, strategy)
+local function CheckCompressAndDecompressFile(inputFileName, levels, strategy
+	, output_prefix)
+	return CheckCompressAndDecompress(inputFileName, true, levels, strategy
+									  , output_prefix)
 end
 
 local function CheckDecompressIncludingError(compress, decompress, is_zlib)
@@ -829,7 +848,8 @@ end
 local arg = _G.arg
 if arg and #arg >= 1 and type(arg[0]) == "string" then
 	if #arg >= 2 and arg[1] == "-o" then
-	-- For testing purpose, check if the file can be opened by lua
+	-- For testing purpose (test_from_random_files_in_disk.py),
+	-- check if the file can be opened by lua
 		local input = arg[2]
 		local inputFile = io.open(input, "rb")
 		if not inputFile then
@@ -838,9 +858,10 @@ if arg and #arg >= 1 and type(arg[0]) == "string" then
 		inputFile.close()
 		os.exit(0)
 	elseif #arg >= 3 and arg[1] == "-c" then
-	-- For testing purpose
+	-- For testing purpose (test_from_random_files_in_disk.py)
 	-- , check the if a file can be correctly compress and decompress to origin
-		os.exit(CheckCompressAndDecompressFile(arg[2], "all", 0, arg[3]))-- TODO
+		os.exit(CheckCompressAndDecompressFile(arg[2], "all", nil
+				, "tests/tmp"))
 	end
 end
 
@@ -1697,7 +1718,7 @@ TestDecompress = {}
 			lu.assertEquals(unprocessed, extra_len)
 		end
 	end
-	-- TODO test decompress with raw deflate dict
+
 	function TestDecompress:TestDecompressWithDict()
 		local dict = CreateDictionaryWithoutVerify("abcdefgh")
 		-- local adler32 = LibDeflate:Adler32("abcdefgh")
@@ -2068,7 +2089,6 @@ TestPresetDict = {}
 		end
 	end
 
-	-- TODO: test dictionary in the middle
 	function TestPresetDict:TestLength259String()
 		for _ = 1, 10 do
 			local dict_str = GetRandomStringUniqueChars(259)
@@ -2992,11 +3012,14 @@ CommandLineCodeCoverage = {}
 			return TestCommandLine[k](TestCommandLine, ...)
 		end
 	end
--- Check if decompress can give any lua error for random string.
-DecompressInfinite = {}
-	function DecompressInfinite:Test()
+
+-- Check if decompress will produce any lua error for random string.
+-- Expectation is that no Lua error.
+-- This test is not run in CI.
+DecompressLuaErrorTest = {}
+	function DecompressLuaErrorTest:Test()
 		math.randomseed(os.time())
-		for _=1, 100000 do
+		for _=1, 10000 do
 			local len = math.random(0, 10000)
 			local str = GetRandomString(len)
 			local dict = CreateDictionaryWithoutVerify(
@@ -3005,7 +3028,34 @@ DecompressInfinite = {}
 			LibDeflate:DecompressZlib(str)
 			LibDeflate:DecompressDeflateWithDict(str, dict)
 			LibDeflate:DecompressZlibWithDict(str, dict)
+			print("Decompressed one random string without Lua error.")
 			print(StringForPrint(StringToHex(str)))
+		end
+	end
+
+-- Tests for some huge test data.
+-- The test data is not in the repository.
+-- Run the batch script in tests\dev_scripts\download_huge_data.bat
+-- to download.
+-- This test is not run in CI.
+HugeTests = {}
+	function HugeTests:TestCanterburyBible()
+		CheckCompressAndDecompressFile("tests/huge_data/bible.txt", "all")
+	end
+	function HugeTests:TestCanterburyEColi()
+		CheckCompressAndDecompressFile("tests/huge_data/E.coli", "all")
+	end
+	function HugeTests:TestCanterburyWorld129()
+		CheckCompressAndDecompressFile("tests/huge_data/world192.txt", "all")
+	end
+	do
+		local silesia_files = {"dickens", "mozilla", "mr", "nci", "ooffice"
+				, "osdb", "reymont", "samba", "sao", "webster", "xml", "x-ray"}
+		for _, f in pairs(silesia_files) do
+			HugeTests["TestSilesia"..f:sub(1, 1):upper()..f:sub(2)] = function()
+				CheckCompressAndDecompressFile("tests/huge_data/"..f
+				, {0, 1, 2, 3, 4})
+			end
 		end
 	end
 
