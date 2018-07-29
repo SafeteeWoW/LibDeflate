@@ -683,17 +683,20 @@ end
 
 local function CheckDecompressIncludingError(compress, decompress, is_zlib)
 	assert (is_zlib == true or is_zlib == nil)
-	local d, decompress_return
+	local d, decompress_status
 	if is_zlib then
-		d, decompress_return = LibDeflate:DecompressZlib(compress)
+		d, decompress_status = LibDeflate:DecompressZlib(compress)
 	else
-		d, decompress_return = LibDeflate:DecompressDeflate(compress)
+		d, decompress_status = LibDeflate:DecompressDeflate(compress)
 	end
+	lu.assertTrue(type(d) == "string" or type(d) == "nil")
+	lu.assertEquals(type(decompress_status), "number")
+	lu.assertEquals(decompress_status % 1, 0)
 	if d ~= decompress then
 		lu.assertTrue(false, ("My decompress does not match expected result."
 			.."expected: %s, actual: %s, Returned status of decompress: %d")
 			:format(StringForPrint(StringToHex(d))
-			, StringForPrint(StringToHex(decompress)), decompress_return))
+			, StringForPrint(StringToHex(decompress)), decompress_status))
 	else
 		-- Check my decompress result with "puff"
 		local input_filename = "tests/tmpFile"
@@ -3031,10 +3034,16 @@ DecompressLuaErrorTest = {}
 			local str = GetRandomString(len)
 			local dict = CreateDictionaryWithoutVerify(
 				GetRandomString(math.random(1, 32768)))
-			LibDeflate:DecompressDeflate(str)
-			LibDeflate:DecompressZlib(str)
-			LibDeflate:DecompressDeflateWithDict(str, dict)
-			LibDeflate:DecompressZlibWithDict(str, dict)
+			local r1, r2
+			r1, r2 = LibDeflate:DecompressDeflate(str)
+			-- Check the type of return value
+			assert((type(r1) == "string" or type(r1) == "nil") and r2 % 1 == 0)
+			r1, r2 = LibDeflate:DecompressZlib(str)
+			assert((type(r1) == "string" or type(r1) == "nil") and r2 % 1 == 0)
+			r1, r2 = LibDeflate:DecompressDeflateWithDict(str, dict)
+			assert((type(r1) == "string" or type(r1) == "nil") and r2 % 1 == 0)
+			r1, r2 = LibDeflate:DecompressZlibWithDict(str, dict)
+			assert((type(r1) == "string" or type(r1) == "nil") and r2 % 1 == 0)
 			print("Decompressed one random string without Lua error.")
 			print(StringForPrint(StringToHex(str)))
 		end
