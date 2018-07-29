@@ -1,0 +1,7 @@
+#!/bin/bash
+#
+# Lint the Lua source files before commit.
+# Prevent commit if there are any warnings.
+
+luacheck.bat -u -g .
+exit $?
