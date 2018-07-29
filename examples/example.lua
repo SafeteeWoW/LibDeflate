@@ -7,8 +7,10 @@ local LibDeflate
 if LibStub then -- You are using LibDeflate as WoW addon
 	LibDeflate = LibStub:GetLibrary("LibDeflate")
 else
-	-- package.path = package.path..";../LibDeflate.lua;LibDeflate.lua;"
-	-- ^ above is a way to set the path to find "LibDeflate"
+	-- You are using LibDeflate as Lua library.
+	-- Setup the path to locate LibDeflate.lua,
+	-- if 'require("LibDeflate")' fails, for example:
+	-- package.path = ("?.lua;../?.lua;")..(package.path or "")
 	LibDeflate = require("LibDeflate")
 end
 
@@ -16,8 +18,18 @@ local example_input = "12123123412345123456123456712345678123456789"
 
 -- Compress using raw deflate format
 local compress_deflate = LibDeflate:CompressDeflate(example_input)
+
 -- decompress
-assert(example_input == LibDeflate:DecompressDeflate(compress_deflate))
+local decompress_deflate = LibDeflate:DecompressDeflate(compress_deflate)
+-- Check if the first return value of DecompressXXXX is non-nil to know if the
+-- decompression succeeds.
+if decompress_deflate == nil then
+	error("Decompression fails.")
+else
+	-- Decompression succeeds.
+	assert(example_input == decompress_deflate)
+end
+
 
 -- If it is to transmit through WoW addon channel,
 -- compressed data must be encoded so NULL ("\000") is not transmitted.
@@ -27,9 +39,7 @@ local data_to_trasmit_WoW_addon = LibDeflate:EncodeForWoWAddonChannel(
 local data_decoded_WoW_addon = LibDeflate:DecodeForWoWAddonChannel(
 	data_to_trasmit_WoW_addon)
 -- Then decomrpess it
-local decompress_deflate = LibDeflate:DecompressDeflate(data_decoded_WoW_addon)
-
-assert(decompress_deflate == example_input)
+assert(LibDeflate:DecompressDeflate(data_decoded_WoW_addon) == example_input)
 
 -- The compressed output is not printable. EncodeForPrint will convert to
 -- a printable format, in case you want to export to the user to

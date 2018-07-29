@@ -149,8 +149,18 @@ local example_input = "12123123412345123456123456712345678123456789"
 
 --- Compress using raw deflate format
 local compress_deflate = LibDeflate:CompressDeflate(example_input)
+
 -- decompress
-assert(example_input == LibDeflate:DecompressDeflate(compress_deflate))
+local decompress_deflate = LibDeflate:DecompressDeflate(compress_deflate)
+
+-- Check if the first return value of DecompressXXXX is non-nil to know if the
+-- decompression succeeds.
+if decompress_deflate == nil then
+	error("Decompression fails.")
+else
+	-- Decompression succeeds.
+	assert(example_input == decompress_deflate)
+end
 
 
 -- To transmit through WoW addon channel, data must be encoded so NULL ("\000")
