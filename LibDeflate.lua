@@ -1,5 +1,5 @@
 --[[--
-LibDeflate 0.9.0-beta4   <br>
+LibDeflate 1.0.0-release <br>
 Pure Lua compressor and decompressor with high compression ratio using
 DEFLATE/zlib format.
 
@@ -74,7 +74,7 @@ do
 	-- NOTE: Two version numbers needs to modify.
 	-- 1. On the top of LibDeflate.lua
 	-- 2. HERE
-	local _VERSION = "0.9.0-beta4"
+	local _VERSION = "1.0.0-release"
 
 	local _COPYRIGHT =
 	"LibDeflate ".._VERSION

@@ -1,8 +1,15 @@
+### v1.0.0-release
+
+* 2018/7/30
+* Documentation updates.
+
 ### v0.9.0-beta4
+
 * 2018/5/25
 * "DecodeForPrint" always remove prefixed or trailing control or space characters before decoding. This makes this API easier to use.
 
 ### v0.9.0-beta3
+
 * 2018/5/23
 * Fix an issue in "DecodeForPrint" that certain undecodable string
   could cause an Lua error.
