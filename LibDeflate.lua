@@ -17,9 +17,8 @@ https://tools.ietf.org/html/rfc1951 <br>
 https://tools.ietf.org/html/rfc1950 <br>
 
 This library requires Lua 5.1/5.2/5.3 interpreter or LuaJIT v2.0+. <br>
-This library does not have any external library dependencies. <br>
-(Exception: will register in the World of Warcraft library "LibStub",
-if detected). <br>
+This library does not have any dependencies. <br>
+<br>
 This file "LibDeflate.lua" is the only source file of
 the library. <br>
 Submit suggestions or report bugs to
@@ -47,18 +46,16 @@ Credits:
 	For the compression algorithm.
 2. puff, by Mark Adler. https://github.com/madler/zlib/tree/master/contrib/puff
 	Licensed under zlib License. http://www.zlib.net/zlib_license.html
-	For the decompression algorithm
+	For the decompression algorithm.
 3. LibCompress, by jjsheets and Galmok of European Stormrage (Horde)
 	https://www.wowace.com/projects/libcompress
 	Licensed under GPLv2.
 	https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
-	For the code to create codec
+	For the code to create customized codec.
 4. WeakAuras2,
 	https://github.com/WeakAuras/WeakAuras2
 	Licensed under GPLv2.
 	For the 6bit encoding and decoding.
-
-All related codes are modified by LibDeflate.
 ]]
 
 --[[
@@ -374,12 +371,14 @@ end
 -- to run this function only once in your program.
 --
 -- It is very important to know that if you do use a preset dictionary,
--- compressors and decompressors MUST USE THE EQUIVALENT dictionary. That is,
+-- compressors and decompressors MUST USE THE SAME dictionary. That is,
 -- dictionary must be created using the same string. If you update your program
 -- with a new dictionary, people with the old version won't be able to transmit
 -- data with people with the new version. Therefore, changing the dictionary
--- must be very careful, and the parameter of the function helps you to avoid
--- accidentally modify the the definition of the dictionary during the program
+-- must be very careful.
+--
+-- The parameters "strlen" and "adler32" add a layer of verification to ensure
+-- the parameter "str" is not modified unintentionally during the program
 -- development.
 --
 -- @usage local dict_str = "1234567890"
@@ -398,13 +397,15 @@ end
 -- of the string. <br>
 -- Empty string and string longer than 32768 bytes are not allowed.
 -- @param strlen [integer] The length of 'str'. Please pass in this parameter
--- as a hardcoded constant, in order to verify the content of 'str'.
+-- as a hardcoded constant, in order to verify the content of 'str'. The value
+-- of this parameter should be known before your program runs.
 -- @param adler32 [integer] The Adler-32 checksum of 'str'. Please pass in this
 -- parameter as a hardcoded constant, in order to verify the content of 'str'.
+-- The value of this parameter should be known before your program runs.
 -- @return  [table] The dictionary used for preset dictionary compression and
 -- decompression.
--- @raise error if 'strlen' does not match the length of the 'str',
--- or if 'adler32' does not match the Adler-32 checksum of the 'str'.
+-- @raise error if 'strlen' does not match the length of 'str',
+-- or if 'adler32' does not match the Adler-32 checksum of 'str'.
 function LibDeflate:CreateDictionary(str, strlen, adler32)
 	if type(str) ~= "string" then
 		error(("Usage: LibDeflate:CreateDictionary(str, strlen, adler32):"
@@ -1968,9 +1969,11 @@ end
 -- @param str [string] The data to be compressed.
 -- @param configs [table/nil] The configuration table to control the compression
 -- . If nil, use the default configuration.
--- @return [string] The compressed data
+-- @return [string] The compressed data.
 -- @return [integer] The number of bits padded at the end of output.
 -- 0 <= bits < 8  <br>
+-- This means the most significant "bits" of the last byte of the returned
+-- compressed data are padding bits and they don't affect decompression.
 -- You don't need to use this value unless you want to do some postprocessing
 -- to the compressed data.
 -- @see compression_configs
@@ -1990,9 +1993,11 @@ end
 -- LibDeflate:CreateDictionary
 -- @param configs [table/nil] The configuration table to control the compression
 -- . If nil, use the default configuration.
--- @return [string] The compressed data
+-- @return [string] The compressed data.
 -- @return [integer] The number of bits padded at the end of output.
 -- 0 <= bits < 8  <br>
+-- This means the most significant "bits" of the last byte of the returned
+-- compressed data are padding bits and they don't affect decompression.
 -- You don't need to use this value unless you want to do some postprocessing
 -- to the compressed data.
 -- @see compression_configs
@@ -2013,9 +2018,10 @@ end
 -- @param str [string] the data to be compressed.
 -- @param configs [table/nil] The configuration table to control the compression
 -- . If nil, use the default configuration.
--- @return [string] The compressed data
+-- @return [string] The compressed data.
 -- @return [integer] The number of bits padded at the end of output.
 -- Should always be 0.
+-- Zlib formatted compressed data never has padding bits at the end.
 -- @see compression_configs
 -- @see LibDeflate:DecompressZlib
 function LibDeflate:CompressZlib(str, configs)
@@ -2027,15 +2033,16 @@ function LibDeflate:CompressZlib(str, configs)
 	return CompressZlibInternal(str, nil, configs)
 end
 
---- Compress using the zlib format with a preset dictionary
+--- Compress using the zlib format with a preset dictionary.
 -- @param str [string] the data to be compressed.
 -- @param dictionary [table] A preset dictionary produced
 -- by LibDeflate:CreateDictionary()
 -- @param configs [table/nil] The configuration table to control the compression
 -- . If nil, use the default configuration.
--- @return [string] The compressed data
+-- @return [string] The compressed data.
 -- @return [integer] The number of bits padded at the end of output.
 -- Should always be 0.
+-- Zlib formatted compressed data never has padding bits at the end.
 -- @see compression_configs
 -- @see LibDeflate:CreateDictionary
 -- @see LibDeflate:DecompressZlibWithDict
@@ -2683,12 +2690,17 @@ local function DecompressZlibInternal(str, dictionary)
 end
 
 --- Decompress a raw deflate compressed data.
--- @param str [string] The data to be decompressed
--- @return [string/nil] The decompressed data if succeeds. nil if fails.
--- @return [integer] The number of unprocessed bytes if succeeds. Positive
--- integer if any extra bytes are appended after the compressed data. If you
--- consider this as an error, check if this is zero. <br>
--- UNDEFINED value if fails.
+-- @param str [string] The data to be decompressed.
+-- @return [string/nil] If the decompression succeeds, return the decompressed
+-- data. If the decompression fails, return nil. You should check if this return
+-- value is non-nil to know if the decompression succeeds.
+-- @return [integer] If the decompression succeeds, return the number of
+-- unprocessed bytes in the input compressed data. This return value is a
+-- positive integer if the input data is a valid compressed data appended by an
+-- arbitary non-empty string. This return value is 0 if the input data does not
+-- contain any extra bytes.<br>
+-- If the decompression fails (The first return value of this function is nil),
+-- this return value is undefined.
 -- @see LibDeflate:CompressDeflate
 function LibDeflate:DecompressDeflate(str)
 	local arg_valid, arg_err = IsValidArguments(str)
@@ -2700,17 +2712,22 @@ function LibDeflate:DecompressDeflate(str)
 end
 
 --- Decompress a raw deflate compressed data with a preset dictionary.
--- @param str [string] The data to be decompressed
+-- @param str [string] The data to be decompressed.
 -- @param dictionary [table] The preset dictionary used by
 -- LibDeflate:CompressDeflateWithDict when the compressed data is produced.
 -- Decompression and compression must use the same dictionary.
 -- Otherwise wrong decompressed data could be produced without generating any
 -- error.
--- @return [string/nil] The decompressed data if succeeds. nil if fails.
--- @return [integer] The number of unprocessed bytes if succeeds. Positive
--- integer if any extra bytes are appended after the compressed data. If you
--- consider this as an error, check if this is zero. <br>
--- UNDEFINED value if fails.
+-- @return [string/nil] If the decompression succeeds, return the decompressed
+-- data. If the decompression fails, return nil. You should check if this return
+-- value is non-nil to know if the decompression succeeds.
+-- @return [integer] If the decompression succeeds, return the number of
+-- unprocessed bytes in the input compressed data. This return value is a
+-- positive integer if the input data is a valid compressed data appended by an
+-- arbitary non-empty string. This return value is 0 if the input data does not
+-- contain any extra bytes.<br>
+-- If the decompression fails (The first return value of this function is nil),
+-- this return value is undefined.
 -- @see LibDeflate:CompressDeflateWithDict
 function LibDeflate:DecompressDeflateWithDict(str, dictionary)
 	local arg_valid, arg_err = IsValidArguments(str, true, dictionary)
@@ -2723,11 +2740,16 @@ end
 
 --- Decompress a zlib compressed data.
 -- @param str [string] The data to be decompressed
--- @return [string/nil] The decompressed data if succeeds. nil if fails.
--- @return [integer] The number of unprocessed bytes if succeeds. Positive
--- integer if any extra bytes are appended after the compressed data. If you
--- consider this as an error, check if this is zero. <br>
--- UNDEFINED value if fails.
+-- @return [string/nil] If the decompression succeeds, return the decompressed
+-- data. If the decompression fails, return nil. You should check if this return
+-- value is non-nil to know if the decompression succeeds.
+-- @return [integer] If the decompression succeeds, return the number of
+-- unprocessed bytes in the input compressed data. This return value is a
+-- positive integer if the input data is a valid compressed data appended by an
+-- arbitary non-empty string. This return value is 0 if the input data does not
+-- contain any extra bytes.<br>
+-- If the decompression fails (The first return value of this function is nil),
+-- this return value is undefined.
 -- @see LibDeflate:CompressZlib
 function LibDeflate:DecompressZlib(str)
 	local arg_valid, arg_err = IsValidArguments(str)
@@ -2745,11 +2767,16 @@ end
 -- Decompression and compression must use the same dictionary.
 -- Otherwise wrong decompressed data could be produced without generating any
 -- error.
--- @return [string/nil] The decompressed data if succeeds. nil if fails.
--- @return [integer] The number of unprocessed bytes if succeeds. Positive
--- integer if any extra bytes are appended after the compressed data. If you
--- consider this as an error, check if this is zero. <br>
--- UNDEFINED value if fails.
+-- @return [string/nil] If the decompression succeeds, return the decompressed
+-- data. If the decompression fails, return nil. You should check if this return
+-- value is non-nil to know if the decompression succeeds.
+-- @return [integer] If the decompression succeeds, return the number of
+-- unprocessed bytes in the input compressed data. This return value is a
+-- positive integer if the input data is a valid compressed data appended by an
+-- arbitary non-empty string. This return value is 0 if the input data does not
+-- contain any extra bytes.<br>
+-- If the decompression fails (The first return value of this function is nil),
+-- this return value is undefined.
 -- @see LibDeflate:CompressZlibWithDict
 function LibDeflate:DecompressZlibWithDict(str, dictionary)
 	local arg_valid, arg_err = IsValidArguments(str, true, dictionary)
@@ -2823,25 +2850,42 @@ local function escape_for_gsub(str)
 end
 
 --- Create a custom codec with encoder and decoder. <br>
+-- This codec is used to convert an input string to make it not contain
+-- some specific bytes.
+-- This created codec and the parameters of this function do NOT take
+-- localization into account. One byte (0-255) in the string is exactly one
+-- character (0-255).
 -- Credits to LibCompress.
--- @param reserved_chars [string] The created encoder will ensure no encoded
--- data will contain any characters in reserved_chars.
--- @param escape_chars [string] The escape character(s) used to escape
--- reserved_chars. The length of param is usally 1 character, but you need to
--- provide one more character if there are more than 127 reseverd chars.
--- @param map_chars [string] The created encoder will encode the input string
--- with mapping every reserved_chars[i] (1 <= i <= #map_chars) to map_chars[i]
--- @return [table] The encode/decode table. The table contains two functions
+-- @param reserved_chars [string] The created encoder will ensure encoded
+-- data does not contain any single character in reserved_chars. This parameter
+-- should be non-empty.
+-- @param escape_chars [string] The escape character(s) used in the created
+-- codec. The codec converts any character included in reserved\_chars /
+-- escape\_chars / map\_chars to (one escape char + one character not in
+-- reserved\_chars / escape\_chars / map\_chars).
+-- You usually only need to provide a length-1 string for this parameter.
+-- Length-2 string is only needed when
+-- reserved\_chars + escape\_chars + map\_chars is longer than 127.
+-- This parameter should be non-empty.
+-- @param map_chars [string] The created encoder will map every
+-- reserved\_chars:sub(i, i) (1 <= i <= #map\_chars) to map\_chars:sub(i, i).
+-- This parameter CAN be empty string.
+-- @return [table/nil] If the codec cannot be created, return nil.<br>
+-- If the codec can be created according to the given
+-- parameters, return the codec, which is a encode/decode table.
+-- The table contains two functions: <br>
 -- t:Encode(str) returns the encoded string. <br>
 -- t:Decode(str) returns the decoded string if succeeds. nil if fails.
--- @raise error if encode/decoder cannot be produced.
+-- @return [nil/string] If the codec is successfully created, return nil.
+-- If not, return a string that describes the reason why the codec cannot be
+-- created.
 -- @usage
 -- -- Create an encoder/decoder that maps all "\000" to "\003",
 -- -- and escape "\001" (and "\002" and "\003") properly
--- local codec = LibDeflate:CreateCodec("\000\001",
---        "\002", "\003")
+-- local codec = LibDeflate:CreateCodec("\000\001", "\002", "\003")
 --
 -- local encoded = codec:Encode(SOME_STRING)
+-- -- "encoded" does not contain "\000" or "\001"
 -- local decoded = codec:Decode(encoded)
 -- -- assert(decoded == SOME_STRING)
 function LibDeflate:CreateCodec(reserved_chars, escape_chars
@@ -3291,7 +3335,6 @@ the entire preset dictionary.
 \-h    give this help.
 \--strategy <fixed/huffman_only/dynamic> specify a special compression strategy.
 \-v    print the version and copyright info.
-\--wowdict Use the preset dictionary designed for WoW shipped with LibDeflate.
 \--zlib  use zlib format instead of raw deflate.
 ]]
 

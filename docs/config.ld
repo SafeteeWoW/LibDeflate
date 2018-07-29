@@ -9,6 +9,7 @@ project='LibDeflate'
 readme={
     '../README.md',
     '../changelog.md',
+    'benchmark.md',
 }
 sort = true
 title='LibDeflate documentation'

@@ -30,7 +30,7 @@ headers and checksum.
 A simple C program utilizing [zlib](https://github.com/madler/zlib) should be
 compatible with LibDeflate. If you are not sure how to write this program,
 goto the [zlib](https://github.com/madler/zlib) repository, or read
-[tests/zdeflate.c](tests/zdeflate.c) in this repository.
+[tests/zdeflate.c](https://github.com/SafeteeWoW/LibDeflate/blob/master/tests/zdeflate.c) in this repository.
 
 ## Supported Lua Versions
 LibDeflate supports and is fully tested under Lua 5.1/5.2/5.3, LuaJIT 2.0/2.1,
@@ -39,7 +39,7 @@ Appveyor(Windows) badge on the top of this README for the test results. Click
 the CodeCov badge to see the test coverage (should be 100%).
 
 ## Documentation
-[Documentation](https://safeteewow.github.io/LibDeflate/) is hosted on Github.
+[Documentation](https://safeteewow.github.io/LibDeflate/source/LibDeflate.lua.html) is hosted on Github.
 Beside run as a library, LibDeflate can also be run directly in commmandline.
 See the documentation for detail.
 
@@ -53,11 +53,10 @@ Lua compressor with C binding.
 
 ## Performance
 Below is a simple benchmark compared with another pure Lua compressor [LibCompress](https://www.wowace.com/projects/libcompress).
+More benchmarks can be viewed in the [documentation](https://safeteewow.github.io/LibDeflate/topics/benchmark.md.html).
 
-
-The size of [The input data](https://gist.github.com/SafeteeWoW/d9770e08a6989032de01b7d61b53d981) is 158492 bytes. The benchmark runs on Lua 5.1.4 interpreter.
-
-NOTE: The compression method used by LibDeflate here is LibDeflate:CompressDeflate (Compress using raw DEFLATE format)
++ Interpreter: Lua 5.1.5
++ Input data: [WeakAuras2 String](https://raw.githubusercontent.com/SafeteeWoW/LibDeflate/master/tests/data/warlockWeakAuras.txt), Size: 132462 bytes
 
 <table>
 <thead>
@@ -68,47 +67,63 @@ NOTE: The compression method used by LibDeflate here is LibDeflate:CompressDefla
 <th>LibDeflate</th>
 <th>LibCompress</th>
 <th>LibCompress</th>
+<th>LibCompress</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td></td>
-<td>level 1</td>
-<td>level 5</td>
-<td>level 8</td>
+<td>CompressDeflate Level 1</td>
+<td>CompressDeflate Level 5</td>
+<td>CompressDeflate Level 8</td>
+<td>Compress</td>
 <td>CompressLZW</td>
 <td>CompressHuffman</td>
 </tr>
 <tr>
-<td>Compress(ms)</td>
-<td>65</td>
-<td>150</td>
-<td>465</td>
-<td>66</td>
-<td>75</td>
+<td>compress ratio</td>
+<td>3.15</td>
+<td>3.68</td>
+<td>3.71</td>
+<td>1.36</td>
+<td>1.20</td>
+<td>1.36</td>
 </tr>
 <tr>
-<td>Decompress(ms)</td>
+<td>compress time(ms)</td>
+<td>70</td>
+<td>120</td>
+<td>200</td>
+<td>127</td>
+<td>58</td>
+<td>64</td>
+</tr>
+<tr>
+<td>decompress time(ms)</td>
+<td>35</td>
 <td>32</td>
-<td>28</td>
-<td>28</td>
-<td>21</td>
-<td>99</td>
+<td>32</td>
+<td>62</td>
+<td>36</td>
+<td>62</td>
 </tr>
 <tr>
-<td>compress size(Bytes)</td>
-<td>23659</td>
-<td>17323</td>
-<td>16106</td>
-<td>72639</td>
-<td>99346</td>
+<td>compress+decompress time(ms)</td>
+<td>105</td>
+<td>152</td>
+<td>232</td>
+<td>189</td>
+<td>94</td>
+<td>126</td>
 </tr>
 </tbody>
 </table>
 
-LibDeflate with compression level 1 compresses as fast as LibCompress, but already produces significantly smaller file than LibCompress. High compression level takes a bit more time to get better compression.
+
+LibDeflate with compression level 1 compresses as fast as LibCompress, but already produces significantly smaller data than LibCompress. High compression level takes a bit more time to get better compression.
 
 ## Download And Install
+
 + The [official repository](https://github.com/SafeteeWoW/LibDeflate) locates on Github.
 [LibDeflate.lua](https://github.com/SafeteeWoW/LibDeflate/blob/master/LibDeflate.lua) is the only file of LibDeflate. Copy the file
 to your LUA_PATH to install it.
@@ -160,9 +175,10 @@ local printable_compressed = LibDeflate:EncodeForPrint(compress_deflate)
 -- in the string before decode it.
 assert(LibDeflate:DecodeForPrint(printable_compressed) == compress_deflate)
 ```
-See Full examples in [examples/example.lua](examples/example.lua)
+See Full examples in [examples/example.lua](https://github.com/SafeteeWoW/LibDeflate/blob/master/examples/example.lua)
 
 ## Credits
+
 1. [zlib](http://www.zlib.net), by Jean-loup Gailly (compression) and Mark Adler (decompression). Licensed under [zlib License](http://www.zlib.net/zlib_license.html).
 2. [puff](https://github.com/madler/zlib/tree/master/contrib/puff), by Mark Adler. Licensed under zlib License.
 3. [LibCompress](https://www.wowace.com/projects/libcompress), by jjsheets and Galmok of European Stormrage (Horde). Licensed under GPLv2.

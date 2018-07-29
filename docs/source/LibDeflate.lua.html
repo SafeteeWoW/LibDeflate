@@ -43,6 +43,7 @@
 </ul>
 <h2>Topics</h2>
 <ul class="">
+  <li><a href="../topics/benchmark.md.html">benchmark</a></li>
   <li><a href="../topics/changelog.md.html">changelog</a></li>
   <li><a href="../topics/readme.md.html">readme</a></li>
 </ul>
@@ -76,9 +77,8 @@ https://tools.ietf.org/html/rfc1951 <br>
 https://tools.ietf.org/html/rfc1950 <br></p>
 
 <p>This library requires Lua 5.1/5.2/5.3 interpreter or LuaJIT v2.0+. <br>
-This library does not have any external library dependencies. <br>
-(Exception: will register in the World of Warcraft library "LibStub",
-if detected). <br>
+This library does not have any dependencies. <br>
+<br>
 This file "LibDeflate.lua" is the only source file of
 the library. <br>
 Submit suggestions or report bugs to
@@ -107,7 +107,7 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
 	</tr>
 	<tr>
 	<td class="name" ><a href="#LibDeflate:CompressZlibWithDict">LibDeflate:CompressZlibWithDict (str, dictionary, configs)</a></td>
-	<td class="summary">Compress using the zlib format with a preset dictionary</td>
+	<td class="summary">Compress using the zlib format with a preset dictionary.</td>
 	</tr>
 	<tr>
 	<td class="name" ><a href="#LibDeflate:CreateCodec">LibDeflate:CreateCodec (reserved_chars, escape_chars, map_chars)</a></td>
@@ -229,10 +229,12 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
     <h3>Returns:</h3>
     <ol>
         <li>
-        [string] The compressed data</li>
+        [string] The compressed data.</li>
         <li>
          [integer] The number of bits padded at the end of output.
  0 &lt;= bits &lt; 8  <br>
+ This means the most significant "bits" of the last byte of the returned
+ compressed data are padding bits and they don't affect decompression.
  You don't need to use this value unless you want to do some postprocessing
  to the compressed data.</li>
     </ol>
@@ -272,10 +274,12 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
     <h3>Returns:</h3>
     <ol>
         <li>
-        [string] The compressed data</li>
+        [string] The compressed data.</li>
         <li>
          [integer] The number of bits padded at the end of output.
  0 &lt;= bits &lt; 8  <br>
+ This means the most significant "bits" of the last byte of the returned
+ compressed data are padding bits and they don't affect decompression.
  You don't need to use this value unless you want to do some postprocessing
  to the compressed data.</li>
     </ol>
@@ -312,10 +316,11 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
     <h3>Returns:</h3>
     <ol>
         <li>
-        [string] The compressed data</li>
+        [string] The compressed data.</li>
         <li>
-        [integer] The number of bits padded at the end of output.
- Should always be 0.</li>
+         [integer] The number of bits padded at the end of output.
+ Should always be 0.
+ Zlib formatted compressed data never has padding bits at the end.</li>
     </ol>
 
 
@@ -332,7 +337,7 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
     <strong>LibDeflate:CompressZlibWithDict (str, dictionary, configs)</strong>
     </dt>
     <dd>
-    Compress using the zlib format with a preset dictionary
+    Compress using the zlib format with a preset dictionary.
 
 
     <h3>Parameters:</h3>
@@ -353,10 +358,11 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
     <h3>Returns:</h3>
     <ol>
         <li>
-        [string] The compressed data</li>
+        [string] The compressed data.</li>
         <li>
-        [integer] The number of bits padded at the end of output.
- Should always be 0.</li>
+         [integer] The number of bits padded at the end of output.
+ Should always be 0.
+ Zlib formatted compressed data never has padding bits at the end.</li>
     </ol>
 
 
@@ -375,47 +381,64 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
     </dt>
     <dd>
     Create a custom codec with encoder and decoder.  <br>
+ This codec is used to convert an input string to make it not contain
+ some specific bytes.
+ This created codec and the parameters of this function do NOT take
+ localization into account. One byte (0-255) in the string is exactly one
+ character (0-255).
  Credits to LibCompress.
 
 
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">reserved_chars</span>
-         [string] The created encoder will ensure no encoded
- data will contain any characters in reserved_chars.
+         [string] The created encoder will ensure encoded
+ data does not contain any single character in reserved_chars. This parameter
+ should be non-empty.
         </li>
         <li><span class="parameter">escape_chars</span>
-         [string] The escape character(s) used to escape
- reserved_chars. The length of param is usally 1 character, but you need to
- provide one more character if there are more than 127 reseverd chars.
+         [string] The escape character(s) used in the created
+ codec. The codec converts any character included in reserved_chars /
+ escape_chars / map_chars to (one escape char + one character not in
+ reserved_chars / escape_chars / map_chars).
+ You usually only need to provide a length-1 string for this parameter.
+ Length-2 string is only needed when
+ reserved_chars + escape_chars + map_chars is longer than 127.
+ This parameter should be non-empty.
         </li>
         <li><span class="parameter">map_chars</span>
-         [string] The created encoder will encode the input string
- with mapping every reserved<em>chars[i] (1 &lt;= i &lt;= #map</em>chars) to map_chars[i]
+         [string] The created encoder will map every
+ reserved_chars:sub(i, i) (1 &lt;= i &lt;= #map_chars) to map_chars:sub(i, i).
+ This parameter CAN be empty string.
         </li>
     </ul>
 
     <h3>Returns:</h3>
     <ol>
-
-         [table] The encode/decode table. The table contains two functions
+        <li>
+         [table/nil] If the codec cannot be created, return nil.<br>
+ If the codec can be created according to the given
+ parameters, return the codec, which is a encode/decode table.
+ The table contains two functions: <br>
  t:Encode(str) returns the encoded string. <br>
- t:Decode(str) returns the decoded string if succeeds. nil if fails.
+ t:Decode(str) returns the decoded string if succeeds. nil if fails.</li>
+        <li>
+         [nil/string] If the codec is successfully created, return nil.
+ If not, return a string that describes the reason why the codec cannot be
+ created.</li>
     </ol>
 
-    <h3>Raises:</h3>
-    error if encode/decoder cannot be produced.
 
 
     <h3>Usage:</h3>
     <ul>
         <pre class="example"><span class="comment">-- Create an encoder/decoder that maps all "\000" to "\003",
 </span><span class="comment">-- and escape "\001" (and "\002" and "\003") properly
-</span><span class="keyword">local</span> codec = LibDeflate:CreateCodec(<span class="string">"\000\001"</span>,
-       <span class="string">"\002"</span>, <span class="string">"\003"</span>)
+</span><span class="keyword">local</span> codec = LibDeflate:CreateCodec(<span class="string">"\000\001"</span>, <span class="string">"\002"</span>, <span class="string">"\003"</span>)
 
 <span class="keyword">local</span> encoded = codec:Encode(SOME_STRING)
-<span class="keyword">local</span> decoded = codec:Decode(encoded)
+<span class="comment">-- "encoded" does not contain "\000" or "\001"
+</span><span class="keyword">local</span> decoded = codec:Decode(encoded)
 <span class="comment">-- assert(decoded == SOME_STRING)</span></pre>
     </ul>
 
@@ -432,12 +455,14 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
  to run this function only once in your program.</p>
 
 <p> It is very important to know that if you do use a preset dictionary,
- compressors and decompressors MUST USE THE EQUIVALENT dictionary. That is,
+ compressors and decompressors MUST USE THE SAME dictionary. That is,
  dictionary must be created using the same string. If you update your program
  with a new dictionary, people with the old version won't be able to transmit
  data with people with the new version. Therefore, changing the dictionary
- must be very careful, and the parameter of the function helps you to avoid
- accidentally modify the the definition of the dictionary during the program
+ must be very careful.</p>
+
+<p> The parameters "strlen" and "adler32" add a layer of verification to ensure
+ the parameter "str" is not modified unintentionally during the program
  development.
 
 
@@ -452,11 +477,13 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
         </li>
         <li><span class="parameter">strlen</span>
          [integer] The length of 'str'. Please pass in this parameter
- as a hardcoded constant, in order to verify the content of 'str'.
+ as a hardcoded constant, in order to verify the content of 'str'. The value
+ of this parameter should be known before your program runs.
         </li>
         <li><span class="parameter">adler32</span>
          [integer] The Adler-32 checksum of 'str'. Please pass in this
  parameter as a hardcoded constant, in order to verify the content of 'str'.
+ The value of this parameter should be known before your program runs.
         </li>
     </ul>
 
@@ -468,8 +495,8 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
     </ol>
 
     <h3>Raises:</h3>
-    error if 'strlen' does not match the length of the 'str',
- or if 'adler32' does not match the Adler-32 checksum of the 'str'.
+    error if 'strlen' does not match the length of 'str',
+ or if 'adler32' does not match the Adler-32 checksum of 'str'.
 
 
     <h3>Usage:</h3>
@@ -587,19 +614,24 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">str</span>
-         [string] The data to be decompressed
+         [string] The data to be decompressed.
         </li>
     </ul>
 
     <h3>Returns:</h3>
     <ol>
         <li>
-        [string/nil] The decompressed data if succeeds. nil if fails.</li>
+         [string/nil] If the decompression succeeds, return the decompressed
+ data. If the decompression fails, return nil. You should check if this return
+ value is non-nil to know if the decompression succeeds.</li>
         <li>
-         [integer] The number of unprocessed bytes if succeeds. Positive
- integer if any extra bytes are appended after the compressed data. If you
- consider this as an error, check if this is zero. <br>
- UNDEFINED value if fails.</li>
+         [integer] If the decompression succeeds, return the number of
+ unprocessed bytes in the input compressed data. This return value is a
+ positive integer if the input data is a valid compressed data appended by an
+ arbitary non-empty string. This return value is 0 if the input data does not
+ contain any extra bytes.<br>
+ If the decompression fails (The first return value of this function is nil),
+ this return value is undefined.</li>
     </ol>
 
 
@@ -621,7 +653,7 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
     <h3>Parameters:</h3>
     <ul>
         <li><span class="parameter">str</span>
-         [string] The data to be decompressed
+         [string] The data to be decompressed.
         </li>
         <li><span class="parameter">dictionary</span>
          [table] The preset dictionary used by
@@ -635,12 +667,17 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
     <h3>Returns:</h3>
     <ol>
         <li>
-        [string/nil] The decompressed data if succeeds. nil if fails.</li>
+         [string/nil] If the decompression succeeds, return the decompressed
+ data. If the decompression fails, return nil. You should check if this return
+ value is non-nil to know if the decompression succeeds.</li>
         <li>
-         [integer] The number of unprocessed bytes if succeeds. Positive
- integer if any extra bytes are appended after the compressed data. If you
- consider this as an error, check if this is zero. <br>
- UNDEFINED value if fails.</li>
+         [integer] If the decompression succeeds, return the number of
+ unprocessed bytes in the input compressed data. This return value is a
+ positive integer if the input data is a valid compressed data appended by an
+ arbitary non-empty string. This return value is 0 if the input data does not
+ contain any extra bytes.<br>
+ If the decompression fails (The first return value of this function is nil),
+ this return value is undefined.</li>
     </ol>
 
 
@@ -669,12 +706,17 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
     <h3>Returns:</h3>
     <ol>
         <li>
-        [string/nil] The decompressed data if succeeds. nil if fails.</li>
+         [string/nil] If the decompression succeeds, return the decompressed
+ data. If the decompression fails, return nil. You should check if this return
+ value is non-nil to know if the decompression succeeds.</li>
         <li>
-         [integer] The number of unprocessed bytes if succeeds. Positive
- integer if any extra bytes are appended after the compressed data. If you
- consider this as an error, check if this is zero. <br>
- UNDEFINED value if fails.</li>
+         [integer] If the decompression succeeds, return the number of
+ unprocessed bytes in the input compressed data. This return value is a
+ positive integer if the input data is a valid compressed data appended by an
+ arbitary non-empty string. This return value is 0 if the input data does not
+ contain any extra bytes.<br>
+ If the decompression fails (The first return value of this function is nil),
+ this return value is undefined.</li>
     </ol>
 
 
@@ -710,12 +752,17 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
     <h3>Returns:</h3>
     <ol>
         <li>
-        [string/nil] The decompressed data if succeeds. nil if fails.</li>
+         [string/nil] If the decompression succeeds, return the decompressed
+ data. If the decompression fails, return nil. You should check if this return
+ value is non-nil to know if the decompression succeeds.</li>
         <li>
-         [integer] The number of unprocessed bytes if succeeds. Positive
- integer if any extra bytes are appended after the compressed data. If you
- consider this as an error, check if this is zero. <br>
- UNDEFINED value if fails.</li>
+         [integer] If the decompression succeeds, return the number of
+ unprocessed bytes in the input compressed data. This return value is a
+ positive integer if the input data is a valid compressed data appended by an
+ arbitary non-empty string. This return value is 0 if the input data does not
+ contain any extra bytes.<br>
+ If the decompression fails (The first return value of this function is nil),
+ this return value is undefined.</li>
     </ol>
 
 
@@ -849,8 +896,7 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
 -h    give this help.
 <span class="comment">--strategy &lt;fixed/huffman_only/dynamic&gt; specify a special compression strategy.
 </span>-v    <span class="global">print</span> the version <span class="keyword">and</span> copyright info.
-<span class="comment">--wowdict Use the preset dictionary designed for WoW shipped with LibDeflate.
-</span><span class="comment">--zlib  use zlib format instead of raw deflate.</span></pre>
+<span class="comment">--zlib  use zlib format instead of raw deflate.</span></pre>
     </ul>
 
 </dd>
@@ -889,7 +935,7 @@ https://github.com/safeteeWow/LibDeflate/issues</li>
 </div> <!-- id="main" -->
 <div id="about">
 <i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
-<i style="float:right;">Last updated 2018-05-25 23:11:19 </i>
+<i style="float:right;">Last updated 2018-07-30 01:10:40 </i>
 </div> <!-- id="about" -->
 </div> <!-- id="container" -->
 </body>
