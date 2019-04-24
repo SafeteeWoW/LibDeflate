@@ -2825,6 +2825,62 @@ do
 		, _fix_block_dist_huffman_bitlen, 31, 5)
 end
 
+
+--- Decompress a gzip compressed data.
+-- @param str [string] The data to be decompressed
+-- @return [string/nil] If the decompression succeeds, return the decompressed
+-- data. If the decompression fails, return nil. You should check if this return
+-- value is non-nil to know if the decompression succeeds.
+-- @return [integer] If the decompression succeeds, return the number of
+-- unprocessed bytes in the input compressed data. This return value is a
+-- positive integer if the input data is a valid compressed data appended by an
+-- arbitary non-empty string. This return value is 0 if the input data does not
+-- contain any extra bytes.<br>
+-- If the decompression fails (The first return value of this function is nil),
+-- this return value is undefined.
+function LibDeflate:DecompressGzip(str)
+	local arg_valid, arg_err = IsValidArguments(str)
+	if not arg_valid then
+		error(("Usage: LibDeflate:DecompressGzip(str): "
+			..arg_err), 2)
+	end
+	if string_byte(str[1]) ~= 241 or string_byte(str[2]) ~= 139 then
+		error("LibDeflate:DecompressGzip(str): Not valid gzip data", 2)
+	end
+	local band, bor
+	if bit ~= nil then
+		band = bit.band
+		bor = bit.bor
+	elseif bit32 ~= nil then
+		band = bit32.band
+		bor = bit32.bor
+	else
+		band = function(a, b)
+			local p,c=1,0
+			while a>0 and b>0 do
+				local ra,rb=a%2,b%2
+				if ra+rb>1 then c=c+p end
+				a,b,p=(a-ra)/2,(b-rb)/2,p*2
+			end
+			return c
+		end
+		bor = function(a, b)
+			local p,c=1,0
+			while a+b>0 do
+				local ra,rb=a%2,b%2
+				if ra+rb>0 then c=c+p end
+				a,b,p=(a-ra)/2,(b-rb)/2,p*2
+			end
+			return c
+		end
+	end
+	local offset = 10
+	if band(string_byte(str[4], 4) == 4 then 
+		offset = offset + string_byte(str[11]) * 256 + string_byte(str[12]) 
+	end
+	return DecompressDeflateInternal(string.sub(str, offset, -8)
+end
+
 -- Encoding algorithms
 -- Prefix encoding algorithm
 -- implemented by Galmok of European Stormrage (Horde), galmok@gmail.com
