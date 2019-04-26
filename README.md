@@ -26,6 +26,8 @@ LibDeflate uses the following compression formats:
 [RFC1950](https://tools.ietf.org/html/rfc1950).
 zlib format uses DEFLATE formats to compress data and adds several bytes as
 headers and checksum.
+3. *gzip*, as defined by the specification [RFC1952](https://tools.ietf.org/html/rfc1952).
+gzip format is similar in nature to zlib, but has a slightly different header format.
 
 A simple C program utilizing [zlib](https://github.com/madler/zlib) should be
 compatible with LibDeflate. If you are not sure how to write this program,
