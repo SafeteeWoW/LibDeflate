@@ -312,6 +312,137 @@ do
 	end
 end
 
+-- CRC-16/CRC-32 computation
+local band, bnot, xor, lshift, rshift
+
+if bit ~= nil then
+    band = bit.band
+    bnot = bit.bnot
+    xor = bit.bxor
+    lshift = bit.blshift
+    rshift = bit.blogic_rshift
+elseif bit32 ~= nil then
+    band = bit32.band
+    bnot = bit32.bnot
+    xor = bit32.bxor
+    lshift = bit32.lshift
+    rshift = bit32.rshift
+else
+    xor = function(a, b)
+        local calc = 0    
+    
+        for i = 32, 0, -1 do
+        local val = 2 ^ i
+        local aa = false
+        local bb = false
+    
+        if a == 0 then
+            calc = calc + b
+            break
+        end
+    
+        if b == 0 then
+            calc = calc + a
+            break
+        end
+    
+        if a >= val then
+            aa = true
+            a = a - val
+        end
+    
+        if b >= val then
+            bb = true
+            b = b - val
+        end
+    
+        if not (aa and bb) and (aa or bb) then
+            calc = calc + val
+        end
+        end
+    
+        return calc
+    end
+    
+    lshift = function(num, left)
+        local res = num * (2 ^ left)
+        return res % (2 ^ 32)
+    end
+    
+    rshift = function(num, right)
+        local res = num / (2 ^ right)
+        return math.floor(res)
+    end
+    
+    band = function(a, b)
+        local p,c=1,0
+        while a>0 and b>0 do
+            local ra,rb=a%2,b%2
+            if ra+rb>1 then c=c+p end
+            a,b,p=(a-ra)/2,(b-rb)/2,p*2
+        end
+        return c
+    end
+
+    bnot = function(x)
+        return bxor(x, (2^(bits or floor(log(x, 2))))-1)
+    end
+end
+
+-- CRC-32-IEEE 802.3 (V.42)
+local POLY = 0xEDB88320
+
+-- Memoize function pattern (like http://lua-users.org/wiki/FuncTables ).
+local function memoize(f)
+  local mt = {}
+  local t = setmetatable({}, mt)
+  function mt:__index(k)
+    local v = f(k); t[k] = v
+    return v
+  end
+  return t
+end
+
+-- CRC table.
+local crc_table = memoize(function(i)
+  local crc = i
+  for _=1,8 do
+    local b = band(crc, 1)
+    crc = rshift(crc, 1)
+    if b == 1 then crc = xor(crc, POLY) end
+  end
+  return crc
+end)
+
+
+local function crc32_byte(byte, crc)
+  crc = bnot(crc or 0)
+  local v1 = rshift(crc, 8)
+  local v2 = crc_table[xor(crc % 256, byte)]
+  return bnot(xor(v1, v2))
+end
+
+
+local function crc32_string(s, crc)
+  crc = crc or 0
+  for i=1,#s do
+    crc = crc32_byte(s:byte(i), crc)
+  end
+  return crc
+end
+
+--- Calculate the CRC-32 checksum of the string.
+-- @param s [string] the input string to calculate its CRC-32 checksum.
+-- @return [integer] The CRC-32 checksum, which is greater or equal to 0,
+-- and less than 2^32 (4294967296).
+function LibDeflate:CRC32(s, crc)
+  if type(s) == 'string' then
+    return crc32_string(s, crc)
+  else
+    return crc32_byte(s, crc)
+  end
+end
+
 --- Calculate the Adler-32 checksum of the string. <br>
 -- See RFC1950 Page 9 https://tools.ietf.org/html/rfc1950 for the
 -- definition of Adler-32 checksum.
@@ -2844,36 +2975,15 @@ function LibDeflate:DecompressGzip(str)
 		error(("Usage: LibDeflate:DecompressGzip(str): "..arg_err), 2)
 	end
 	if string_byte(string.sub(str, 1, 1)) ~= 31 or string_byte(string.sub(str, 2, 2)) ~= 139 then
-		error("LibDeflate:DecompressGzip(str): Not valid gzip data", 2)
-	end
-	local band, bor
-	if bit ~= nil then
-		band = bit.band
-		bor = bit.bor
-	elseif bit32 ~= nil then
-		band = bit32.band
-		bor = bit32.bor
-	else
-		band = function(a, b)
-			local p,c=1,0
-			while a>0 and b>0 do
-				local ra,rb=a%2,b%2
-				if ra+rb>1 then c=c+p end
-				a,b,p=(a-ra)/2,(b-rb)/2,p*2
-			end
-			return c
-		end
-		bor = function(a, b)
-			local p,c=1,0
-			while a+b>0 do
-				local ra,rb=a%2,b%2
-				if ra+rb>0 then c=c+p end
-				a,b,p=(a-ra)/2,(b-rb)/2,p*2
-			end
-			return c
-		end
-	end
-    local offset = 10
+		return nil, -1
+    end
+    if band(string_byte(string.sub(str, 4, 4)), 0xE0) ~= 0 then
+        return nil, -3
+    end
+    if string_byte(string.sub(str, 3, 3)) ~= 8 then
+        return nil, -4
+    end 
+    local offset = 11
 	if band(string_byte(string.sub(str, 4, 4)), 4) == 4 then 
 		offset = offset + string_byte(string.sub(str, 11, 11)) * 256 + string_byte(string.sub(str, 12, 12)) 
     end
@@ -2884,9 +2994,18 @@ function LibDeflate:DecompressGzip(str)
         while string_byte(string.sub(str, offset, offset)) ~= 0 do offset = offset + 1 end
     end
     if band(string_byte(string.sub(str, 4, 4)), 2) == 2 then
-        offset = offset + 4
+        local src_checksum = string_byte(string.sub(str, offset + 1, offset + 1)) * 256 + string_byte(string.sub(str, offset, offset)) 
+        local target_checksum = band(self:CRC32(string.sub(str, 1, offset - 1)), 0xFFFF)
+        if xor(src_checksum, target_checksum) ~= 0xFFFF then return nil, -5 end
+        offset = offset + 2
     end
-	return DecompressDeflateInternal(string.sub(str, offset + 1, -8))
+    local res, err = DecompressDeflateInternal(string.sub(str, offset + 1, -8))
+    if res == nil then return res, err end
+    local src_checksum = string_byte(string.sub(str, -5, -5)) * 0x1000000 + string_byte(string.sub(str, -6, -6)) * 0x10000 + string_byte(string.sub(str, -7, -7)) * 256 + string_byte(string.sub(str, -8, -8))
+    src_checksum = bnot(src_checksum)
+    local target_checksum = self:CRC32(res)
+    if xor(src_checksum, target_checksum) ~= 0xFFFFFFFF then return nil, -2 end
+    return res
 end
 
 -- Encoding algorithms
