@@ -2188,6 +2188,43 @@ function LibDeflate:CompressZlibWithDict(str, dictionary, configs)
 	return CompressZlibInternal(str, dictionary, configs)
 end
 
+local function time()
+    if os.epoch ~= nil then return math.floor(os.epoch("utc") / 1000)
+        -- ComputerCraft's os.time() gives in-game time, os.epoch gives POSIX time in ms
+    elseif os.time() < 30 then return 0 -- ComputerCraft 1.79 and below don't have os.epoch(), so no time.
+    else return os.time() end -- All other Luas.
+end
+
+local function byte(num, b) return band(rshift(num, b * 8), 0xFF) end
+
+--- Compress using the gzip format.
+-- @param str [string] the data to be compressed.
+-- @param configs [table/nil] The configuration table to control the compression
+-- . If nil, use the default configuration.
+-- @return [string] The compressed data with gzip headers.
+-- @see compression_configs
+-- @see LibDeflate:DecompressGzip
+function LibDeflate:CompressGzip(str, configs)
+    local arg_valid, arg_err = IsValidArguments(str, false, nil, true, configs)
+	if not arg_valid then
+		error(("Usage: LibDeflate:CompressGzip(str, configs): "
+			..arg_err), 2)
+    end
+    local res, err = CompressDeflateInternal(str, nil, configs)
+    if res == nil then return res, err end
+    local t = time()
+    local cf = 0
+    local crc = self:CRC32(str)
+    local len = string.len(str)
+    if configs ~= nil and configs.level ~= nil then
+        if configs.level == 0 then cf = 0x04
+        elseif configs.level == 9 then cf = 0x02 end
+    end
+    return string_char(0x1f, 0x8b, 8, 0, byte(t, 0), byte(t, 1), byte(t, 2), 
+        byte(t, 3), cf, 0xFF) .. res .. string_char(byte(crc, 0), byte(crc, 1),
+        byte(crc, 2), byte(crc, 3), byte(len, 0), byte(len, 1), byte(len, 2), byte(len, 3))
+end
+
 --[[ --------------------------------------------------------------------------
 	Decompress code
 --]] --------------------------------------------------------------------------
@@ -2956,7 +2993,6 @@ do
 		, _fix_block_dist_huffman_bitlen, 31, 5)
 end
 
-
 --- Decompress a gzip compressed data.
 -- @param str [string] The data to be decompressed
 -- @return [string/nil] If the decompression succeeds, return the decompressed
@@ -2983,7 +3019,7 @@ function LibDeflate:DecompressGzip(str)
     if string_byte(string.sub(str, 3, 3)) ~= 8 then
         return nil, -4
     end 
-    local offset = 11
+    local offset = 10
 	if band(string_byte(string.sub(str, 4, 4)), 4) == 4 then 
 		offset = offset + string_byte(string.sub(str, 11, 11)) * 256 + string_byte(string.sub(str, 12, 12)) 
     end
@@ -3004,6 +3040,7 @@ function LibDeflate:DecompressGzip(str)
     local src_checksum = string_byte(string.sub(str, -5, -5)) * 0x1000000 + string_byte(string.sub(str, -6, -6)) * 0x10000 + string_byte(string.sub(str, -7, -7)) * 256 + string_byte(string.sub(str, -8, -8))
     src_checksum = bnot(src_checksum)
     local target_checksum = self:CRC32(res)
+    print(src_checksum, target_checksum)
     if xor(src_checksum, target_checksum) ~= 0xFFFFFFFF then return nil, -2 end
     return res
 end
