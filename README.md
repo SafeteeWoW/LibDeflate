@@ -137,6 +137,8 @@ to your LUA_PATH to install it.
 + To use after installation, ```require("LibDeflate")``` (case sensitive) in your Lua interpreter,
 or ```LibStub:GetLibrary("LibDeflate")``` (case sensitive) for World of Warcraft.
 
++ A built-in bit/bit32 library may help speed up gzip compression, but is not necessary as a pure Lua bit library is included.
+
 
 ## Usage
 ```
