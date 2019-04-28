@@ -13,4 +13,6 @@ cd %APPVEYOR_BUILD_FOLDER%\tests
 set PATH=%APPVEYOR_BUILD_FOLDER%\tests;%PATH%
 nmake /f Makefile_Windows
 cd %APPVEYOR_BUILD_FOLDER%
+echo Installing gzip
+choco install gzip
 @echo off
