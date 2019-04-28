@@ -3576,31 +3576,6 @@ if shell then
     debug = {getinfo = function()
         return {source = "LibDeflate.lua", short_src = "LibDeflate.lua"}
     end}
-    os.exit = function() error() end
-    io.stderr = {write = function(self, text) printError(text) end}
-end
-
-local function openFile(file, mode) 
-    if shell then 
-        local file = fs.open(file, mode)
-        local retval = {close = file.close}
-        if string.find(mode, "r") then retval.read = function()
-            local retval = ""
-            local b = file.read()
-            while b ~= nil do
-                retval = retval .. string.char(b)
-                b = file.read()
-            end
-            file.close()
-            return retval
-        end end
-        if string.find(mode, "w") then retval.write = function(this, str)
-            if type(str) ~= "string" then error("Not a string: " .. textutils.serialize(str), 2) end
-            for s in string.gmatch(str, ".") do file.write(string.byte(s)) end
-            file.close()
-        end end
-        return retval
-    else return io.open(file, mode) end
 end
 
 -- currently no plan to support stdin and stdout.
@@ -3608,6 +3583,30 @@ end
 if io and os and debug and arg then
 	local io = io
 	local os = os
+	local exit = os.exit or error
+	local stderr = io.stderr and io.stderr.write or function(self, text) printError(text) end
+	local function openFile(file, mode) 
+		if shell then 
+			local file = fs.open(file, mode)
+			local retval = {close = file.close}
+			if string.find(mode, "r") then retval.read = function()
+				local retval = ""
+				local b = file.read()
+				while b ~= nil do
+					retval = retval .. string.char(b)
+					b = file.read()
+				end
+				file.close()
+				return retval
+			end end
+			if string.find(mode, "w") then retval.write = function(this, str)
+				if type(str) ~= "string" then error("bad argument #1 (expected string, got " .. type(str) .. ")", 2) end
+				for s in string.gmatch(str, ".") do file.write(string.byte(s)) end
+				file.close()
+			end end
+			return retval
+		else return io.open(file, mode) end
+	end
 	local debug_info = debug.getinfo(1)
 	if debug_info.source == arg[0]
 		or debug_info.short_src == arg[0] then
@@ -3638,10 +3637,10 @@ if io and os and debug and arg then
 					.." specify a special compression strategy.\n"
 					.."  -v    print the version and copyright info.\n"
 					.."  --zlib  use zlib format instead of raw deflate.\n")
-				os.exit(0)
+				exit(0)
 			elseif a == "-v" then
 				print(LibDeflate._COPYRIGHT)
-				os.exit(0)
+				exit(0)
 			elseif a:find("^%-[0-9]$") then
 				level = tonumber(a:sub(2, 2))
 			elseif a == "-d" then
@@ -3650,15 +3649,15 @@ if io and os and debug and arg then
 				i = i + 1
 				local dict_filename = arg[i]
 				if not dict_filename then
-					io.stderr:write("You must speicify the dict filename")
-					os.exit(1)
+					stderr(io.stderr, "You must speicify the dict filename")
+					exit(1)
 				end
 				local dict_file, dict_status = openFile(dict_filename, "rb")
 				if not dict_file then
-					io.stderr:write(
+					stderr(io.stderr,
 					("LibDeflate: Cannot read the dictionary file '%s': %s")
 					:format(dict_filename, dict_status))
-					os.exit(1)
+					exit(1)
 				end
 				local dict_str = dict_file:read("*all")
 				dict_file:close()
@@ -3678,25 +3677,25 @@ if io and os and debug and arg then
 			elseif a == "--zlib" then
 				compress_mode = 1
 			elseif a:find("^%-") then
-				io.stderr:write(("LibDeflate: Invalid argument: %s")
+				stderr(io.stderr, ("LibDeflate: Invalid argument: %s")
 						:format(a))
-				os.exit(1)
+				exit(1)
 			else
 				if not input then
 					input, status = openFile(a, "rb")
 					if not input then
-						io.stderr:write(
+						stderr(io.stderr,
 							("LibDeflate: Cannot read the file '%s': %s")
 							:format(a, tostring(status)))
-						os.exit(1)
+						exit(1)
 					end
 				elseif not output then
 					output, status = openFile(a, "wb")
 					if not output then
-						io.stderr:write(
+						stderr(io.stderr,
 							("LibDeflate: Cannot write the file '%s': %s")
 							:format(a, tostring(status)))
-						os.exit(1)
+						exit(1)
 					end
 				end
 			end
@@ -3704,9 +3703,9 @@ if io and os and debug and arg then
 		end -- while (arg[i])
 
 		if not input or not output then
-			io.stderr:write("LibDeflate:"
+			stderr(io.stderr, "LibDeflate:"
 				.." You must specify both input and output files.")
-			os.exit(1)
+			exit(1)
 		end
 
 		local input_data = input:read("*all")
@@ -3758,8 +3757,8 @@ if io and os and debug and arg then
 		end
 
 		if not output_data then
-			io.stderr:write("LibDeflate: Decompress fails.")
-			os.exit(1)
+			stderr(io.stderr, "LibDeflate: Decompress fails.")
+			exit(1)
 		end
 
 		output:write(output_data)
@@ -3770,9 +3769,9 @@ if io and os and debug and arg then
 			output:close()
 		end
 
-		io.stderr:write(("Successfully writes %d bytes"):format(
+		stderr(io.stderr, ("Successfully wrote %d bytes"):format(
 			output_data:len()))
-		os.exit(0)
+		exit(0)
 	end
 end
 
