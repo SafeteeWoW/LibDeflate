@@ -2968,6 +2968,7 @@ TestExported = {}
 			internals = "table",
 			_VERSION = "string",
 			Adler32 = "function",
+			CRC32 = "function",
 			CreateDictionary = "function",
 			CompressZlibWithDict = "function",
 			EncodeForPrint = "function",
