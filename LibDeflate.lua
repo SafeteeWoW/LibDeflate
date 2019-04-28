@@ -2227,7 +2227,7 @@ function LibDeflate:CompressGzip(str, configs)
     end
     return string_char(0x1f, 0x8b, 8, 0, byte(t, 0), byte(t, 1), byte(t, 2), 
         byte(t, 3), cf, 0xFF) .. res .. string_char(byte(crc, 0), byte(crc, 1),
-        byte(crc, 2), byte(crc, 3), byte(len, 0), byte(len, 1), byte(len, 2), byte(len, 3))
+        byte(crc, 2), byte(crc, 3), byte(len, 0), byte(len, 1), byte(len, 2), byte(len, 3)), 0
 end
 
 --[[ --------------------------------------------------------------------------
