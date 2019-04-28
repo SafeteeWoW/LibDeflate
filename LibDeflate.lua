@@ -3552,19 +3552,54 @@ LibDeflate.internals = {
 \-d    do decompression instead of compression.
 \--dict <filename> specify the file that contains
 the entire preset dictionary.
+\--gzip  use gzip format instead of raw deflate.
 \-h    give this help.
 \--strategy <fixed/huffman_only/dynamic> specify a special compression strategy.
 \-v    print the version and copyright info.
 \--zlib  use zlib format instead of raw deflate.
 ]]
 
+-- support ComputerCraft shell
+local arg = _G.arg
+local debug = debug
+if shell then 
+    arg = {...} 
+    arg[0] = "LibDeflate.lua"
+    debug = {getinfo = function()
+        return {source = "LibDeflate.lua", short_src = "LibDeflate.lua"}
+    end}
+    os.exit = function() error() end
+    io.stderr = {write = function(self, text) printError(text) end}
+end
+
+function openFile(file, mode) 
+    if shell then 
+        local file = fs.open(file, mode)
+        local retval = {close = file.close}
+        if string.find(mode, "r") then retval.read = function()
+            local retval = ""
+            local b = file.read()
+            while b ~= nil do
+                retval = retval .. string.char(b)
+                b = file.read()
+            end
+            file.close()
+            return retval
+        end end
+        if string.find(mode, "w") then retval.write = function(this, str)
+            if type(str) ~= "string" then error("Not a string: " .. textutils.serialize(str), 2) end
+            for s in string.gmatch(str, ".") do file.write(string.byte(s)) end
+            file.close()
+        end end
+        return retval
+    else return io.open(file, mode) end
+end
+
 -- currently no plan to support stdin and stdout.
 -- Because Lua in Windows does not set stdout with binary mode.
-if io and os and debug and _G.arg then
+if io and os and debug and arg then
 	local io = io
 	local os = os
-	local debug = debug
-	local arg = _G.arg
 	local debug_info = debug.getinfo(1)
 	if debug_info.source == arg[0]
 		or debug_info.short_src == arg[0] then
@@ -3573,7 +3608,7 @@ if io and os and debug and _G.arg then
 		local output
 		local i = 1
 		local status
-		local is_zlib = false
+		local compress_mode = 0
 		local is_decompress = false
 		local level
 		local strategy
@@ -3588,7 +3623,8 @@ if io and os and debug and _G.arg then
 					.."  -9    slowest and best compression.\n"
 					.."  -d    do decompression instead of compression.\n"
 					.."  --dict <filename> specify the file that contains"
-					.." the entire preset dictionary.\n"
+                    .." the entire preset dictionary.\n"
+                    .."  --gzip  use gzip format instead of raw deflate.\n"
 					.."  -h    give this help.\n"
 					.."  --strategy <fixed/huffman_only/dynamic>"
 					.." specify a special compression strategy.\n"
@@ -3609,7 +3645,7 @@ if io and os and debug and _G.arg then
 					io.stderr:write("You must speicify the dict filename")
 					os.exit(1)
 				end
-				local dict_file, dict_status = io.open(dict_filename, "rb")
+				local dict_file, dict_status = openFile(dict_filename, "rb")
 				if not dict_file then
 					io.stderr:write(
 					("LibDeflate: Cannot read the dictionary file '%s': %s")
@@ -3623,21 +3659,23 @@ if io and os and debug and _G.arg then
 				-- unintentionally during the program development. I do this
 				-- here just because no convenient way to verify in commandline.
 				dictionary = LibDeflate:CreateDictionary(dict_str,
-					#dict_str, LibDeflate:Adler32(dict_str))
+                    #dict_str, LibDeflate:Adler32(dict_str))
+            elseif a == "--gzip" then
+                compress_mode = 2
 			elseif a == "--strategy" then
 				-- Not sure if I should check error here
 				-- If I do, redudant code.
 				i = i + 1
 				strategy = arg[i]
 			elseif a == "--zlib" then
-				is_zlib = true
+				compress_mode = 1
 			elseif a:find("^%-") then
 				io.stderr:write(("LibDeflate: Invalid argument: %s")
 						:format(a))
 				os.exit(1)
 			else
 				if not input then
-					input, status = io.open(a, "rb")
+					input, status = openFile(a, "rb")
 					if not input then
 						io.stderr:write(
 							("LibDeflate: Cannot read the file '%s': %s")
@@ -3645,7 +3683,7 @@ if io and os and debug and _G.arg then
 						os.exit(1)
 					end
 				elseif not output then
-					output, status = io.open(a, "wb")
+					output, status = openFile(a, "wb")
 					if not output then
 						io.stderr:write(
 							("LibDeflate: Cannot write the file '%s': %s")
@@ -3670,7 +3708,7 @@ if io and os and debug and _G.arg then
 		}
 		local output_data
 		if not is_decompress then
-			if not is_zlib then
+			if compress_mode == 0 then
 				if not dictionary then
 					output_data =
 					LibDeflate:CompressDeflate(input_data, configs)
@@ -3679,7 +3717,7 @@ if io and os and debug and _G.arg then
 					LibDeflate:CompressDeflateWithDict(input_data, dictionary
 						, configs)
 				end
-			else
+			elseif compress_mode == 1 then
 				if not dictionary then
 					output_data =
 					LibDeflate:CompressZlib(input_data, configs)
@@ -3687,23 +3725,27 @@ if io and os and debug and _G.arg then
 					output_data =
 					LibDeflate:CompressZlibWithDict(input_data, dictionary
 						, configs)
-				end
+                end
+            elseif compress_mode == 2 then
+                output_data = LibDeflate:CompressGzip(input_data, configs)
 			end
 		else
-			if not is_zlib then
+			if compress_mode == 0 then
 				if not dictionary then
 					output_data = LibDeflate:DecompressDeflate(input_data)
 				else
 					output_data = LibDeflate:DecompressDeflateWithDict(
 						input_data, dictionary)
 				end
-			else
+			elseif compress_mode == 1 then
 				if not dictionary then
 					output_data = LibDeflate:DecompressZlib(input_data)
 				else
 					output_data = LibDeflate:DecompressZlibWithDict(
 						input_data, dictionary)
-				end
+                end
+            elseif compress_mode == 2 then
+                output_data = LibDeflate:DecompressGzip(input_data)
 			end
 		end
 
