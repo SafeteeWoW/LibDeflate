@@ -3051,7 +3051,7 @@ function LibDeflate:DecompressGzip(str)
     src_checksum = bnot(src_checksum)
     local target_checksum = self:CRC32(res)
     if xor(src_checksum, target_checksum) ~= 0xFFFFFFFF then return nil, -2 end
-    return res
+    return res, 0
 end
 
 -- Encoding algorithms
