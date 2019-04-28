@@ -2193,7 +2193,8 @@ function LibDeflate:CompressZlibWithDict(str, dictionary, configs)
 end
 
 local function time()
-    if os.epoch ~= nil then return math.floor(os.epoch("utc") / 1000)
+    if os == nil then return 0
+    elseif os.epoch ~= nil then return math.floor(os.epoch("utc") / 1000)
         -- ComputerCraft's os.time() gives in-game time, os.epoch gives POSIX time in ms
     elseif os.time() < 30 then return 0 -- ComputerCraft 1.79 and below don't have os.epoch(), so no time.
     else return os.time() end -- All other Luas.
