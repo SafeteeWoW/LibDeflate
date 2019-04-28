@@ -1874,7 +1874,7 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 			is_last_block = true
 		else
 			is_last_block = false
-		end
+        end
 
 		local lcodes, lextra_bits, lcodes_counts, dcodes, dextra_bits
 			, dcodes_counts
@@ -1991,13 +1991,12 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 			for i = block_end-32767, block_end do
 				string_table[j] = string_table[i-offset]
 				j = j + 1
-			end
-
+            end
 			for k, t in pairs(hash_tables) do
 				local tSize = #t
 				if tSize > 0 and block_end+1 - t[1] > 32768 then
 					if tSize == 1 then
-						hash_tables[k] = nil
+						--hash_tables[k] = nil -- seems to be causing problems
 					else
 						local new = {}
 						local newSize = 0
@@ -2012,7 +2011,12 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 					end
 				end
 			end
-		end
+        end
+
+        if os and os.pullEvent then -- ComputerCraft requires this for long-running processes
+            os.queueEvent("nosleep")
+            os.pullEvent()
+        end
 	end
 end
 
@@ -2762,7 +2766,12 @@ local function Inflate(state)
 		end
 		if status ~= 0 then
 			return nil, status
-		end
+        end
+        -- ComputerCraft requires this for long-running processes
+        if os and os.pullEvent then
+            os.queueEvent("nosleep")
+            os.pullEvent()
+        end
 	end
 
 	state.result_buffer[#state.result_buffer+1] =
@@ -3040,7 +3049,6 @@ function LibDeflate:DecompressGzip(str)
     local src_checksum = string_byte(string.sub(str, -5, -5)) * 0x1000000 + string_byte(string.sub(str, -6, -6)) * 0x10000 + string_byte(string.sub(str, -7, -7)) * 256 + string_byte(string.sub(str, -8, -8))
     src_checksum = bnot(src_checksum)
     local target_checksum = self:CRC32(res)
-    print(src_checksum, target_checksum)
     if xor(src_checksum, target_checksum) ~= 0xFFFFFFFF then return nil, -2 end
     return res
 end
