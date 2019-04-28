@@ -567,7 +567,7 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 				}
 				lu.assertEquals(#zdeflate_decompress_to_run, #compress_to_run)
                 if compress_func_name:find("Gzip") then
-                    local returnedStatus_gzip, stdout_gzip, stderr_gzip = RunProgram("gzip -t -v <", compress_filename, decompress_filename)
+                    local returnedStatus_gzip, stdout_gzip, stderr_gzip = RunProgram("gzip -l -v <", compress_filename, decompress_filename)
                     print(stdout_gzip)
                     print(stderr_gzip)
                 end
