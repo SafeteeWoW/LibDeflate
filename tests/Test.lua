@@ -563,7 +563,7 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 					"zdeflate -d --dict tests/dictionary32768.txt <",
 					"zdeflate --zlib -d <",
 					"zdeflate --zlib -d --dict tests/dictionary32768.txt <",
-					"gzip -d <",
+					"gzip -l -v <",
 				}
 				lu.assertEquals(#zdeflate_decompress_to_run, #compress_to_run)
 
