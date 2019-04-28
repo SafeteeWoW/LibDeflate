@@ -346,14 +346,38 @@ end
 
 local function GetFirstBlockType(compressed_data, isZlib)
 	local first_block_byte_index = 1
-	if isZlib then
+	if isZlib == 1 then
 		local byte2 = string.byte(compressed_data, 2, 2)
 		local has_dict = ((byte2-byte2%32)/32)%2
 		if has_dict == 1 then
 			first_block_byte_index = 7
 		else
 			first_block_byte_index = 3
-		end
+        end
+    elseif isZlib == 2 then
+        local band = function(a, b)
+            local p,c=1,0
+            while a>0 and b>0 do
+                local ra,rb=a%2,b%2
+                if ra+rb>1 then c=c+p end
+                a,b,p=(a-ra)/2,(b-rb)/2,p*2
+            end
+            return c
+        end
+        local offset = 10
+        if band(string.byte(compressed_data, 4), 4) == 4 then 
+            offset = offset + string.byte(compressed_data, 11) * 256 + string.byte(compressed_data, 12) 
+        end
+        if band(string.byte(compressed_data, 4), 8) == 8 then
+            while string.byte(compressed_data, offset) ~= 0 do offset = offset + 1 end
+        end
+        if band(string.byte(compressed_data, 4), 16) == 16 then
+            while string.byte(compressed_data, offset) ~= 0 do offset = offset + 1 end
+        end
+        if band(string.byte(compressed_data, 4), 2) == 2 then
+            offset = offset + 2
+        end
+        first_block_byte_index = offset
 	end
 	local first_byte = string.byte(compressed_data
 		, first_block_byte_index, first_block_byte_index)
@@ -489,7 +513,9 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 				-- to see if decompression still works.
 				compress_data = PutRandomBitsInPaddingBits(compress_data
 					, compress_pad_bitlen)
-				local isZlib = compress_func_name:find("Zlib")
+                local isZlib = 0
+                if compress_func_name:find("Zlib") then isZlib = 1
+                elseif compress_func_name:find("Gzip") then isZlib = 2 end
 				if strategy == "fixed" then
 					lu.assertEquals(GetFirstBlockType(compress_data, isZlib)
 					, (level == 0) and 0 or 1,
