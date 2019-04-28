@@ -3572,7 +3572,7 @@ if shell then
     io.stderr = {write = function(self, text) printError(text) end}
 end
 
-function openFile(file, mode) 
+local function openFile(file, mode) 
     if shell then 
         local file = fs.open(file, mode)
         local retval = {close = file.close}
