@@ -385,7 +385,7 @@ else
     end
 
     bnot = function(x)
-        return bxor(x, (2^(bits or math.floor(math.log(x, 2))))-1)
+        return xor(x, (2^(bits or math.floor(math.log(x, 2))))-1)
     end
 end
 
