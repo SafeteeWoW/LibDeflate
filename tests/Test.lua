@@ -563,10 +563,14 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 					"zdeflate -d --dict tests/dictionary32768.txt <",
 					"zdeflate --zlib -d <",
 					"zdeflate --zlib -d --dict tests/dictionary32768.txt <",
-					"gzip -l -v <",
+					"gzip -d <",
 				}
 				lu.assertEquals(#zdeflate_decompress_to_run, #compress_to_run)
-
+                if compress_func_name:find("Gzip") then
+                    local returnedStatus_gzip, stdout_gzip, stderr_gzip = RunProgram("gzip -t -v <", compress_filename, decompress_filename)
+                    print(stdout_gzip)
+                    print(stderr_gzip)
+                end
 				-- Try decompress by zdeflate
 				-- zdeflate is a C program calling zlib library
 				-- which is modifed from zlib example.
