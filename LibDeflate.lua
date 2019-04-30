@@ -315,12 +315,18 @@ end
 -- CRC-16/CRC-32 computation
 local band, bnot, xor, lshift, rshift
 
-if bit ~= nil then
+if bit ~= nil and bit.blshift ~= nil then
     band = bit.band
     bnot = bit.bnot
     xor = bit.bxor
     lshift = bit.blshift
     rshift = bit.blogic_rshift
+elseif bit ~= nil and bit.lshift ~= nil then
+    band = bit.band
+    bnot = bit.bnot
+    xor = bit.bxor
+    lshift = bit.lshift
+    rshift = bit.rshift
 elseif bit32 ~= nil then
     band = bit32.band
     bnot = bit32.bnot
@@ -1992,11 +1998,13 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 				string_table[j] = string_table[i-offset]
 				j = j + 1
             end
+            local delete = {}
 			for k, t in pairs(hash_tables) do
 				local tSize = #t
 				if tSize > 0 and block_end+1 - t[1] > 32768 then
-					if tSize == 1 then
-						--hash_tables[k] = nil -- seems to be causing problems
+                    if tSize == 1 then
+                        if _G.os and _G.os.pullEvent then table.insert(delete, k)
+						else hash_tables[k] = nil end
 					else
 						local new = {}
 						local newSize = 0
@@ -2010,10 +2018,13 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 						hash_tables[k] = new
 					end
 				end
-			end
+            end
+            if #delete > 0 then 
+                for _,k in pairs(delete) do hash_tables[k] = nil end 
+            end
         end
 
-        if os and os.pullEvent then -- ComputerCraft requires this for long-running processes
+        if _G.os and _G.os.pullEvent then -- ComputerCraft requires this for long-running processes
             os.queueEvent("nosleep")
             os.pullEvent()
         end
@@ -2291,10 +2302,10 @@ local function CreateReader(input_string)
 		local byte_from_cache = (cache_bitlen/8 < bytelen)
 			and (cache_bitlen/8) or bytelen
 		for _=1, byte_from_cache do
-			local byte = cache % 256
+			local _byte = cache % 256
 			buffer_size = buffer_size + 1
-			buffer[buffer_size] = string_char(byte)
-			cache = (cache - byte) / 256
+			buffer[buffer_size] = string_char(_byte)
+			cache = (cache - _byte) / 256
 		end
 		cache_bitlen = cache_bitlen - byte_from_cache*8
 		bytelen = bytelen - byte_from_cache
@@ -3040,14 +3051,18 @@ function LibDeflate:DecompressGzip(str)
         while string_byte(string.sub(str, offset, offset)) ~= 0 do offset = offset + 1 end
     end
     if band(string_byte(string.sub(str, 4, 4)), 2) == 2 then
-        local src_checksum = string_byte(string.sub(str, offset + 1, offset + 1)) * 256 + string_byte(string.sub(str, offset, offset)) 
+        local src_checksum = string_byte(string.sub(str, offset + 1, offset + 1)) * 256
+                             + string_byte(string.sub(str, offset, offset)) 
         local target_checksum = band(self:CRC32(string.sub(str, 1, offset - 1)), 0xFFFF)
         if xor(src_checksum, target_checksum) ~= 0xFFFF then return nil, -5 end
         offset = offset + 2
     end
     local res, err = DecompressDeflateInternal(string.sub(str, offset + 1, -8))
     if res == nil then return res, err end
-    local src_checksum = string_byte(string.sub(str, -5, -5)) * 0x1000000 + string_byte(string.sub(str, -6, -6)) * 0x10000 + string_byte(string.sub(str, -7, -7)) * 256 + string_byte(string.sub(str, -8, -8))
+    local src_checksum = string_byte(string.sub(str, -5, -5)) * 0x1000000 
+        + string_byte(string.sub(str, -6, -6)) * 0x10000 
+        + string_byte(string.sub(str, -7, -7)) * 256 
+        + string_byte(string.sub(str, -8, -8))
     src_checksum = bnot(src_checksum)
     local target_checksum = self:CRC32(res)
     if xor(src_checksum, target_checksum) ~= 0xFFFFFFFF then return nil, -2 end
@@ -3144,13 +3159,13 @@ function LibDeflate:CreateCodec(reserved_chars, escape_chars
 	-- build list of bytes not available as a suffix to a prefix byte
 	local taken = {}
 	for i = 1, #encode_bytes do
-		local byte = string_byte(encode_bytes, i, i)
-		if taken[byte] then -- Modified by LibDeflate:
+		local _byte = string_byte(encode_bytes, i, i)
+		if taken[_byte] then -- Modified by LibDeflate:
 			return nil, "There must be no duplicate characters in the"
 				.." concatenation of reserved_chars, escape_chars and"
 				.." map_chars."
 		end
-		taken[byte] = true
+		taken[_byte] = true
 	end
 
 	-- Modified by LibDeflate:
@@ -3525,10 +3540,10 @@ function LibDeflate:DecodeForPrint(str)
 	end
 
 	while cache_bitlen >= 8 do
-		local byte = cache % 256
+		local _byte = cache % 256
 		buffer_size = buffer_size + 1
-		buffer[buffer_size] = _byte_to_char[byte]
-		cache = (cache - byte) / 256
+		buffer[buffer_size] = _byte_to_char[_byte]
+		cache = (cache - _byte) / 256
 		cache_bitlen = cache_bitlen - 8
 	end
 
@@ -3586,19 +3601,19 @@ if io and os and debug and arg then
 	local os = os
 	local exit = os.exit or error
 	local stderr = io.stderr and io.stderr.write or function(self, text) printError(text) end
-	local function openFile(file, mode) 
+	local function openFile(path, mode) 
 		if shell then 
-			local file = fs.open(file, mode)
+			local file = fs.open(path, mode)
 			local retval = {close = file.close}
 			if string.find(mode, "r") then retval.read = function()
-				local retval = ""
+				local _retval = ""
 				local b = file.read()
 				while b ~= nil do
-					retval = retval .. string.char(b)
+					_retval = _retval .. string.char(b)
 					b = file.read()
 				end
 				file.close()
-				return retval
+				return _retval
 			end end
 			if string.find(mode, "w") then retval.write = function(this, str)
 				if type(str) ~= "string" then error("bad argument #1 (expected string, got " .. type(str) .. ")", 2) end
@@ -3606,7 +3621,7 @@ if io and os and debug and arg then
 				file.close()
 			end end
 			return retval
-		else return io.open(file, mode) end
+		else return io.open(path, mode) end
 	end
 	local debug_info = debug.getinfo(1)
 	if debug_info.source == arg[0]

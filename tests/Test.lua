@@ -377,7 +377,7 @@ local function GetFirstBlockType(compressed_data, isZlib)
         if band(string.byte(compressed_data, 4), 2) == 2 then
             offset = offset + 2
         end
-        first_block_byte_index = offset
+        first_block_byte_index = offset + 1
 	end
 	local first_byte = string.byte(compressed_data
 		, first_block_byte_index, first_block_byte_index)
@@ -567,7 +567,8 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 				}
 				lu.assertEquals(#zdeflate_decompress_to_run, #compress_to_run)
                 if compress_func_name:find("Gzip") then
-                    local returnedStatus_gzip, stdout_gzip, stderr_gzip = RunProgram("gzip -l -v <", compress_filename, decompress_filename)
+                    local returnedStatus_gzip, stdout_gzip, stderr_gzip = 
+                        RunProgram("gzip -l -v <", compress_filename, decompress_filename)
                     print(stdout_gzip)
                     print(stderr_gzip)
                 end
@@ -1920,7 +1921,7 @@ TestInternals = {}
 		lu.assertEquals(LibDeflate:CRC32("1234567"), 0x5003699F)
 		lu.assertEquals(LibDeflate:CRC32("12345678"), 0x9AE0DAAF)
 		lu.assertEquals(LibDeflate:CRC32("123456789"), 0xCBF43926)
-		lu.assertEquals(LibDeflate:CRC32("1234567890"), 0x261DAAE5)
+		lu.assertEquals(LibDeflate:CRC32("1234567890"), 0x261DAEE5)
 		lu.assertEquals(LibDeflate:CRC32("1234567890a"), 0x38F1B51A)
 		lu.assertEquals(LibDeflate:CRC32("1234567890ab"), 0x8CE4E736)
 		lu.assertEquals(LibDeflate:CRC32("1234567890abc"), 0xC98FAE11)
@@ -2843,7 +2844,8 @@ TestCommandLine = {}
 			.."  -9    slowest and best compression.\n"
 			.."  -d    do decompression instead of compression.\n"
 			.."  --dict <filename> specify the file that contains"
-			.." the entire preset dictionary.\n"
+            .." the entire preset dictionary.\n"
+            .."  --gzip  use gzip format instead of raw deflate.\n"
 			.."  -h    give this help.\n"
 			.."  --strategy <fixed/huffman_only/dynamic>"
 			.." specify a special compression strategy.\n"
@@ -2976,7 +2978,7 @@ TestCommandLine = {}
 							.." "..inputs[k]
 							.." tests/test_commandline.tmp")
 				lu.assertEquals(stdout, "")
-				lu.assertStrContains(stderr, ("Successfully writes %d bytes")
+				lu.assertStrContains(stderr, ("Successfully wrote %d bytes")
 					:format(GetFileData("tests/test_commandline.tmp"):len()))
 				lu.assertEquals(returned_status, 0)
 				local result
