@@ -3039,7 +3039,7 @@ function LibDeflate:DecompressGzip(str)
     local res, err = DecompressDeflateInternal(string.sub(str, info.offset + 1, -8))
     if res == nil then return res, err end
     if string.len(res) ~= info.uncompressed then return nil, -6 end
-    local target_checksum = self:CRC32(res)
+    local target_checksum = xor(self:CRC32(res), 0xFFFFFFFF)
     if xor(info.crc, target_checksum) ~= 0xFFFFFFFF then return nil, -2 end
     return res, 0
 end
