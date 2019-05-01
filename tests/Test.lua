@@ -2462,14 +2462,14 @@ TestCompressStrategy = {}
 			LibDeflate:CompressDeflate(str):len(), 517)
 		lu.assertEquals(
 			GetFirstBlockType(
-				LibDeflate:CompressDeflate(str, {strategy = "fixed"}), false)
+				LibDeflate:CompressDeflate(str, {strategy = "fixed"}), 0)
 			, 1)
 		lu.assertEquals(
 			LibDeflate:CompressDeflate(str, {strategy = "fixed"}):len()
 			, 542)
 		lu.assertEquals(
 			GetFirstBlockType(
-				LibDeflate:CompressZlib(str, {strategy = "fixed"}, true))
+				LibDeflate:CompressZlib(str, {strategy = "fixed"}, 1))
 			, 1)
 		lu.assertEquals(
 			LibDeflate:CompressZlib(str, {strategy = "fixed"}):len()
@@ -2503,14 +2503,14 @@ TestCompressStrategy = {}
 			LibDeflate:CompressDeflate(str):len(), 517)
 		lu.assertEquals(
 			GetFirstBlockType(
-				LibDeflate:CompressDeflate(str, {strategy = "dynamic"}), false)
+				LibDeflate:CompressDeflate(str, {strategy = "dynamic"}), 0)
 			, 2)
 		lu.assertEquals(
 			LibDeflate:CompressDeflate(str, {strategy = "dynamic"}):len()
 			, 536)
 		lu.assertEquals(
 			GetFirstBlockType(
-				LibDeflate:CompressZlib(str, {strategy = "dynamic"}, true))
+				LibDeflate:CompressZlib(str, {strategy = "dynamic"}, 1))
 			, 2)
 		lu.assertEquals(
 			LibDeflate:CompressZlib(str, {strategy = "dynamic"}):len()
