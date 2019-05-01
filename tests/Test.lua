@@ -2469,7 +2469,7 @@ TestCompressStrategy = {}
 			, 542)
 		lu.assertEquals(
 			GetFirstBlockType(
-				LibDeflate:CompressZlib(str, {strategy = "fixed"}, 1))
+				LibDeflate:CompressZlib(str, {strategy = "fixed"}), 1)
 			, 1)
 		lu.assertEquals(
 			LibDeflate:CompressZlib(str, {strategy = "fixed"}):len()
@@ -2510,7 +2510,7 @@ TestCompressStrategy = {}
 			, 536)
 		lu.assertEquals(
 			GetFirstBlockType(
-				LibDeflate:CompressZlib(str, {strategy = "dynamic"}, 1))
+				LibDeflate:CompressZlib(str, {strategy = "dynamic"}), 1)
 			, 2)
 		lu.assertEquals(
 			LibDeflate:CompressZlib(str, {strategy = "dynamic"}):len()
