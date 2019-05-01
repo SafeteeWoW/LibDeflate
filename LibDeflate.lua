@@ -381,7 +381,7 @@ end)
 
 local function crc32_byte(byte, crc)
   crc = xor(crc or 0, 0xFFFFFFFF)
-  local v1 = crc * 256
+  local v1 = math.floor(crc / 256)
   local v2 = crc_table[xor(crc % 256, byte)]
   return xor(xor(v1, v2), 0xFFFFFFFF)
 end
