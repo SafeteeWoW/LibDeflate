@@ -3036,11 +3036,11 @@ function LibDeflate:DecompressGzip(str)
 	end
     local info, err = GetGzipInfo(str)
     if info == nil then return info, err end
-    local res, err = DecompressDeflateInternal(string.sub(str, retval.offset + 1, -8))
+    local res, err = DecompressDeflateInternal(string.sub(str, info.offset + 1, -8))
     if res == nil then return res, err end
-    if string.len(res) ~= retval.uncompressed then return nil, -6 end
+    if string.len(res) ~= info.uncompressed then return nil, -6 end
     local target_checksum = self:CRC32(res)
-    if xor(retval.crc, target_checksum) ~= 0xFFFFFFFF then return nil, -2 end
+    if xor(info.crc, target_checksum) ~= 0xFFFFFFFF then return nil, -2 end
     return res, 0
 end
 
