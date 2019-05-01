@@ -2169,7 +2169,7 @@ local function time()
     else return os.time() end -- All other Luas.
 end
 
-local function byte(num, b) return math.floor(num / math.pow(2, b*8)) % 0x100 end
+local function byte(num, b) return math.floor(num / _pow2[b*8]) % 0x100 end
 
 --- Compress using the gzip format.
 -- @param str [string] the data to be compressed.
