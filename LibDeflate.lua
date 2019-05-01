@@ -371,8 +371,8 @@ end
 local crc_table = memoize(function(i)
   local crc = i
   for _=1,8 do
-    local b = crc % 2 == 1 and 1 or 0
-    crc = crc / 2
+    local b = crc % 2 ~= 0 and 1 or 0
+    crc = math.floor(crc / 2)
     if b == 1 then crc = xor(crc, POLY) end
   end
   return crc
