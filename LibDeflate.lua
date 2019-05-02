@@ -3069,7 +3069,7 @@ local function GetGzipInfo(str)
 		local src_checksum = string_byte(str, offset + 1) * 256
 							 + string_byte(str, offset) 
 		local target_checksum = self:CRC32(string.sub(str, 1, offset - 1)) % 0x10000
-		if xor(src_checksum, target_checksum) ~= 0xFFFF then return nil, -5 end
+		if xor32(src_checksum, target_checksum) ~= 0xFFFF then return nil, -5 end
 		offset = offset + 2
 	end
 	retval.crc = string_byte(str, -5) * 0x1000000 + string_byte(str, -6) * 0x10000 + string_byte(str, -7) * 256 + string_byte(str, -8)
@@ -3103,8 +3103,8 @@ function LibDeflate:DecompressGzip(str)
 	local res, err = DecompressDeflateInternal(string.sub(str, info.offset + 1, -8))
 	if res == nil then return res, err end
 	if string.len(res) ~= info.uncompressed then return nil, -6 end
-	local target_checksum = xor(self:CRC32(res), 0xFFFFFFFF)
-	if xor(info.crc, target_checksum) ~= 0xFFFFFFFF then return nil, -2 end
+	local target_checksum = xor32(self:CRC32(res), 0xFFFFFFFF)
+	if xor32(info.crc, target_checksum) ~= 0xFFFFFFFF then return nil, -2 end
 	return res, 0
 end
 
