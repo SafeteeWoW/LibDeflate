@@ -365,8 +365,8 @@ local function GetFirstBlockType(compressed_data, isZlib)
             return c
         end
         local offset = 10
-        if band(string.byte(compressed_data, 4), 4) == 4 then 
-            offset = offset + string.byte(compressed_data, 11) * 256 + string.byte(compressed_data, 12) 
+        if band(string.byte(compressed_data, 4), 4) == 4 then
+            offset = offset + string.byte(compressed_data, 11) * 256 + string.byte(compressed_data, 12)
         end
         if band(string.byte(compressed_data, 4), 8) == 8 then
             while string.byte(compressed_data, offset) ~= 0 do offset = offset + 1 end
@@ -567,7 +567,7 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 				}
 				lu.assertEquals(#zdeflate_decompress_to_run, #compress_to_run)
                 if compress_func_name:find("Gzip") then
-                    local returnedStatus_gzip, stdout_gzip, stderr_gzip = 
+                    local returnedStatus_gzip, stdout_gzip, stderr_gzip =
                         RunProgram("gzip -l -v <", compress_filename, decompress_filename)
                     print(stdout_gzip)
                     print(stderr_gzip)
@@ -1909,7 +1909,7 @@ TestInternals = {}
 		local adler32Test2 = GetFileData("tests/data/adler32Test2.txt")
 		lu.assertEquals(LibDeflate:Adler32(adler32Test2), 0xD6A07E29)
     end
-    
+
     function TestInternals:TestCRC32()
 		lu.assertEquals(LibDeflate:CRC32(""), 0)
 		lu.assertEquals(LibDeflate:CRC32("1"), 0x83DCEFB7)

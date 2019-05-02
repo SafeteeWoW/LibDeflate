@@ -465,7 +465,7 @@ local crc_table = {
 function LibDeflate:CRC32(s, crc)
 	crc = xor32(crc or 0, 0xFFFFFFFF)
 	for i=1,#s do
-		crc = xor32((crc - crc%256) / 256, 
+		crc = xor32((crc - crc%256) / 256,
 			crc_table[xor32(crc % 256, string_byte(s, i))])
 	end
 	return xor32(crc, 0xFFFFFFFF)
@@ -2041,8 +2041,8 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 					end
 				end
 			end
-			if #delete > 0 then 
-				for _,k in pairs(delete) do hash_tables[k] = nil end 
+			if #delete > 0 then
+				for _,k in pairs(delete) do hash_tables[k] = nil end
 			end
 		end
 
@@ -2258,7 +2258,7 @@ function LibDeflate:CompressGzip(str, configs)
 		if configs.level == 0 then cf = 0x04
 		elseif configs.level == 9 then cf = 0x02 end
 	end
-	return string_char(0x1f, 0x8b, 8, 0, byte(t, 0), byte(t, 1), byte(t, 2), 
+	return string_char(0x1f, 0x8b, 8, 0, byte(t, 0), byte(t, 1), byte(t, 2),
 		byte(t, 3), cf, 0xFF) .. res .. string_char(byte(crc, 0), byte(crc, 1),
 		byte(crc, 2), byte(crc, 3), byte(len, 0), byte(len, 1), byte(len, 2), byte(len, 3)), 0
 end
@@ -3054,8 +3054,8 @@ local function GetGzipInfo(str)
 	else retval.method = "deflate" end
 	retval.uncompressed_name = "stdout"
 	local offset = 10
-	if (string_byte(str, 4) / 4) % 2 ~= 0 then 
-		offset = offset + string_byte(str, 11) * 256 + string_byte(str, 12) 
+	if (string_byte(str, 4) / 4) % 2 ~= 0 then
+		offset = offset + string_byte(str, 11) * 256 + string_byte(str, 12)
 	end
 	if (string_byte(str, 4) / 8) % 2 ~= 0 then
 		local start_offset = offset
@@ -3067,15 +3067,18 @@ local function GetGzipInfo(str)
 	end
 	if (string_byte(str, 4) / 2) % 2 ~= 0 then
 		local src_checksum = string_byte(str, offset + 1) * 256
-							 + string_byte(str, offset) 
+							 + string_byte(str, offset)
 		local target_checksum = self:CRC32(string.sub(str, 1, offset - 1)) % 0x10000
 		if xor32(src_checksum, target_checksum) ~= 0xFFFF then return nil, -5 end
 		offset = offset + 2
 	end
-	retval.crc = string_byte(str, -5) * 0x1000000 + string_byte(str, -6) * 0x10000 + string_byte(str, -7) * 256 + string_byte(str, -8)
-	retval.uncompressed = string_byte(str, -1) * 0x1000000 + string_byte(str, -2) * 0x10000 + string_byte(str, -3) * 256 + string_byte(str, -4)
+	retval.crc = string_byte(str, -5) * 0x1000000 + string_byte(str, -6) * 0x10000
+			   + string_byte(str, -7) * 256 + string_byte(str, -8)
+	retval.uncompressed = string_byte(str, -1) * 0x1000000 + string_byte(str, -2) * 0x10000
+						+ string_byte(str, -3) * 256 + string_byte(str, -4)
 	retval.compressed = string.len(str)
-	retval.timestamp = string_byte(str, 8) * 0x1000000 + string_byte(str, 7) * 0x10000 + string_byte(str, 6) * 0x100 + string_byte(str, 5)
+	retval.timestamp = string_byte(str, 8) * 0x1000000 + string_byte(str, 7) * 0x10000
+					 + string_byte(str, 6) * 0x100 + string_byte(str, 5)
 	retval.ratio = (1 - (retval.compressed / retval.uncompressed)) * 100
 	retval.offset = offset
 	return retval
@@ -3100,8 +3103,8 @@ function LibDeflate:DecompressGzip(str)
 	end
 	local info, err = GetGzipInfo(str)
 	if info == nil then return info, err end
-	local res, err = DecompressDeflateInternal(string.sub(str, info.offset + 1, -8))
-	if res == nil then return res, err end
+	local res, errr = DecompressDeflateInternal(string.sub(str, info.offset + 1, -8))
+	if res == nil then return res, errr end
 	if string.len(res) ~= info.uncompressed then return nil, -6 end
 	local target_checksum = xor32(self:CRC32(res), 0xFFFFFFFF)
 	if xor32(info.crc, target_checksum) ~= 0xFFFFFFFF then return nil, -2 end
@@ -3626,8 +3629,8 @@ the entire preset dictionary.
 -- support ComputerCraft shell
 local arg = _G.arg
 local debug = debug
-if shell then 
-	arg = {...} 
+if shell then
+	arg = {...}
 	arg[0] = "LibDeflate.lua"
 	debug = {getinfo = function()
 		return {source = "LibDeflate.lua", short_src = "LibDeflate.lua"}
@@ -3641,8 +3644,8 @@ if io and os and debug and arg then
 	local os = os
 	local exit = os.exit or error
 	local stderr = io.stderr and io.stderr.write or function(self, text) printError(text) end
-	local function openFile(path, mode) 
-		if shell then 
+	local function openFile(path, mode)
+		if shell then
 			local file = fs.open(path, mode)
 			local retval = {close = file.close}
 			if string.find(mode, "r") then retval.read = function()
