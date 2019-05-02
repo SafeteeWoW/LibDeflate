@@ -466,7 +466,7 @@ function LibDeflate:CRC32(s, crc)
 	crc = xor32(crc or 0, 0xFFFFFFFF)
 	for i=1,#s do
 		crc = xor32((crc - crc%256) / 256,
-			crc_table[xor32(crc % 256, string_byte(s, i))])
+			crc_table[xor_table[crc % 256][string_byte(s, i)]])
 	end
 	return xor32(crc, 0xFFFFFFFF)
 end
