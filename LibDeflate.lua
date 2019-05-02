@@ -313,98 +313,162 @@ do
 end
 
 -- CRC-16/CRC-32 computation
-local xor
-
-if bit ~= nil then xor = bit.bxor
-elseif bit32 ~= nil then xor = bit32.bxor 
-else xor = function(a, b)
-    local calc = 0    
-
-    for i = 32, 0, -1 do
-        local val = 2 ^ i
-        local aa = false
-        local bb = false
-    
-        if a == 0 then
-            calc = calc + b
-            break
-        end
-    
-        if b == 0 then
-            calc = calc + a
-            break
-        end
-    
-        if a >= val then
-            aa = true
-            a = a - val
-        end
-    
-        if b >= val then
-            bb = true
-            b = b - val
-        end
-    
-        if not (aa and bb) and (aa or bb) then
-            calc = calc + val
-        end
-    end
-
-    return calc
-end end
-
--- CRC-32-IEEE 802.3 (V.42)
-local POLY = 0xEDB88320
-
--- Memoize function pattern (like http://lua-users.org/wiki/FuncTables ).
-local function memoize(f)
-  local mt = {}
-  local t = setmetatable({}, mt)
-  function mt:__index(k)
-    local v = f(k); t[k] = v
-    return v
-  end
-  return t
+local xor8 = function(a, b)
+	local ret = 0
+	local fact = 128
+	while fact > a and fact > b do
+		fact = fact / 2
+	end
+	while fact >= 1 do
+		ret = ret + (((a >= fact or b >= fact) and (a < fact or b < fact)) and fact or 0)
+		a = a - ((a >= fact) and fact or 0)
+		b = b - ((b >= fact) and fact or 0)
+		fact = fact/2
+	end
+	return ret
 end
 
--- CRC table.
-local crc_table = memoize(function(i)
-  local crc = i
-  for _=1,8 do
-    local b = crc % 2 ~= 0 and 1 or 0
-    crc = math.floor(crc / 2)
-    if b == 1 then crc = xor(crc, POLY) end
-  end
-  return crc
-end)
+-- table to cache the result of xor(x, y)  (0<=x,y<=255)
+local xor_table = {}
 
-
-local function crc32_byte(byte, crc)
-  crc = xor(crc or 0, 0xFFFFFFFF)
-  local v1 = math.floor(crc / 256)
-  local v2 = crc_table[xor(crc % 256, byte)]
-  return xor(xor(v1, v2), 0xFFFFFFFF)
+for i = 0, 255 do
+	local t = {}
+	xor_table[i] = t
+	for j = 0, 255 do
+		local c = xor8(i, j)
+		t[j] = c
+	end
 end
 
+-- xor function which supports 32bit number
+-- xor cache for 8bit number is required
+local function xor32(x, y)
+	local x_byte = x % 256
+	local y_byte = y % 256
+	local result = xor_table[x_byte][y_byte]
+	x = (x-x_byte) / 256
+	y = (y-y_byte) / 256
 
-local function crc32_string(s, crc)
-  crc = crc or 0
-  for i=1,#s do
-    crc = crc32_byte(s:byte(i), crc)
-  end
-  return crc
+	x_byte = x % 256
+	y_byte = y % 256
+	result = result + xor_table[x_byte][y_byte] * 256
+	x = (x-x_byte) / 256
+	y = (y-y_byte) / 256
+
+	x_byte = x % 256
+	y_byte = y % 256
+	result = result + xor_table[x_byte][y_byte] * 65536
+	x = (x-x_byte) / 256
+	y = (y-y_byte) / 256
+
+	result = result + xor_table[x][y] * 16777216
+
+	return result
 end
+
+-- First number is uint32, 2nd one is uint16
+local function xor32_16(x, y)
+	local x_byte = x % 256
+	local y_byte = y % 256
+	local result = xor_table[x_byte][y_byte]
+	x = (x-x_byte) / 256
+	y = (y-y_byte) / 256
+
+	x_byte = x % 256
+	result = result + xor_table[x_byte][y] * 256
+	x = (x-x_byte) / 256
+
+	x_byte = x % 256
+	result = result + xor_table[x_byte][0] * 65536
+	x = (x-x_byte) / 256
+
+	result = result + xor_table[x][0] * 16777216
+
+	return result
+end
+
+-- Both numbers are uint16
+local function xor16(x, y)
+	local x_byte = x % 256
+	local y_byte = y % 256
+	local result = xor_table[x_byte][y_byte]
+	x = (x-x_byte) / 256
+	y = (y-y_byte) / 256
+
+	x_byte = x % 256
+	y_byte = y % 256
+	result = result + xor_table[x_byte][y_byte] * 256
+
+	return result
+end
+
+-- CRC table from the gzip source
+local crc_table = {
+	[0]=0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419,
+	0x706af48f, 0xe963a535, 0x9e6495a3, 0x0edb8832, 0x79dcb8a4,
+	0xe0d5e91e, 0x97d2d988, 0x09b64c2b, 0x7eb17cbd, 0xe7b82d07,
+	0x90bf1d91, 0x1db71064, 0x6ab020f2, 0xf3b97148, 0x84be41de,
+	0x1adad47d, 0x6ddde4eb, 0xf4d4b551, 0x83d385c7, 0x136c9856,
+	0x646ba8c0, 0xfd62f97a, 0x8a65c9ec, 0x14015c4f, 0x63066cd9,
+	0xfa0f3d63, 0x8d080df5, 0x3b6e20c8, 0x4c69105e, 0xd56041e4,
+	0xa2677172, 0x3c03e4d1, 0x4b04d447, 0xd20d85fd, 0xa50ab56b,
+	0x35b5a8fa, 0x42b2986c, 0xdbbbc9d6, 0xacbcf940, 0x32d86ce3,
+	0x45df5c75, 0xdcd60dcf, 0xabd13d59, 0x26d930ac, 0x51de003a,
+	0xc8d75180, 0xbfd06116, 0x21b4f4b5, 0x56b3c423, 0xcfba9599,
+	0xb8bda50f, 0x2802b89e, 0x5f058808, 0xc60cd9b2, 0xb10be924,
+	0x2f6f7c87, 0x58684c11, 0xc1611dab, 0xb6662d3d, 0x76dc4190,
+	0x01db7106, 0x98d220bc, 0xefd5102a, 0x71b18589, 0x06b6b51f,
+	0x9fbfe4a5, 0xe8b8d433, 0x7807c9a2, 0x0f00f934, 0x9609a88e,
+	0xe10e9818, 0x7f6a0dbb, 0x086d3d2d, 0x91646c97, 0xe6635c01,
+	0x6b6b51f4, 0x1c6c6162, 0x856530d8, 0xf262004e, 0x6c0695ed,
+	0x1b01a57b, 0x8208f4c1, 0xf50fc457, 0x65b0d9c6, 0x12b7e950,
+	0x8bbeb8ea, 0xfcb9887c, 0x62dd1ddf, 0x15da2d49, 0x8cd37cf3,
+	0xfbd44c65, 0x4db26158, 0x3ab551ce, 0xa3bc0074, 0xd4bb30e2,
+	0x4adfa541, 0x3dd895d7, 0xa4d1c46d, 0xd3d6f4fb, 0x4369e96a,
+	0x346ed9fc, 0xad678846, 0xda60b8d0, 0x44042d73, 0x33031de5,
+	0xaa0a4c5f, 0xdd0d7cc9, 0x5005713c, 0x270241aa, 0xbe0b1010,
+	0xc90c2086, 0x5768b525, 0x206f85b3, 0xb966d409, 0xce61e49f,
+	0x5edef90e, 0x29d9c998, 0xb0d09822, 0xc7d7a8b4, 0x59b33d17,
+	0x2eb40d81, 0xb7bd5c3b, 0xc0ba6cad, 0xedb88320, 0x9abfb3b6,
+	0x03b6e20c, 0x74b1d29a, 0xead54739, 0x9dd277af, 0x04db2615,
+	0x73dc1683, 0xe3630b12, 0x94643b84, 0x0d6d6a3e, 0x7a6a5aa8,
+	0xe40ecf0b, 0x9309ff9d, 0x0a00ae27, 0x7d079eb1, 0xf00f9344,
+	0x8708a3d2, 0x1e01f268, 0x6906c2fe, 0xf762575d, 0x806567cb,
+	0x196c3671, 0x6e6b06e7, 0xfed41b76, 0x89d32be0, 0x10da7a5a,
+	0x67dd4acc, 0xf9b9df6f, 0x8ebeeff9, 0x17b7be43, 0x60b08ed5,
+	0xd6d6a3e8, 0xa1d1937e, 0x38d8c2c4, 0x4fdff252, 0xd1bb67f1,
+	0xa6bc5767, 0x3fb506dd, 0x48b2364b, 0xd80d2bda, 0xaf0a1b4c,
+	0x36034af6, 0x41047a60, 0xdf60efc3, 0xa867df55, 0x316e8eef,
+	0x4669be79, 0xcb61b38c, 0xbc66831a, 0x256fd2a0, 0x5268e236,
+	0xcc0c7795, 0xbb0b4703, 0x220216b9, 0x5505262f, 0xc5ba3bbe,
+	0xb2bd0b28, 0x2bb45a92, 0x5cb36a04, 0xc2d7ffa7, 0xb5d0cf31,
+	0x2cd99e8b, 0x5bdeae1d, 0x9b64c2b0, 0xec63f226, 0x756aa39c,
+	0x026d930a, 0x9c0906a9, 0xeb0e363f, 0x72076785, 0x05005713,
+	0x95bf4a82, 0xe2b87a14, 0x7bb12bae, 0x0cb61b38, 0x92d28e9b,
+	0xe5d5be0d, 0x7cdcefb7, 0x0bdbdf21, 0x86d3d2d4, 0xf1d4e242,
+	0x68ddb3f8, 0x1fda836e, 0x81be16cd, 0xf6b9265b, 0x6fb077e1,
+	0x18b74777, 0x88085ae6, 0xff0f6a70, 0x66063bca, 0x11010b5c,
+	0x8f659eff, 0xf862ae69, 0x616bffd3, 0x166ccf45, 0xa00ae278,
+	0xd70dd2ee, 0x4e048354, 0x3903b3c2, 0xa7672661, 0xd06016f7,
+	0x4969474d, 0x3e6e77db, 0xaed16a4a, 0xd9d65adc, 0x40df0b66,
+	0x37d83bf0, 0xa9bcae53, 0xdebb9ec5, 0x47b2cf7f, 0x30b5ffe9,
+	0xbdbdf21c, 0xcabac28a, 0x53b39330, 0x24b4a3a6, 0xbad03605,
+	0xcdd70693, 0x54de5729, 0x23d967bf, 0xb3667a2e, 0xc4614ab8,
+	0x5d681b02, 0x2a6f2b94, 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b,
+	0x2d02ef8d
+}
 
 --- Calculate the CRC-32 checksum of the string.
 -- @param s [string] the input string to calculate its CRC-32 checksum.
 -- @return [integer] The CRC-32 checksum, which is greater or equal to 0,
 -- and less than 2^32 (4294967296).
 function LibDeflate:CRC32(s, crc)
-  if type(s) == 'string' then
-    return crc32_string(s, crc)
-  else
-    return crc32_byte(s, crc)
-  end
+	crc = xor32(crc or 0, 0xFFFFFFFF)
+	for i=1,#s do
+		crc = xor32((crc - crc%256) / 256, 
+			crc_table[xor32(crc % 256, string_byte(s, i))])
+	end
+	return xor32(crc, 0xFFFFFFFF)
 end
 
 --- Calculate the Adler-32 checksum of the string. <br>
@@ -1838,7 +1902,7 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 			is_last_block = true
 		else
 			is_last_block = false
-        end
+		end
 
 		local lcodes, lextra_bits, lcodes_counts, dcodes, dextra_bits
 			, dcodes_counts
@@ -1955,13 +2019,13 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 			for i = block_end-32767, block_end do
 				string_table[j] = string_table[i-offset]
 				j = j + 1
-            end
-            local delete = {}
+			end
+			local delete = {}
 			for k, t in pairs(hash_tables) do
 				local tSize = #t
 				if tSize > 0 and block_end+1 - t[1] > 32768 then
-                    if tSize == 1 then
-                        if _G.os and _G.os.pullEvent then table.insert(delete, k)
+					if tSize == 1 then
+						if _G.os and _G.os.pullEvent then table.insert(delete, k)
 						else hash_tables[k] = nil end
 					else
 						local new = {}
@@ -1976,16 +2040,16 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 						hash_tables[k] = new
 					end
 				end
-            end
-            if #delete > 0 then 
-                for _,k in pairs(delete) do hash_tables[k] = nil end 
-            end
-        end
+			end
+			if #delete > 0 then 
+				for _,k in pairs(delete) do hash_tables[k] = nil end 
+			end
+		end
 
-        if _G.os and _G.os.pullEvent then -- ComputerCraft requires this for long-running processes
-            os.queueEvent("nosleep")
-            os.pullEvent()
-        end
+		if _G.os and _G.os.pullEvent then -- ComputerCraft requires this for long-running processes
+			os.queueEvent("nosleep")
+			os.pullEvent()
+		end
 	end
 end
 
@@ -2162,14 +2226,14 @@ function LibDeflate:CompressZlibWithDict(str, dictionary, configs)
 end
 
 local function time()
-    if os == nil then return 0
-    elseif os.epoch ~= nil then return math.floor(os.epoch("utc") / 1000)
-        -- ComputerCraft's os.time() gives in-game time, os.epoch gives POSIX time in ms
-    elseif os.time() < 30 then return 0 -- ComputerCraft 1.79 and below don't have os.epoch(), so no time.
-    else return os.time() end -- All other Luas.
+	if os == nil then return 0
+	elseif os.epoch ~= nil then return (os.epoch("utc") / 1000)-(os.epoch("utc") / 1000)%1
+		-- ComputerCraft's os.time() gives in-game time, os.epoch gives POSIX time in ms
+	elseif os.time() < 30 then return 0 -- ComputerCraft 1.79 and below don't have os.epoch(), so no time.
+	else return os.time() end -- All other Luas.
 end
 
-local function byte(num, b) return math.floor(num / _pow2[b*8]) % 0x100 end
+local function byte(num, b) return ((num / _pow2[b*8])-(num / _pow2[b*8])%1) % 0x100 end
 
 --- Compress using the gzip format.
 -- @param str [string] the data to be compressed.
@@ -2179,24 +2243,24 @@ local function byte(num, b) return math.floor(num / _pow2[b*8]) % 0x100 end
 -- @see compression_configs
 -- @see LibDeflate:DecompressGzip
 function LibDeflate:CompressGzip(str, configs)
-    local arg_valid, arg_err = IsValidArguments(str, false, nil, true, configs)
+	local arg_valid, arg_err = IsValidArguments(str, false, nil, true, configs)
 	if not arg_valid then
 		error(("Usage: LibDeflate:CompressGzip(str, configs): "
 			..arg_err), 2)
-    end
-    local res, err = CompressDeflateInternal(str, nil, configs)
-    if res == nil then return res, err end
-    local t = time()
-    local cf = 0
-    local crc = self:CRC32(str)
-    local len = string.len(str)
-    if configs ~= nil and configs.level ~= nil then
-        if configs.level == 0 then cf = 0x04
-        elseif configs.level == 9 then cf = 0x02 end
-    end
-    return string_char(0x1f, 0x8b, 8, 0, byte(t, 0), byte(t, 1), byte(t, 2), 
-        byte(t, 3), cf, 0xFF) .. res .. string_char(byte(crc, 0), byte(crc, 1),
-        byte(crc, 2), byte(crc, 3), byte(len, 0), byte(len, 1), byte(len, 2), byte(len, 3)), 0
+	end
+	local res, err = CompressDeflateInternal(str, nil, configs)
+	if res == nil then return res, err end
+	local t = time()
+	local cf = 0
+	local crc = self:CRC32(str)
+	local len = string.len(str)
+	if configs ~= nil and configs.level ~= nil then
+		if configs.level == 0 then cf = 0x04
+		elseif configs.level == 9 then cf = 0x02 end
+	end
+	return string_char(0x1f, 0x8b, 8, 0, byte(t, 0), byte(t, 1), byte(t, 2), 
+		byte(t, 3), cf, 0xFF) .. res .. string_char(byte(crc, 0), byte(crc, 1),
+		byte(crc, 2), byte(crc, 3), byte(len, 0), byte(len, 1), byte(len, 2), byte(len, 3)), 0
 end
 
 --[[ --------------------------------------------------------------------------
@@ -2736,12 +2800,12 @@ local function Inflate(state)
 		end
 		if status ~= 0 then
 			return nil, status
-        end
-        -- ComputerCraft requires this for long-running processes
-        if os and os.pullEvent then
-            os.queueEvent("nosleep")
-            os.pullEvent()
-        end
+		end
+		-- ComputerCraft requires this for long-running processes
+		if os and os.pullEvent then
+			os.queueEvent("nosleep")
+			os.pullEvent()
+		end
 	end
 
 	state.result_buffer[#state.result_buffer+1] =
@@ -2944,7 +3008,7 @@ do
 		_fix_block_literal_huffman_bitlen[sym] = 9
 	end
 	for sym=256, 279 do
-	    _fix_block_literal_huffman_bitlen[sym] = 7
+		_fix_block_literal_huffman_bitlen[sym] = 7
 	end
 	for sym=280, 287 do
 		_fix_block_literal_huffman_bitlen[sym] = 8
@@ -2974,47 +3038,47 @@ end
 
 -- Returns a table with info about the gzip
 local function GetGzipInfo(str)
-    local arg_valid, arg_err = IsValidArguments(str)
+	local arg_valid, arg_err = IsValidArguments(str)
 	if not arg_valid then
 		error(("Usage: GetGzipInfo(str): "..arg_err), 2)
-    end
-    local retval = {}
+	end
+	local retval = {}
 	if string_byte(str, 1) ~= 31 or string_byte(str, 2) ~= 139 then
 		return nil, -1
-    end
-    if string_byte(str, 4) > 0x1f then
-        return nil, -3
-    end
-    if string_byte(str, 3) ~= 8 then
-        return nil, -4
-    else retval.method = "deflate" end
-    retval.uncompressed_name = "stdout"
-    local offset = 10
+	end
+	if string_byte(str, 4) > 0x1f then
+		return nil, -3
+	end
+	if string_byte(str, 3) ~= 8 then
+		return nil, -4
+	else retval.method = "deflate" end
+	retval.uncompressed_name = "stdout"
+	local offset = 10
 	if (string_byte(str, 4) / 4) % 2 ~= 0 then 
 		offset = offset + string_byte(str, 11) * 256 + string_byte(str, 12) 
-    end
-    if (string_byte(str, 4) / 8) % 2 ~= 0 then
-        local start_offset = offset
-        while string_byte(str, offset) ~= 0 do offset = offset + 1 end
-        retval.uncompressed_name = string.sub(str, start_offset, offset - 1)
-    end
-    if (string_byte(str, 4) / 16) % 2 ~= 0 then
-        while string_byte(str, offset) ~= 0 do offset = offset + 1 end
-    end
-    if (string_byte(str, 4) / 2) % 2 ~= 0 then
-        local src_checksum = string_byte(str, offset + 1) * 256
-                             + string_byte(str, offset) 
-        local target_checksum = self:CRC32(string.sub(str, 1, offset - 1)) % 0x10000
-        if xor(src_checksum, target_checksum) ~= 0xFFFF then return nil, -5 end
-        offset = offset + 2
-    end
-    retval.crc = string_byte(str, -5) * 0x1000000 + string_byte(str, -6) * 0x10000 + string_byte(str, -7) * 256 + string_byte(str, -8)
-    retval.uncompressed = string_byte(str, -1) * 0x1000000 + string_byte(str, -2) * 0x10000 + string_byte(str, -3) * 256 + string_byte(str, -4)
-    retval.compressed = string.len(str)
-    retval.timestamp = string_byte(str, 8) * 0x1000000 + string_byte(str, 7) * 0x10000 + string_byte(str, 6) * 0x100 + string_byte(str, 5)
-    retval.ratio = (1 - (retval.compressed / retval.uncompressed)) * 100
-    retval.offset = offset
-    return retval
+	end
+	if (string_byte(str, 4) / 8) % 2 ~= 0 then
+		local start_offset = offset
+		while string_byte(str, offset) ~= 0 do offset = offset + 1 end
+		retval.uncompressed_name = string.sub(str, start_offset, offset - 1)
+	end
+	if (string_byte(str, 4) / 16) % 2 ~= 0 then
+		while string_byte(str, offset) ~= 0 do offset = offset + 1 end
+	end
+	if (string_byte(str, 4) / 2) % 2 ~= 0 then
+		local src_checksum = string_byte(str, offset + 1) * 256
+							 + string_byte(str, offset) 
+		local target_checksum = self:CRC32(string.sub(str, 1, offset - 1)) % 0x10000
+		if xor(src_checksum, target_checksum) ~= 0xFFFF then return nil, -5 end
+		offset = offset + 2
+	end
+	retval.crc = string_byte(str, -5) * 0x1000000 + string_byte(str, -6) * 0x10000 + string_byte(str, -7) * 256 + string_byte(str, -8)
+	retval.uncompressed = string_byte(str, -1) * 0x1000000 + string_byte(str, -2) * 0x10000 + string_byte(str, -3) * 256 + string_byte(str, -4)
+	retval.compressed = string.len(str)
+	retval.timestamp = string_byte(str, 8) * 0x1000000 + string_byte(str, 7) * 0x10000 + string_byte(str, 6) * 0x100 + string_byte(str, 5)
+	retval.ratio = (1 - (retval.compressed / retval.uncompressed)) * 100
+	retval.offset = offset
+	return retval
 end
 
 --- Decompress a gzip compressed data.
@@ -3034,14 +3098,14 @@ function LibDeflate:DecompressGzip(str)
 	if not arg_valid then
 		error(("Usage: LibDeflate:DecompressGzip(str): "..arg_err), 2)
 	end
-    local info, err = GetGzipInfo(str)
-    if info == nil then return info, err end
-    local res, err = DecompressDeflateInternal(string.sub(str, info.offset + 1, -8))
-    if res == nil then return res, err end
-    if string.len(res) ~= info.uncompressed then return nil, -6 end
-    local target_checksum = xor(self:CRC32(res), 0xFFFFFFFF)
-    if xor(info.crc, target_checksum) ~= 0xFFFFFFFF then return nil, -2 end
-    return res, 0
+	local info, err = GetGzipInfo(str)
+	if info == nil then return info, err end
+	local res, err = DecompressDeflateInternal(string.sub(str, info.offset + 1, -8))
+	if res == nil then return res, err end
+	if string.len(res) ~= info.uncompressed then return nil, -6 end
+	local target_checksum = xor(self:CRC32(res), 0xFFFFFFFF)
+	if xor(info.crc, target_checksum) ~= 0xFFFFFFFF then return nil, -2 end
+	return res, 0
 end
 
 -- Encoding algorithms
@@ -3538,8 +3602,8 @@ LibDeflate.internals = {
 	IsEqualAdler32 = IsEqualAdler32,
 	_byte_to_6bit_char = _byte_to_6bit_char,
 	_6bit_to_byte = _6bit_to_byte,
-    InternalClearCache = InternalClearCache,
-    GetGzipInfo = GetGzipInfo,
+	InternalClearCache = InternalClearCache,
+	GetGzipInfo = GetGzipInfo,
 }
 
 --[[-- Commandline options
@@ -3563,11 +3627,11 @@ the entire preset dictionary.
 local arg = _G.arg
 local debug = debug
 if shell then 
-    arg = {...} 
-    arg[0] = "LibDeflate.lua"
-    debug = {getinfo = function()
-        return {source = "LibDeflate.lua", short_src = "LibDeflate.lua"}
-    end}
+	arg = {...} 
+	arg[0] = "LibDeflate.lua"
+	debug = {getinfo = function()
+		return {source = "LibDeflate.lua", short_src = "LibDeflate.lua"}
+	end}
 end
 
 -- currently no plan to support stdin and stdout.
@@ -3622,8 +3686,8 @@ if io and os and debug and arg then
 					.."  -9    slowest and best compression.\n"
 					.."  -d    do decompression instead of compression.\n"
 					.."  --dict <filename> specify the file that contains"
-                    .." the entire preset dictionary.\n"
-                    .."  --gzip  use gzip format instead of raw deflate.\n"
+					.." the entire preset dictionary.\n"
+					.."  --gzip  use gzip format instead of raw deflate.\n"
 					.."  -h    give this help.\n"
 					.."  --strategy <fixed/huffman_only/dynamic>"
 					.." specify a special compression strategy.\n"
@@ -3658,9 +3722,9 @@ if io and os and debug and arg then
 				-- unintentionally during the program development. I do this
 				-- here just because no convenient way to verify in commandline.
 				dictionary = LibDeflate:CreateDictionary(dict_str,
-                    #dict_str, LibDeflate:Adler32(dict_str))
-            elseif a == "--gzip" then
-                compress_mode = 2
+					#dict_str, LibDeflate:Adler32(dict_str))
+			elseif a == "--gzip" then
+				compress_mode = 2
 			elseif a == "--strategy" then
 				-- Not sure if I should check error here
 				-- If I do, redudant code.
@@ -3724,9 +3788,9 @@ if io and os and debug and arg then
 					output_data =
 					LibDeflate:CompressZlibWithDict(input_data, dictionary
 						, configs)
-                end
-            elseif compress_mode == 2 then
-                output_data = LibDeflate:CompressGzip(input_data, configs)
+				end
+			elseif compress_mode == 2 then
+				output_data = LibDeflate:CompressGzip(input_data, configs)
 			end
 		else
 			if compress_mode == 0 then
@@ -3742,9 +3806,9 @@ if io and os and debug and arg then
 				else
 					output_data = LibDeflate:DecompressZlibWithDict(
 						input_data, dictionary)
-                end
-            elseif compress_mode == 2 then
-                output_data = LibDeflate:DecompressGzip(input_data)
+				end
+			elseif compress_mode == 2 then
+				output_data = LibDeflate:DecompressGzip(input_data)
 			end
 		end
 
