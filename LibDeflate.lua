@@ -348,23 +348,23 @@ end
 local function xor32(x, y)
 	local x_byte = x % 256
 	local y_byte = y % 256
-	local result = _xor_table[x_byte][y_byte]
+	local result = _xor8_table[x_byte][y_byte]
 	x = (x-x_byte) / 256
 	y = (y-y_byte) / 256
 
 	x_byte = x % 256
 	y_byte = y % 256
-	result = result + _xor_table[x_byte][y_byte] * 256
+	result = result + _xor8_table[x_byte][y_byte] * 256
 	x = (x-x_byte) / 256
 	y = (y-y_byte) / 256
 
 	x_byte = x % 256
 	y_byte = y % 256
-	result = result + _xor_table[x_byte][y_byte] * 65536
+	result = result + _xor8_table[x_byte][y_byte] * 65536
 	x = (x-x_byte) / 256
 	y = (y-y_byte) / 256
 
-	result = result + _xor_table[x][y] * 16777216
+	result = result + _xor8_table[x][y] * 16777216
 
 	return result
 end
