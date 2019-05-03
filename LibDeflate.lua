@@ -439,7 +439,7 @@ local _crc_table3 = {
 -- @param init_value [nil/integer] The initial crc32 value. If nil, use 0
 -- @return [integer] The CRC-32 checksum, which is greater or equal to 0,
 -- and less than 2^32 (4294967296).
-function LibDeflate:Crc32(str, init_value)
+function LibDeflate:CRC32(str, init_value)
 	-- TODO: Check argument
 	local crc = (init_value or 0) % 4294967296
 	if not _xor8_table then
@@ -2220,14 +2220,6 @@ function LibDeflate:CompressZlibWithDict(str, dictionary, configs)
 	return CompressZlibInternal(str, dictionary, configs)
 end
 
-local function time()
-	if os == nil then return 0
-	elseif os.epoch ~= nil then return (os.epoch("utc") / 1000)-(os.epoch("utc") / 1000)%1
-		-- ComputerCraft's os.time() gives in-game time, os.epoch gives POSIX time in ms
-	elseif os.time() < 30 then return 0 -- ComputerCraft 1.79 and below don't have os.epoch(), so no time.
-	else return os.time() end -- All other Luas.
-end
-
 local function byte(num, b) return ((num / _pow2[b*8])-(num / _pow2[b*8])%1) % 0x100 end
 
 --- Compress using the gzip format.
@@ -2245,7 +2237,7 @@ function LibDeflate:CompressGzip(str, configs)
 	end
 	local res, err = CompressDeflateInternal(str, nil, configs)
 	if res == nil then return res, err end
-	local t = time()
+	local t = os and os.time() or 0
 	local cf = 0
 	local crc = self:CRC32(str)
 	local len = string.len(str)
@@ -3621,45 +3613,15 @@ the entire preset dictionary.
 \--zlib  use zlib format instead of raw deflate.
 ]]
 
--- support ComputerCraft shell
-local arg = _G.arg
-local debug = debug
-if shell then
-	arg = {...}
-	arg[0] = "LibDeflate.lua"
-	debug = {getinfo = function()
-		return {source = "LibDeflate.lua", short_src = "LibDeflate.lua"}
-	end}
-end
-
 -- currently no plan to support stdin and stdout.
 -- Because Lua in Windows does not set stdout with binary mode.
 if io and os and debug and arg then
 	local io = io
 	local os = os
-	local exit = os.exit or error
-	local stderr = io.stderr and io.stderr.write or function(self, text) printError(text) end
+	local exit = os.exit
+	local stderr = io.stderr.write
 	local function openFile(path, mode)
-		if shell then
-			local file = fs.open(path, mode)
-			local retval = {close = file.close}
-			if string.find(mode, "r") then retval.read = function()
-				local _retval = ""
-				local b = file.read()
-				while b ~= nil do
-					_retval = _retval .. string.char(b)
-					b = file.read()
-				end
-				file.close()
-				return _retval
-			end end
-			if string.find(mode, "w") then retval.write = function(this, str)
-				if type(str) ~= "string" then error("bad argument #1 (expected string, got " .. type(str) .. ")", 2) end
-				for s in string.gmatch(str, ".") do file.write(string.byte(s)) end
-				file.close()
-			end end
-			return retval
-		else return io.open(path, mode) end
+		return io.open(path, mode)
 	end
 	local debug_info = debug.getinfo(1)
 	if debug_info.source == arg[0]
