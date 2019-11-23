@@ -6,7 +6,6 @@
 ## X-Website: https://wow.curseforge.com/projects/libdeflate
 ## X-Category: Library
 ## X-License: LGPLv3
-## LoadOnDemand: 1
 
 LibStub\LibStub.lua
 lib.xml

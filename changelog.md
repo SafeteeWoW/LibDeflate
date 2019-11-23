@@ -2,7 +2,8 @@
 
 * 2019/11/18
 * No functional change
-* Bump the World of Warcraft toc to 80205
+* Bump the World of Warcraft toc version to 80205
+* No longer "Load on Demand" in Warcraft toc, because this library does not consume much memory. This makes easier to load and test this library.
 * Change the license to LGPLv3 (Formerly GPLv3)
 
 
