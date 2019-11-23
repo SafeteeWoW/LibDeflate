@@ -2,7 +2,7 @@
 
 # A script for setting up environment for travis-ci testing.
 # Sets up Lua and Luarocks.
-# LUA must be "lua5.1", "lua5.2" or "luajit".
+# LUA must be "lua5.x" or "luajit".
 # luajit2.0 - master v2.0
 # luajit2.1 - master v2.1
 
@@ -104,6 +104,12 @@ else # -e $LUA_HOME_DIR
         elif [ "$LUA" == "lua5.3.3" ]; then
             curl --retry 10 --retry-delay 10 http://www.lua.org/ftp/lua-5.3.3.tar.gz | tar xz
             cd lua-5.3.3;
+        elif [ "$LUA" == "lua5.4.0-beta" ]; then
+            curl --retry 10 --retry-delay 10 https://www.lua.org/work/lua-5.4.0-beta.tar.gz | tar xz
+            cd lua-5.4.0-beta;
+        else
+            echo "Unknown Lua version"
+            exit 1
         fi
 
         # adjust numerical precision if requested with LUANUMBER=float
@@ -147,6 +153,8 @@ else # -e $LUA_HOME_DIR
         rm -rf lua-5.2.4;
     elif [ "$LUA" == "lua5.3.3" ]; then
         rm -rf lua-5.3.3;
+    elif [ "$LUA" == "lua5.4.0-beta" ]; then
+        rm -rf lua-5.4.0-beta;
     fi
 
     if [ "$LUAJIT" == "yes" ]; then
