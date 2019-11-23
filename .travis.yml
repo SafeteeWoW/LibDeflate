@@ -28,6 +28,7 @@ before_install:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get install -y libxml2-utils; fi
 
 script:
+  - lua -v
   - luacheck -g -u .
   - bash tests/dev_scripts/release.sh
   - cd docs && ldoc . && cd ..

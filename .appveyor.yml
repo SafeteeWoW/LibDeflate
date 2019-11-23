@@ -19,6 +19,7 @@ install:
 build: off
 
 test_script:
+- cmd: lua -v
 - cmd: lua examples\example.lua
 - cmd: lua tests\Test.lua --verbose --shuffle -o junit -n testresult.xml
 
