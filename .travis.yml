@@ -28,10 +28,10 @@ before_install:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get install -y libxml2-utils; fi
 
 script:
-  - lua -v
-  - luacheck -g -u .
-  - bash tests/dev_scripts/release.sh
-  - cd docs && ldoc . && cd ..
+  - if [[ "$LUA" != "lua5.4.0-beta" ]]; then lua -v; fi
+  - if [[ "$LUA" != "lua5.4.0-beta" ]]; then luacheck -g -u .; fi
+  - if [[ "$LUA" != "lua5.4.0-beta" ]]; then bash tests/dev_scripts/release.sh; fi
+  - if [[ "$LUA" != "lua5.4.0-beta" ]]; then cd docs && ldoc . && cd ..; fi
   - lua examples/example.lua
   - lua tests/Test.lua --verbose --shuffle
   # converage test makes it too slow. so only run once in luajit linux
