@@ -6,6 +6,10 @@
 # luajit2.0 - master v2.0
 # luajit2.1 - master v2.1
 
+# 5.4 tests is special. Because most packages in Luarocks are
+# not marked as Lua5.4 supported. So install Lua5.1 and luarocks
+# packages first, and then lua5.4
+
 set -eufo pipefail
 
 LUAJIT_VERSION="2.0.4"
@@ -105,8 +109,10 @@ else # -e $LUA_HOME_DIR
             curl --retry 10 --retry-delay 10 http://www.lua.org/ftp/lua-5.3.3.tar.gz | tar xz
             cd lua-5.3.3;
         elif [ "$LUA" == "lua5.4.0-beta" ]; then
+            curl --retry 10 --retry-delay 10 http://www.lua.org/ftp/lua-5.1.4.tar.gz | tar xz
             curl --retry 10 --retry-delay 10 https://www.lua.org/work/lua-5.4.0-beta.tar.gz | tar xz
-            cd lua-5.4.0-beta;
+            # Special. Install Lua 5.1 first for Luarocks package installtion
+            cd lua-5.1.4;
         else
             echo "Unknown Lua version"
             exit 1
@@ -142,6 +148,7 @@ else # -e $LUA_HOME_DIR
 
     fi # $LUAJIT == "yes"
 
+    cd $LUA_HOME_DIR
     # cleanup LUA build dir
     if [ "$LUAJIT" == "yes" ]; then
         rm -rf $LUAJIT_BASE;
@@ -154,7 +161,7 @@ else # -e $LUA_HOME_DIR
     elif [ "$LUA" == "lua5.3.3" ]; then
         rm -rf lua-5.3.3;
     elif [ "$LUA" == "lua5.4.0-beta" ]; then
-        rm -rf lua-5.4.0-beta;
+        rm -rf lua-5.1.4;
     fi
 
     if [ "$LUAJIT" == "yes" ]; then
@@ -197,6 +204,17 @@ else # -e $LUA_HOME_DIR
     luarocks install luacov-coveralls
     luarocks install cluacov
     luarocks install ldoc
+
+    if [ "$LUA" == "lua5.4.0-beta" ]; then
+        cd $LUA_HOME_DIR
+        cd lua-5.4.0-beta
+        perl -i -pe 's/-DLUA_COMPAT_(ALL|5_2)//' src/Makefile
+        echo ">> Compiling $LUA"
+        make $PLATFORM
+        make INSTALL_TOP="$LUA_HOME_DIR" install
+        hash -r
+        lua -v
+    fi
 fi # -e $LUA_HOME_DIR
 
 cd $TRAVIS_BUILD_DIR
