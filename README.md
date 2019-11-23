@@ -2,9 +2,9 @@
 [![Build status](https://ci.appveyor.com/api/projects/status/owdccv4jrc0g1s2x/branch/master?svg=true&passingText=Windows%20Build%20passing&failingText=Windows%20Build%20failing)](https://ci.appveyor.com/project/SafeteeWoW/libdeflate/branch/master)
 [![AppVeyor tests branch](https://img.shields.io/appveyor/tests/SafeteeWoW/LibDeflate/master.svg)](https://ci.appveyor.com/project/SafeteeWoW/libdeflate/branch/master)
 [![codecov.io](http://codecov.io/github/safeteeWoW/LibDeflate/branch/master/graphs/badge.svg)](http://codecov.io/github/safeteeWoW/LibDeflate)
-[![license](https://img.shields.io/github/license/SafeteeWoW/LibDeflate.svg)](LICENSE.txt)
-[![LuaRocks](https://img.shields.io/luarocks/v/SafeteeWoW/libdeflate.svg)](http://luarocks.org/modules/SafeteeWoW/libdeflate)
-[![GitHub issues](https://img.shields.io/github/issues/SafeteeWoW/LibDeflate.svg)](https://github.com/SafeteeWoW/LibDeflate/issues)
+[![license](https://img.shields.io/github/license/SafeteeWoW/LibDeflate)](LICENSE.txt)
+[![LuaRocks](https://img.shields.io/luarocks/v/SafeteeWoW/libdeflate)](http://luarocks.org/modules/SafeteeWoW/libdeflate)
+[![GitHub issues](https://img.shields.io/github/issues/SafeteeWoW/LibDeflate)](https://github.com/SafeteeWoW/LibDeflate/issues)
 
 # LibDeflate
 ## Pure Lua compressor and decompressor with high compression ratio using DEFLATE/zlib format.
