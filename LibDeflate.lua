@@ -18,6 +18,8 @@ https://tools.ietf.org/html/rfc1950 <br>
 
 This library requires Lua 5.1/5.2/5.3/5.4 interpreter or LuaJIT v2.0+. <br>
 This library does not have any dependencies. <br>
+Note at the time of this release, Lua 5.4 final is not released yet. <br>
+For Lua 5.4, This library is tested with its first beta version. <br>
 <br>
 This file "LibDeflate.lua" is the only source file of
 the library. <br>

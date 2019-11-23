@@ -33,10 +33,12 @@ goto the [zlib](https://github.com/madler/zlib) repository, or read
 [tests/zdeflate.c](https://github.com/SafeteeWoW/LibDeflate/blob/master/tests/zdeflate.c) in this repository.
 
 ## Supported Lua Versions
-LibDeflate supports and is fully tested under Lua 5.1/5.2/5.3, LuaJIT 2.0/2.1,
+LibDeflate supports and is fully tested under Lua 5.1/5.2/5.3/5.4, LuaJIT 2.0/2.1,
 for Linux, MaxOS and Windows. Click the Travis CI(Linux/MaxOS) and
 Appveyor(Windows) badge on the top of this README for the test results. Click
 the CodeCov badge to see the test coverage (should be 100%).
+Note at the time of this release, Lua 5.4 final is not released yet.
+For Lua 5.4, This library is tested with its first beta version.
 
 ## Documentation
 [Documentation](https://safeteewow.github.io/LibDeflate/source/LibDeflate.lua.html) is hosted on Github.
