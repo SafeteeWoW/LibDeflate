@@ -1,3 +1,9 @@
+/*
+This is a C program supports Deflate/Zlib compression and decompression.
+This code is modified from zpipe.c from the source code repository of 
+the Zlib project. This program is used to test the correctness of LibDeflate.
+*/
+
 /* zpipe.c: example of proper use of zlib's inflate() and deflate()
    Not copyrighted -- provided to the public domain
    Version 1.4  11 December 2005  Mark Adler */

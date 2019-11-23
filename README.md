@@ -9,7 +9,7 @@
 # LibDeflate
 ## Pure Lua compressor and decompressor with high compression ratio using DEFLATE/zlib format.
 
-Copyright (C) 2018 Haoqian He
+Copyright (C) 2018-2019 Haoqian He
 
 ## Introduction
 LibDeflate is pure Lua compressor and decompressor with high compression ratio,
@@ -187,12 +187,17 @@ assert(LibDeflate:DecodeForPrint(printable_compressed) == compress_deflate)
 ```
 See Full examples in [examples/example.lua](https://github.com/SafeteeWoW/LibDeflate/blob/master/examples/example.lua)
 
-## Credits
+## License
+LibDeflate is licensed under GNU Lesser General Public License Version 3 or later.
+
+## Credits and Disclaimer
+
+The following projects are used to the help to test the correctness
+of this program. The code of the main program (LibDeflate.lua) does not
+use their code directly, but uses their ideas and algorithms. Their original
+licenses shall be comply when used.
 
 1. [zlib](http://www.zlib.net), by Jean-loup Gailly (compression) and Mark Adler (decompression). Licensed under [zlib License](http://www.zlib.net/zlib_license.html).
 2. [puff](https://github.com/madler/zlib/tree/master/contrib/puff), by Mark Adler. Licensed under zlib License.
 3. [LibCompress](https://www.wowace.com/projects/libcompress), by jjsheets and Galmok of European Stormrage (Horde). Licensed under GPLv2.
 4. [WeakAuras2](https://github.com/WeakAuras/WeakAuras2). Licensed under GPLv2.
-
-## License
-LibDeflate is licensed under GNU General Public License Version 3 or later.

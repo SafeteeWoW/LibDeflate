@@ -1,12 +1,12 @@
 --[[--
-LibDeflate 1.0.0-release <br>
+LibDeflate 1.0.1-release <br>
 Pure Lua compressor and decompressor with high compression ratio using
 DEFLATE/zlib format.
 
 @file LibDeflate.lua
 @author Haoqian He (Github: SafeteeWoW; World of Warcraft: Safetyy-Illidan(US))
-@copyright LibDeflate <2018> Haoqian He
-@license GNU General Public License Version 3 or later
+@copyright LibDeflate <2018-2019> Haoqian He
+@license GNU LESSER GENERAL PUBLIC LICENSE Version 3 or later
 
 This library is implemented according to the following specifications. <br>
 Report a bug if LibDeflate is not fully compliant with those specs. <br>
@@ -16,7 +16,7 @@ https://tools.ietf.org/html/rfc1951 <br>
 2. RFC1951: ZLIB Compressed Data Format Specification version 3.3 <br>
 https://tools.ietf.org/html/rfc1950 <br>
 
-This library requires Lua 5.1/5.2/5.3 interpreter or LuaJIT v2.0+. <br>
+This library requires Lua 5.1/5.2/5.3/5.4 interpreter or LuaJIT v2.0+. <br>
 This library does not have any dependencies. <br>
 <br>
 This file "LibDeflate.lua" is the only source file of
@@ -27,19 +27,24 @@ https://github.com/safeteeWow/LibDeflate/issues
 
 --[[
 This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
+it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+GNU Lesser General Public License for more details.
 
-You should have received a copy of the GNU General Public License
+You should have received a copy of the GNU Lesser General Public License
 along with this program.  If not, see https://www.gnu.org/licenses/.
 
-Credits:
+Credits and Disclaimer:
+The following projects are used to the help to test the correctness
+of this program. The code of this program (LibDeflate.lua) does not
+use their code directly, but uses their ideas and algorithms. Their original
+licenses shall be comply when used.
+
 1. zlib, by Jean-loup Gailly (compression) and Mark Adler (decompression).
 	http://www.zlib.net/
 	Licensed under zlib License. http://www.zlib.net/zlib_license.html
@@ -73,23 +78,30 @@ do
 	-- Suffix can be alpha1, alpha2, beta1, beta2, rc1, rc2, etc.
 	-- NOTE: Two version numbers needs to modify.
 	-- 1. On the top of LibDeflate.lua
-	-- 2. HERE
-	local _VERSION = "1.0.0-release"
+	-- 2. _VERSION
+	-- 3. _MINOR
+
+	-- version to store the official version of LibDeflate
+	local _VERSION = "1.0.1-release"
+
+	-- When MAJOR is changed, I should name it as LibDeflate2
+	local _MAJOR = "LibDeflate"
+
+	-- Update this whenever a new version, for LibStub version registration.
+	local _MINOR = 2
 
 	local _COPYRIGHT =
 	"LibDeflate ".._VERSION
-	.." Copyright (C) 2018 Haoqian He."
-	.." License GPLv3+: GNU GPL version 3 or later"
+	.." Copyright (C) 2018-2019 Haoqian He."
+	.." License LGPLv3+: GNU Lesser General Public License version 3 or later"
 
 	-- Register in the World of Warcraft library "LibStub" if detected.
 	if LibStub then
-		local MAJOR, MINOR = "LibDeflate", -1
-		-- When MAJOR is changed, I should name it as LibDeflate2
-		local lib, minor = LibStub:GetLibrary(MAJOR, true)
-		if lib and minor and minor >= MINOR then -- No need to update.
+		local lib, minor = LibStub:GetLibrary(_MAJOR, true)
+		if lib and minor and minor >= _MINOR then -- No need to update.
 			return lib
 		else -- Update or first time register
-			LibDeflate = LibStub:NewLibrary(MAJOR, _VERSION)
+			LibDeflate = LibStub:NewLibrary(_MAJOR, _MINOR)
 			-- NOTE: It is important that new version has implemented
 			-- all exported APIs and tables in the old version,
 			-- so the old library is fully garbage collected,
@@ -100,6 +112,8 @@ do
 	end
 
 	LibDeflate._VERSION = _VERSION
+	LibDeflate._MAJOR = _MAJOR
+	LibDeflate._MINOR = _MINOR
 	LibDeflate._COPYRIGHT = _COPYRIGHT
 end
 

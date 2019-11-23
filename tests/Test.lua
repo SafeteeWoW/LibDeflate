@@ -1,3 +1,23 @@
+--[[
+Script to test the correctness of LibDeflate.
+Read tests/README.md to learn how to run the tests.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with this program.  If not, see https://www.gnu.org/licenses/.
+
+--]]
+
+
 -- Run this tests at the folder where LibDeflate.lua located, like this.
 -- lua tests/Test.lua
 -- Don't run two "tests/Test.lua" at the same time,
@@ -2965,6 +2985,8 @@ TestExported = {}
 			DecodeForWoWChatChannel = "function",
 			internals = "table",
 			_VERSION = "string",
+			_MAJOR = "string",
+			_MINOR = "number",
 			Adler32 = "function",
 			CreateDictionary = "function",
 			CompressZlibWithDict = "function",

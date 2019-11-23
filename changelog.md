@@ -1,3 +1,11 @@
+### v1.0.1-release
+
+* 2019/11/18
+* No functional change
+* Bump the World of Warcraft toc to 80205
+* Change the license to LGPLv3 (Formerly GPLv3)
+
+
 ### v1.0.0-release
 
 * 2018/7/30
