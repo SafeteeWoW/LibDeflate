@@ -28,7 +28,7 @@ before_install:
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get install -y libxml2-utils; fi
 
 script:
-  - if [[ "$LUA" != "lua5.4.0-beta" ]]; then lua -v; fi
+  - lua -v
   - if [[ "$LUA" != "lua5.4.0-beta" ]]; then luacheck -g -u .; fi
   - if [[ "$LUA" != "lua5.4.0-beta" ]]; then bash tests/dev_scripts/release.sh; fi
   - if [[ "$LUA" != "lua5.4.0-beta" ]]; then cd docs && ldoc . && cd ..; fi
