@@ -130,9 +130,11 @@ LibDeflate with compression level 1 compresses as fast as LibCompress, but alrea
 [LibDeflate.lua](https://github.com/SafeteeWoW/LibDeflate/blob/master/LibDeflate.lua) is the only file of LibDeflate. Copy the file
 to your LUA_PATH to install it.
 
-+ To download as a World of Warcraft library, goto [LibDeflate Curseforge Page](https://wow.curseforge.com/projects/libdeflate)
++ To download as a World of Warcraft library, goto [LibDeflate Curseforge Page](https://wow.curseforge.com/projects/libdeflate) or [LibDeflate WoWInterface Page](https://www.wowinterface.com/downloads/info25453-LibDeflate.html)
 
 + You can also install via Luarocks using the command "luarocks install libdeflate"
+
++ All packages files can also in downloaded in the [Github Release Page](https://github.com/SafeteeWoW/LibDeflate/releases)
 
 + To use after installation, ```require("LibDeflate")``` (case sensitive) in your Lua interpreter,
 or ```LibStub:GetLibrary("LibDeflate")``` (case sensitive) for World of Warcraft.
