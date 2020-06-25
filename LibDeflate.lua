@@ -1229,6 +1229,8 @@ local function GetBlockLZ77Result(level, string_table, hash_tables, block_start,
 		end
 	end
 
+	local dict_string_len_plus3 = dict_string_len + 3
+
 	hash = (string_table[block_start-offset] or 0)*256
 		+ (string_table[block_start+1-offset] or 0)
 
@@ -1259,6 +1261,7 @@ local function GetBlockLZ77Result(level, string_table, hash_tables, block_start,
 	-- because I think this is easier for me to maintain it.
 	while (index <= index_end) do
 		local string_table_index = index - offset
+		local offset_minus_three = offset - 3
 		prev_len = cur_len
 		prev_dist = cur_dist
 		cur_len = 0
@@ -1296,6 +1299,11 @@ local function GetBlockLZ77Result(level, string_table, hash_tables, block_start,
 				(config_use_lazy and prev_len >= config_good_prev_length)
 				and config_good_hash_chain or config_max_hash_chain
 
+			local max_len_minus_one = block_end - index
+			max_len_minus_one = (max_len_minus_one >= 257) and 257 or max_len_minus_one
+			max_len_minus_one = max_len_minus_one + string_table_index
+			local string_table_index_plus_three = string_table_index + 3
+
 			while chain_index >= 1 and depth > 0 do
 				local prev = cur_chain[chain_index]
 
@@ -1303,35 +1311,26 @@ local function GetBlockLZ77Result(level, string_table, hash_tables, block_start,
 					break
 				end
 				if prev < index then
-					local j = 3
+					local sj = string_table_index_plus_three
 
 					if prev >= -257 then
-						local prev_table_index = prev-offset
-						-- NOTE for author:
-						-- j < 258 and index + j <= block_end
-						-- This is the right condition
-						while (j < 258 and index + j <= block_end) do
-							if (string_table[prev_table_index+j]
-								== string_table[string_table_index+j]) then
-								j = j + 1
-							else
-								break
-							end
+						local pj = prev - offset_minus_three
+						while (sj <= max_len_minus_one
+								and string_table[pj]
+								== string_table[sj]) do
+							sj = sj + 1
+							pj = pj + 1
 						end
 					else
-						local prev_table_index = dict_string_len+prev
-						-- NOTE for author:
-						-- j < 258 and index + j <= block_end
-						-- This is the right condition
-						while (j < 258 and index + j <= block_end) do
-							if (dict_string_table[prev_table_index+j]
-								== string_table[string_table_index+j]) then
-								j = j + 1
-							else
-								break
-							end
+						local pj = dict_string_len_plus3 + prev
+						while (sj <= max_len_minus_one
+								and dict_string_table[pj]
+								== string_table[sj]) do
+							sj = sj + 1
+							pj = pj + 1
 						end
 					end
+					local j = sj - string_table_index
 					if j > cur_len then
 						cur_len = j
 						cur_dist = index - prev
