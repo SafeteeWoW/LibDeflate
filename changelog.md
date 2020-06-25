@@ -1,3 +1,8 @@
+### v1.0.2-release
+
+* Change the license to the zlib license (Formerly LGPLv3). This license is more permissive than LGPLv3.
+
+
 ### v1.0.1-release
 
 * 2019/11/18
