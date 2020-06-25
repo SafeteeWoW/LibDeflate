@@ -1,5 +1,5 @@
 --[[--
-LibDeflate 1.0.1-release <br>
+LibDeflate 1.0.2-release <br>
 Pure Lua compressor and decompressor with high compression ratio using
 DEFLATE/zlib format.
 
@@ -92,13 +92,17 @@ do
 	-- 3. _MINOR
 
 	-- version to store the official version of LibDeflate
-	local _VERSION = "1.0.1-release"
+	local _VERSION = "1.0.2-release"
 
 	-- When MAJOR is changed, I should name it as LibDeflate2
 	local _MAJOR = "LibDeflate"
 
 	-- Update this whenever a new version, for LibStub version registration.
-	local _MINOR = 2
+	-- 0 : v0.x
+	-- 1 : v1.0.0
+	-- 2 : v1.0.1
+	-- 3 : v1.0.2
+	local _MINOR = 3
 
 	local _COPYRIGHT =
 	"LibDeflate ".._VERSION
