@@ -94,8 +94,8 @@ More benchmarks can be viewed in the [documentation](https://safeteewow.github.i
 <tr>
 <td>compress time(ms)</td>
 <td>68</td>
-<td>118</td>
-<td>208</td>
+<td>116</td>
+<td>189</td>
 <td>111</td>
 <td>52</td>
 <td>50</td>
@@ -112,8 +112,8 @@ More benchmarks can be viewed in the [documentation](https://safeteewow.github.i
 <tr>
 <td>compress+decompress time(ms)</td>
 <td>116</td>
-<td>148</td>
-<td>235</td>
+<td>145</td>
+<td>216</td>
 <td>166</td>
 <td>78</td>
 <td>109</td>

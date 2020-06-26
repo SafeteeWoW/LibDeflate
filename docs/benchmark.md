@@ -53,8 +53,8 @@ compression. `Decompress` is used to decompress all compression results.
 <tr>
 <td>compress time(ms)</td>
 <td>68</td>
-<td>118</td>
-<td>208</td>
+<td>116</td>
+<td>189</td>
 <td>111</td>
 <td>52</td>
 <td>50</td>
@@ -71,8 +71,8 @@ compression. `Decompress` is used to decompress all compression results.
 <tr>
 <td>compress+decompress time(ms)</td>
 <td>116</td>
-<td>148</td>
-<td>235</td>
+<td>145</td>
+<td>216</td>
 <td>166</td>
 <td>78</td>
 <td>109</td>
@@ -118,9 +118,9 @@ compression. `Decompress` is used to decompress all compression results.
 </tr>
 <tr>
 <td>compress time(ms)</td>
-<td>59</td>
-<td>126</td>
-<td>523</td>
+<td>58</td>
+<td>120</td>
+<td>457</td>
 <td>119</td>
 <td>51</td>
 <td>64</td>
@@ -136,9 +136,9 @@ compression. `Decompress` is used to decompress all compression results.
 </tr>
 <tr>
 <td>compress+decompress time(ms)</td>
-<td>88</td>
-<td>152</td>
-<td>549</td>
+<td>87</td>
+<td>146</td>
+<td>483</td>
 <td>137</td>
 <td>70</td>
 <td>145</td>
