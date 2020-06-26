@@ -1,4 +1,4 @@
-﻿## Interface: 80205
+﻿## Interface: 80300
 ## Title: Lib: LibDeflate
 ## Notes: Compressor and decompressor with high compression ratio using DEFLATE/zlib format.
 ## Author: Haoqian He (WoW: Safetyy at Illidan-US (Horde))

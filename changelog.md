@@ -2,6 +2,7 @@
 
 * Change the license to the zlib license (Formerly LGPLv3). This license is more permissive than LGPLv3.
 * Increase compression speed by up to 25% on high compression level on non-JIT lua interpreter.
+* Bump the World of Warcraft toc version to 80300
 
 ### v1.0.1-release
 
