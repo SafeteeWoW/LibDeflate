@@ -12,9 +12,6 @@
 
 set -eufo pipefail
 
-LUAJIT_VERSION="2.0.4"
-LUAJIT_BASE="LuaJIT-$LUAJIT_VERSION"
-
 source .travis/platform.sh
 
 LUA_HOME_DIR=$HOME/install/$LUA
@@ -24,19 +21,20 @@ mkdir $HOME/.lua
 
 LUAJIT="no"
 
-if [ "$PLATFORM" == "macosx" ]; then
-    if [ "$LUA" == "luajit" ]; then
-        LUAJIT="yes";
-    fi
-    if [ "$LUA" == "luajit2.0" ]; then
-        LUAJIT="yes";
-    fi
-    if [ "$LUA" == "luajit2.1" ]; then
-        LUAJIT="yes";
-    fi;
-elif [ "$(expr substr $LUA 1 6)" == "luajit" ]; then
+if [ "$LUA" == "luajit" ]; then
+    LUAJIT="yes";   
+    LUAJIT_VERSION="2.0.4"
+    LUAJIT_BASE="LuaJIT-$LUAJIT_VERSION"
+elif [ "$LUA" == "luajit2.0" ]; then
     LUAJIT="yes";
-fi
+    LUAJIT_VERSION="2.0.4"
+    LUAJIT_BASE="LuaJIT-$LUAJIT_VERSION"
+elif [ "$LUA" == "luajit2.1" ]; then
+    LUAJIT="yes";
+    LUAJIT_VERSION="2.1.0-beta3"
+    LUAJIT_BASE="LuaJIT-$LUAJIT_VERSION"
+fi;
+
 
 if [ -e $LUA_HOME_DIR ]
 then
@@ -75,23 +73,17 @@ else # -e $LUA_HOME_DIR
 
     if [ "$LUAJIT" == "yes" ]; then
 
-        echo ">> Downloading LuaJIT"
-        if [ "$LUA" == "luajit" ]; then
-            curl --retry 10 --retry-delay 10 --location https://github.com/LuaJIT/LuaJIT/archive/v$LUAJIT_VERSION.tar.gz | tar xz;
-        else
-            git clone https://github.com/LuaJIT/LuaJIT.git $LUAJIT_BASE;
-        fi
+        echo ">> Downloading LuaJIT-$LUAJIT_VERSION"
+        curl --retry 10 --retry-delay 10 --location https://github.com/LuaJIT/LuaJIT/archive/v$LUAJIT_VERSION.tar.gz | tar xz;
 
         cd $LUAJIT_BASE
 
-        if [ "$LUA" == "luajit2.1" ]; then
-            git checkout v2.1;
-            # force the INSTALL_TNAME to be luajit
-            perl -i -pe 's/INSTALL_TNAME=.+/INSTALL_TNAME= luajit/' Makefile
-        fi
-
         echo ">> Compiling LuaJIT"
         make && make install PREFIX="$LUA_HOME_DIR"
+
+        if [[ ! -e "${LUA_HOME_DIR}/bin/luajit" ]]; then
+            ln -sf "${LUA_HOME_DIR}/bin/luajit-${LUAJIT_VERSION}" "${LUA_HOME_DIR}/bin/luajit"
+        fi
 
     else # $LUAJIT == "yes"
 
