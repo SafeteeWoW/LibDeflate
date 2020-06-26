@@ -10,7 +10,7 @@ env:
     - LUAROCKS=2.2.2
   matrix:
     - LUA=lua5.1.4  LUANUMBER=double
-    - LUA=lua5.4.0-beta LUANUMBER=double
+    - LUA=lua5.4.0-rc6 LUANUMBER=double
     - LUA=luajit     # latest stable version (2.0.x)
     - LUA=lua5.2.4  LUANUMBER=double
     - LUA=lua5.3.3  LUANUMBER=double
@@ -29,9 +29,9 @@ before_install:
 
 script:
   - lua -v
-  - if [[ "$LUA" != "lua5.4.0-beta" ]]; then luacheck -g -u .; fi
-  - if [[ "$LUA" != "lua5.4.0-beta" ]]; then bash tests/dev_scripts/release.sh; fi
-  - if [[ "$LUA" != "lua5.4.0-beta" ]]; then cd docs && ldoc . && cd ..; fi
+  - if [[ "$LUA" != "lua5.4.0-rc6" ]]; then luacheck -g -u .; fi
+  - if [[ "$LUA" != "lua5.4.0-rc6" ]]; then bash tests/dev_scripts/release.sh; fi
+  - if [[ "$LUA" != "lua5.4.0-rc6" ]]; then cd docs && ldoc . && cd ..; fi
   - lua examples/example.lua
   - lua tests/Test.lua --verbose --shuffle
   # converage test makes it too slow. so only run once in luajit linux
