@@ -48,12 +48,17 @@ freely, subject to the following restrictions:
    misrepresented as being the original software.
 3. This notice may not be removed or altered from any source distribution.
 
+License History:
+1. GNU General Public License Version 3 in v1.0.0 and earlier versions.
+2. GNU Lesser General Public License Version 3 in v1.0.1
+3. the zlib License since v1.0.2
 
 Credits and Disclaimer:
-The following projects are used to the help to test the correctness
-of this program. The code of this program (LibDeflate.lua) does not
-use their code directly, but uses their ideas and algorithms. Their original
-licenses shall be comply when used.
+This library rewrites the code from the algorithm
+and the ideas of the following projects,
+and uses their code to help to test the correctness of this library,
+but their code is not included directly in the library itself.
+Their original licenses shall be comply when used.
 
 1. zlib, by Jean-loup Gailly (compression) and Mark Adler (decompression).
 	http://www.zlib.net/
@@ -2852,12 +2857,9 @@ do
 		, _fix_block_dist_huffman_bitlen, 31, 5)
 end
 
--- Encoding algorithms
 -- Prefix encoding algorithm
--- implemented by Galmok of European Stormrage (Horde), galmok@gmail.com
--- From LibCompress <https://www.wowace.com/projects/libcompress>,
--- which is licensed under GPLv2
--- The code has been modified by the author of LibDeflate.
+-- Credits to LibCompress.
+-- The code has been rewritten by the author of LibDeflate.
 ------------------------------------------------------------------------------
 
 -- to be able to match any requested byte value, the search
@@ -2883,6 +2885,7 @@ end
 -- localization into account. One byte (0-255) in the string is exactly one
 -- character (0-255).
 -- Credits to LibCompress.
+-- The code has been rewritten by the author of LibDeflate. <br>
 -- @param reserved_chars [string] The created encoder will ensure encoded
 -- data does not contain any single character in reserved_chars. This parameter
 -- should be non-empty.
@@ -2917,7 +2920,6 @@ end
 -- -- assert(decoded == SOME_STRING)
 function LibDeflate:CreateCodec(reserved_chars, escape_chars
 	, map_chars)
-	-- select a default escape character
 	if type(reserved_chars) ~= "string"
 		or type(escape_chars) ~= "string"
 		or type(map_chars) ~= "string" then
@@ -2943,7 +2945,7 @@ function LibDeflate:CreateCodec(reserved_chars, escape_chars
 	local taken = {}
 	for i = 1, #encode_bytes do
 		local byte = string_byte(encode_bytes, i, i)
-		if taken[byte] then -- Modified by LibDeflate:
+		if taken[byte] then
 			return nil, "There must be no duplicate characters in the"
 				.." concatenation of reserved_chars, escape_chars and"
 				.." map_chars."
@@ -2951,9 +2953,6 @@ function LibDeflate:CreateCodec(reserved_chars, escape_chars
 		taken[byte] = true
 	end
 
-	-- Modified by LibDeflate:
-	-- Store the patterns and replacement in tables for later use.
-	-- This function is modified that loadstring() lua api is no longer used.
 	local decode_patterns = {}
 	local decode_repls = {}
 
@@ -2990,10 +2989,7 @@ function LibDeflate:CreateCodec(reserved_chars, escape_chars
 	for i = 1, #encode_bytes do
 		local c = string_sub(encode_bytes, i, i)
 		if not encode_translate[c] then
-			-- this loop will update escapeChar and r
 			while r >= 256 or taken[r] do
-			-- Bug in LibCompress r81
-			-- while r < 256 and taken[r] do
 				r = r + 1
 				if r > 255 then -- switch to next escapeChar
 					decode_patterns[#decode_patterns+1] =
@@ -3009,10 +3005,6 @@ function LibDeflate:CreateCodec(reserved_chars, escape_chars
 					decode_search = {}
 					decode_translate = {}
 
-					-- Fixes Another bug in LibCompress r82.
-					-- LibCompress checks this error condition
-					-- right after "if r > 255 then"
-					-- This is why error case should also be tested.
 					if not escape_char or escape_char == "" then
 						-- actually I don't need to check
 						-- "not ecape_char", but what if Lua changes
@@ -3112,10 +3104,8 @@ function LibDeflate:DecodeForWoWAddonChannel(str)
 end
 
 -- For World of Warcraft Chat Channel Encoding
--- implemented by Galmok of European Stormrage (Horde), galmok@gmail.com
--- From LibCompress <https://www.wowace.com/projects/libcompress>,
--- which is licensed under GPLv2
--- The code has been modified by the author of LibDeflate.
+-- Credits to LibCompress.
+-- The code has been rewritten by the author of LibDeflate. <br>
 -- Following byte values are not allowed:
 -- \000, s, S, \010, \013, \124, %
 -- Because SendChatMessage will error
@@ -3180,8 +3170,8 @@ function LibDeflate:DecodeForWoWChatChannel(str)
 	return _chat_channel_codec:Decode(str)
 end
 
--- Credits to WeakAuras <https://github.com/WeakAuras/WeakAuras2>,
--- and Galmok (galmok@gmail.com) for the 6 bit encoding algorithm.
+-- Credits to WeakAuras2 and Galmok for the 6 bit encoding algorithm.
+-- The code has been rewritten by the author of LibDeflate.
 -- The result of encoding will be 25% larger than the
 -- origin string, but every single byte of the encoding result will be
 -- printable characters as the following.
@@ -3209,8 +3199,9 @@ local _6bit_to_byte = {
 
 --- Encode the string to make it printable. <br>
 --
--- Credis to WeakAuras2, this function is equivalant to the implementation
+-- Credit to WeakAuras2, this function is equivalant to the implementation
 -- it is using right now. <br>
+-- The code has been rewritten by the author of LibDeflate. <br> 
 -- The encoded string will be 25% larger than the origin string. However, every
 -- single byte of the encoded string will be one of 64 printable ASCII
 -- characters, which are can be easier copied, pasted and displayed.

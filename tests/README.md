@@ -1,3 +1,9 @@
+# Licenses for files under this directory
+
+This folder contains some third party code and data.
+The license used by LibDeflate does not apply to the 3rdparty code or data.
+Their original licenses shall be complied when used.
+
 # Test Instructions for Windows
 
 This library is developed on Windows, so this instruction assumes your OS is

@@ -192,14 +192,17 @@ assert(LibDeflate:DecodeForPrint(printable_compressed) == compress_deflate)
 See Full examples in [examples/example.lua](https://github.com/SafeteeWoW/LibDeflate/blob/master/examples/example.lua)
 
 ## License
-LibDeflate is licensed under the zlib license. See LICENSE.txt
+
+LibDeflate is licensed under the zlib license. See LICENSE.txt.
+The "tests" folder in the repository contains some third party code and data.
+Their original licenses shall be complied when used.
 
 ## Credits and Disclaimer
 
-The following projects are used to the help to test the correctness
-of this program. The code of the main program (LibDeflate.lua) does not
-use their code directly, but uses their ideas and algorithms. Their original
-licenses shall be comply when used.
+This library rewrites the code from the algorithm and the ideas of the following projects,
+and uses their code to help to test the correctness of this library,
+but their code is not included directly in the library itself.
+Their original licenses shall be complied when used.
 
 1. [zlib](http://www.zlib.net), by Jean-loup Gailly (compression) and Mark Adler (decompression). Licensed under [zlib License](http://www.zlib.net/zlib_license.html).
 2. [puff](https://github.com/madler/zlib/tree/master/contrib/puff), by Mark Adler. Licensed under zlib License.
