@@ -3201,7 +3201,7 @@ local _6bit_to_byte = {
 --
 -- Credit to WeakAuras2, this function is equivalant to the implementation
 -- it is using right now. <br>
--- The code has been rewritten by the author of LibDeflate. <br> 
+-- The code has been rewritten by the author of LibDeflate. <br>
 -- The encoded string will be 25% larger than the origin string. However, every
 -- single byte of the encoded string will be one of 64 printable ASCII
 -- characters, which are can be easier copied, pasted and displayed.
