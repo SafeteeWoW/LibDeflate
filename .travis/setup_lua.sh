@@ -100,9 +100,9 @@ else # -e $LUA_HOME_DIR
         elif [ "$LUA" == "lua5.3.3" ]; then
             curl --retry 10 --retry-delay 10 http://www.lua.org/ftp/lua-5.3.3.tar.gz | tar xz
             cd lua-5.3.3;
-        elif [ "$LUA" == "lua5.4.0-rc6" ]; then
+        elif [ "$LUA" == "lua5.4.0" ]; then
             curl --retry 10 --retry-delay 10 http://www.lua.org/ftp/lua-5.1.4.tar.gz | tar xz
-            curl --retry 10 --retry-delay 10 https://www.lua.org/work/lua-5.4.0-rc6.tar.gz | tar xz
+            curl --retry 10 --retry-delay 10 http://www.lua.org/ftp/lua-5.4.0.tar.gz | tar xz
             # Special. Install Lua 5.1 first for Luarocks package installtion
             cd lua-5.1.4;
         else
@@ -152,7 +152,7 @@ else # -e $LUA_HOME_DIR
         rm -rf lua-5.2.4;
     elif [ "$LUA" == "lua5.3.3" ]; then
         rm -rf lua-5.3.3;
-    elif [ "$LUA" == "lua5.4.0-rc6" ]; then
+    elif [ "$LUA" == "lua5.4.0" ]; then
         rm -rf lua-5.1.4;
     fi
 
@@ -197,7 +197,7 @@ else # -e $LUA_HOME_DIR
     luarocks install cluacov
     luarocks install ldoc
 
-    if [ "$LUA" == "lua5.4.0-rc6" ]; then
+    if [ "$LUA" == "lua5.4.0" ]; then
         cd $LUA_HOME_DIR
         cd lua-5.4.0
         perl -i -pe 's/-DLUA_COMPAT_(ALL|5_2)//' src/Makefile
