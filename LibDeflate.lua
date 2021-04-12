@@ -1738,12 +1738,16 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 
 	local level
 	local strategy
+  local async
 	if configs then
 		if configs.level then
 			level = configs.level
 		end
 		if configs.strategy then
 			strategy = configs.strategy
+		end
+		if configs.async then
+			async = configs.async
 		end
 	end
 
@@ -1767,7 +1771,7 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 			block_end = block_end + 32*1024
       offset = block_start - 32*1024 - 1
       
-      if configs.async then
+      if async then
         coroutine.yield()
       end
 		end
@@ -2013,6 +2017,7 @@ end
 -- @see compression_configs
 -- @see LibDeflate:DecompressDeflate
 function LibDeflate:CompressDeflate(str, configs)
+
 	local arg_valid, arg_err = IsValidArguments(str, false, nil, true, configs)
 	if not arg_valid then
 		error(("Usage: LibDeflate:CompressDeflate(str, configs): "
@@ -2644,6 +2649,7 @@ end
 -- @see LibDeflate:DecompressDeflate(str)
 -- @see LibDeflate:DecompressDeflateWithDict(str, dictionary)
 local function DecompressDeflateInternal(str, dictionary, configs)
+  configs = configs or {}
 	local state = CreateDecompressState(str, dictionary)
 	local result, status = Inflate(state, configs.async)
 	if not result then
