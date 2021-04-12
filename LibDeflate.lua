@@ -105,7 +105,7 @@ do
 	-- 1 : v1.0.0
 	-- 2 : v1.0.1
 	-- 3 : v1.0.2
-	local _MINOR = 3
+	local _MINOR = 4
 
 	local _COPYRIGHT =
 	"LibDeflate ".._VERSION
@@ -637,7 +637,7 @@ local function IsValidArguments(str,
 		end
 		if type_configs == "table" then
 			for k, v in pairs(configs) do
-				if k ~= "level" and k ~= "strategy" then
+        if k ~= "level" and k ~= "strategy" and k ~= "async" then
 					return false,
 					("'configs' - unsupported table key in the configs: '%s'.")
 					:format(k)
@@ -1734,7 +1734,7 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 	local bitlen_written
 	local total_bitlen = FlushWriter(_FLUSH_MODE_NO_FLUSH)
 	local strlen = #str
-	local offset
+  local offset
 
 	local level
 	local strategy
@@ -1765,7 +1765,11 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 		else
 			block_start = block_end + 1
 			block_end = block_end + 32*1024
-			offset = block_start - 32*1024 - 1
+      offset = block_start - 32*1024 - 1
+      
+      if configs.async then
+        coroutine.yield()
+      end
 		end
 
 		if block_end >= strlen then
@@ -2605,7 +2609,7 @@ end
 -- Decompress a deflate stream
 -- @param state: a decompression state
 -- @return the decompressed string if succeeds. nil if fails.
-local function Inflate(state)
+local function Inflate(state, async)
 	local ReadBits = state.ReadBits
 
 	local is_last_block
@@ -2624,7 +2628,11 @@ local function Inflate(state)
 		end
 		if status ~= 0 then
 			return nil, status
-		end
+    end
+    
+    if async then
+      coroutine.yield()
+    end
 	end
 
 	state.result_buffer[#state.result_buffer+1] =
@@ -2635,9 +2643,9 @@ end
 
 -- @see LibDeflate:DecompressDeflate(str)
 -- @see LibDeflate:DecompressDeflateWithDict(str, dictionary)
-local function DecompressDeflateInternal(str, dictionary)
+local function DecompressDeflateInternal(str, dictionary, configs)
 	local state = CreateDecompressState(str, dictionary)
-	local result, status = Inflate(state)
+	local result, status = Inflate(state, configs.async)
 	if not result then
 		return nil, status
 	end
@@ -2732,13 +2740,14 @@ end
 -- If the decompression fails (The first return value of this function is nil),
 -- this return value is undefined.
 -- @see LibDeflate:CompressDeflate
-function LibDeflate:DecompressDeflate(str)
-	local arg_valid, arg_err = IsValidArguments(str)
+function LibDeflate:DecompressDeflate(str, configs)
+  if not configs then configs = {} end
+	local arg_valid, arg_err = IsValidArguments(str, false, nil, true, configs)
 	if not arg_valid then
-		error(("Usage: LibDeflate:DecompressDeflate(str): "
+		error(("Usage: LibDeflate:DecompressDeflate(str, configs): "
 			..arg_err), 2)
 	end
-	return DecompressDeflateInternal(str)
+	return DecompressDeflateInternal(str, nil, configs)
 end
 
 --- Decompress a raw deflate compressed data with a preset dictionary.

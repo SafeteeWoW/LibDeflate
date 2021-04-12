@@ -92,6 +92,39 @@ local decompress_deflate_with_level = LibDeflate:DecompressDeflate(
 	compress_deflate_with_level)
 assert(decompress_deflate_with_level == example_input)
 
+-- Compress with async coroutine, within World of Warcraft
+local processing = CreateFrame('Frame')
+local thread = coroutine.create(LibDeflate.CompressDeflate)
+processing:SetScript('OnUpdate', function()
+  if coroutine.status(thread) ~= 'dead' then
+    -- Launch compress coroutine with async option.
+    local success_compress, compress_deflate_async = coroutine.resume(
+      thread, LibDeflate, example_input, {async=true, level=9})
+    if not success_compress then
+      processing:SetScript('OnUpdate', nil)
+      error("Compression fails")
+    elseif compress_deflate_async then
+      -- Compression succeeds; decompress with async coroutine
+      thread = coroutine.create(LibDeflate.DecompressDeflate)
+      processing:SetScript('OnUpdate', function()
+        if coroutine.status(thread) ~= 'dead' then
+          -- Launch decompress coroutine with async option.
+          local success_decompress, decompress_deflate_async = coroutine.resume(
+            thread, LibDeflate, compress_deflate_async, {async=true})
+          if not success_decompress then
+            processing:SetScript('OnUpdate', nil)
+            error("Decompression fails")
+          elseif decompress_deflate_async then
+            -- Decompression succeeds.
+            processing:SetScript('OnUpdate', nil)
+            assert(example_input == decompress_deflate_async)
+          end
+        end
+      end)
+    end    
+  end
+end)
+
 
 -- Compress with a preset dictionary
 local dict_str = "121231234" -- example preset dictionary string.
