@@ -139,7 +139,7 @@ or ```LibStub:GetLibrary("LibDeflate")``` (case sensitive) for World of Warcraft
 
 
 ## Usage
-```
+```lua
 local LibDeflate
 if LibStub then -- You are using LibDeflate as WoW addon
 	LibDeflate = LibStub:GetLibrary("LibDeflate")
@@ -163,6 +163,40 @@ else
 	-- Decompression succeeds.
 	assert(example_input == decompress_deflate)
 end
+
+-- Can also compress and decompress asynchronously
+local compress_resume, compress_complete = LibDeflate:CompressDeflate(example_input, {level=9, async=true})
+do until not compress_resume()
+local compress_async = compress_complete()
+
+local decompress_resume, decompress_complete = LibDeflate:DecompressDeflate(compress_deflate, {async=true})
+do until not decompress_resume()
+local decompress_async = decompress_complete()
+assert(decompress_async == example_input)
+
+-- In WoW, asynchronous processing can be handled on frame updates
+local processing = CreateFrame('Frame')
+local wow_compress_resume, wow_compress_complete = LibDeflate:CompressDeflate(example_input, {level=9, async=true})
+processing:SetScript('OnUpdate', function()
+  if not wow_compress_resume() then
+    local compressed = wow_compress_complete()
+    processing:SetScript('OnUpdate', nil)
+  end
+end)
+
+local wow_decompress_resume, wow_decompress_complete = LibDeflate:DecompressDeflate(example_input, {async=true})
+processing:SetScript('OnUpdate', function()
+  if not wow_decompress_resume() then
+    local decompressed = wow_decompress_complete()
+    processing:SetScript('OnUpdate', nil)
+  end
+end)
+
+-- Decompress asynchronously
+local decompress_resume, decompress_complete = LibDeflate:DecompressDeflate(compress_deflate, {async=true})
+do until not decompress_resume()
+local decompress_async = decompress_complete()
+assert(decompress_async == example_input)
 
 
 -- To transmit through WoW addon channel, data must be encoded so NULL ("\000")

@@ -147,6 +147,20 @@ local table_concat = table.concat
 local table_sort = table.sort
 local tostring = tostring
 local type = type
+local coroutine_create = coroutine.create
+local coroutine_status = coroutine.status
+local coroutine_resume = coroutine.resume
+
+local CreateFrame = CreateFrame
+local LibDeflateFrame
+local GetFrame = function()
+  LibDeflateFrame = LibDeflateFrame or CreateFrame('Frame')
+  return LibDeflateFrame
+end
+
+local isWoW = function()
+  return CreateFrame and true or false
+end
 
 -- Converts i to 2^i, (0<=i<=32)
 -- This is used to implement bit left shift and bit right shift.
@@ -1933,21 +1947,52 @@ end
 -- @field strategy The compression strategy. "fixed" to only use fixed deflate
 -- compression block. "dynamic" to only use dynamic block. "huffman_only" to
 -- do no LZ77 compression. Only do huffman compression.
+-- @field async If true, function will return resume and finish handlers
+-- to operate the coroutine.
 
 
 -- @see LibDeflate:CompressDeflate(str, configs)
 -- @see LibDeflate:CompressDeflateWithDict(str, dictionary, configs)
 local function CompressDeflateInternal(str, dictionary, configs)
+  local async = false
+  if configs and configs.async then
+    async = true
+  end
+  
 	local WriteBits, WriteString, FlushWriter = CreateWriter()
-	Deflate(configs, WriteBits, WriteString, FlushWriter, str, dictionary)
-	local total_bitlen, result = FlushWriter(_FLUSH_MODE_OUTPUT)
-	local padding_bitlen = (8-total_bitlen%8)%8
-	return result, padding_bitlen
+  if async then
+    local thread = coroutine_create(Deflate)
+    -- return coroutine handlers compressContinue, compressFinish
+    local function compressContinue()
+      local success = coroutine_resume(thread, configs, WriteBits, WriteString, FlushWriter, str, dictionary)
+      if not success then
+        return nil
+      end
+      return coroutine_status(thread) ~= 'dead'
+    end
+    local function compressFinish()
+      local total_bitlen, result = FlushWriter(_FLUSH_MODE_OUTPUT)
+      local padding_bitlen = (8-total_bitlen%8)%8
+      return result, padding_bitlen
+    end
+    return compressContinue, compressFinish
+  else
+    -- if synchronous mode
+    Deflate(configs, WriteBits, WriteString, FlushWriter, str, dictionary)
+    local total_bitlen, result = FlushWriter(_FLUSH_MODE_OUTPUT)
+    local padding_bitlen = (8-total_bitlen%8)%8
+    return result, padding_bitlen
+  end
 end
 
 -- @see LibDeflate:CompressZlib
 -- @see LibDeflate:CompressZlibWithDict
 local function CompressZlibInternal(str, dictionary, configs)
+  local async = false
+  if configs and configs.async then
+    async = true
+  end
+
 	local WriteBits, WriteString, FlushWriter = CreateWriter()
 
 	local CM = 8 -- Compression method
@@ -1980,27 +2025,65 @@ local function CompressZlibInternal(str, dictionary, configs)
 		WriteBits(byte0, 8)
 	end
 
-	Deflate(configs, WriteBits, WriteString, FlushWriter, str, dictionary)
-	FlushWriter(_FLUSH_MODE_BYTE_BOUNDARY)
+  if async then
+    local thread = coroutine_create(Deflate)
+    
+    local result, status
+    -- return coroutine handlers compressContinue, compressFinish
+    local function decompressContinue()
+      local co_success
+      co_success, result, status = coroutine_resume(thread, configs, WriteBits, WriteString, FlushWriter, str, dictionary)
+      if not co_success then
+        return nil
+      end
+      return coroutine_status(thread) ~= 'dead'
+    end
+    local function decompressFinish()
+      FlushWriter(_FLUSH_MODE_BYTE_BOUNDARY)
 
-	local adler32 = LibDeflate:Adler32(str)
+      local adler32 = LibDeflate:Adler32(str)
 
-	-- Most significant byte first
-	local byte3 = adler32%256
-	adler32 = (adler32 - byte3) / 256
-	local byte2 = adler32%256
-	adler32 = (adler32 - byte2) / 256
-	local byte1 = adler32%256
-	adler32 = (adler32 - byte1) / 256
-	local byte0 = adler32%256
+      -- Most significant byte first
+      local byte3 = adler32%256
+      adler32 = (adler32 - byte3) / 256
+      local byte2 = adler32%256
+      adler32 = (adler32 - byte2) / 256
+      local byte1 = adler32%256
+      adler32 = (adler32 - byte1) / 256
+      local byte0 = adler32%256
 
-	WriteBits(byte0, 8)
-	WriteBits(byte1, 8)
-	WriteBits(byte2, 8)
-	WriteBits(byte3, 8)
-	local total_bitlen, result = FlushWriter(_FLUSH_MODE_OUTPUT)
-	local padding_bitlen = (8-total_bitlen%8)%8
-	return result, padding_bitlen
+      WriteBits(byte0, 8)
+      WriteBits(byte1, 8)
+      WriteBits(byte2, 8)
+      WriteBits(byte3, 8)
+      local total_bitlen, result = FlushWriter(_FLUSH_MODE_OUTPUT)
+      local padding_bitlen = (8-total_bitlen%8)%8
+      return result, padding_bitlen
+    end
+    return decompressContinue, decompressFinish
+  else
+    Deflate(configs, WriteBits, WriteString, FlushWriter, str, dictionary)
+    FlushWriter(_FLUSH_MODE_BYTE_BOUNDARY)
+
+    local adler32 = LibDeflate:Adler32(str)
+
+    -- Most significant byte first
+    local byte3 = adler32%256
+    adler32 = (adler32 - byte3) / 256
+    local byte2 = adler32%256
+    adler32 = (adler32 - byte2) / 256
+    local byte1 = adler32%256
+    adler32 = (adler32 - byte1) / 256
+    local byte0 = adler32%256
+
+    WriteBits(byte0, 8)
+    WriteBits(byte1, 8)
+    WriteBits(byte2, 8)
+    WriteBits(byte3, 8)
+    local total_bitlen, result = FlushWriter(_FLUSH_MODE_OUTPUT)
+    local padding_bitlen = (8-total_bitlen%8)%8
+    return result, padding_bitlen
+  end
 end
 
 --- Compress using the raw deflate format.
@@ -2017,7 +2100,6 @@ end
 -- @see compression_configs
 -- @see LibDeflate:DecompressDeflate
 function LibDeflate:CompressDeflate(str, configs)
-
 	local arg_valid, arg_err = IsValidArguments(str, false, nil, true, configs)
 	if not arg_valid then
 		error(("Usage: LibDeflate:CompressDeflate(str, configs): "
@@ -2025,6 +2107,7 @@ function LibDeflate:CompressDeflate(str, configs)
 	end
 	return CompressDeflateInternal(str, nil, configs)
 end
+
 
 --- Compress using the raw deflate format with a preset dictionary.
 -- @param str [string] The data to be compressed.
@@ -2053,6 +2136,7 @@ function LibDeflate:CompressDeflateWithDict(str, dictionary, configs)
 	return CompressDeflateInternal(str, dictionary, configs)
 end
 
+
 --- Compress using the zlib format.
 -- @param str [string] the data to be compressed.
 -- @param configs [table/nil] The configuration table to control the compression
@@ -2071,6 +2155,7 @@ function LibDeflate:CompressZlib(str, configs)
 	end
 	return CompressZlibInternal(str, nil, configs)
 end
+
 
 --- Compress using the zlib format with a preset dictionary.
 -- @param str [string] the data to be compressed.
@@ -2094,6 +2179,17 @@ function LibDeflate:CompressZlibWithDict(str, dictionary, configs)
 			..arg_err), 2)
 	end
 	return CompressZlibInternal(str, dictionary, configs)
+end
+
+function LibDeflate:CompressZlibWithDictAsync(str, dictionary, configs, callback)
+	local arg_valid, arg_err = IsValidArguments(str, true, dictionary
+		, true, configs)
+	if not arg_valid then
+		error(("Usage: LibDeflate:CompressZlibWithDictAsync"
+			.."(str, dictionary, configs, callback): "
+			..arg_err), 2)
+	end
+	return CompressZlibInternal(str, dictionary, configs, callback or true)
 end
 
 --[[ --------------------------------------------------------------------------
@@ -2646,24 +2742,67 @@ local function Inflate(state, async)
 	return result
 end
 
--- @see LibDeflate:DecompressDeflate(str)
--- @see LibDeflate:DecompressDeflateWithDict(str, dictionary)
-local function DecompressDeflateInternal(str, dictionary, configs)
-  configs = configs or {}
-	local state = CreateDecompressState(str, dictionary)
-	local result, status = Inflate(state, configs.async)
-	if not result then
-		return nil, status
-	end
 
-	local bitlen_left = state.ReaderBitlenLeft()
-	local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
-	return result, bytelen_left
+--- The description to decompression configuration table. <br>
+-- Any field can be nil to use its default. <br>
+-- Table with keys other than those below is an invalid table.
+-- @class table
+-- @name decompression_configs
+-- @field async If true, function will return resume and finish handlers
+-- to operate the coroutine.
+
+-- @see LibDeflate:DecompressDeflate(str, configs)
+-- @see LibDeflate:DecompressDeflateWithDict(str, dictionary, configs)
+local function DecompressDeflateInternal(str, dictionary, configs)
+  local async = false
+  if configs and configs.async then
+    async = true
+  end
+  
+	local state = CreateDecompressState(str, dictionary)
+  if async then
+    local thread = coroutine_create(Inflate)
+    local result, status
+    -- return coroutine handlers compressContinue, compressFinish
+    local function decompressContinue()
+      local co_success
+      co_success, result, status = coroutine_resume(thread, state, async)
+      if not co_success then
+        return nil
+      end
+      return coroutine_status(thread) ~= 'dead'
+    end
+    local function decompressFinish()
+      if not result then
+        return nil, status
+      end
+  
+      local bitlen_left = state.ReaderBitlenLeft()
+      local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
+      return result, bytelen_left
+    end
+    return decompressContinue, decompressFinish
+
+  else
+    local result, status = Inflate(state)
+    if not result then
+      return nil, status
+    end
+
+    local bitlen_left = state.ReaderBitlenLeft()
+    local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
+    return result, bytelen_left
+  end
 end
 
--- @see LibDeflate:DecompressZlib(str)
--- @see LibDeflate:DecompressZlibWithDict(str)
-local function DecompressZlibInternal(str, dictionary)
+-- @see LibDeflate:DecompressZlib(str, configs)
+-- @see LibDeflate:DecompressZlibWithDict(str, dictionary, configs)
+local function DecompressZlibInternal(str, dictionary, configs)
+  local async = false
+  if configs and configs.async then
+    async = true
+  end
+
 	local state = CreateDecompressState(str, dictionary)
 	local ReadBits = state.ReadBits
 
@@ -2707,30 +2846,55 @@ local function DecompressZlibInternal(str, dictionary)
 			return nil, -17 -- dictionary adler32 does not match
 		end
 	end
-	local result, status = Inflate(state)
-	if not result then
-		return nil, status
-	end
-	state.SkipToByteBoundary()
 
-	local adler_byte0 = ReadBits(8)
-	local adler_byte1 = ReadBits(8)
-	local adler_byte2 = ReadBits(8)
-	local adler_byte3 = ReadBits(8)
-	if state.ReaderBitlenLeft() < 0 then
-		return nil, 2 -- available inflate data did not terminate
-	end
+  if async then
+    local thread = coroutine_create(Inflate)
+    local result, status
+    -- return coroutine handlers compressContinue, compressFinish
+    local function decompressContinue()
+      local co_success
+      co_success, result, status = coroutine_resume(thread, state, async)
+      if not co_success then
+        return nil
+      end
+      return coroutine_status(thread) ~= 'dead'
+    end
+    local function decompressFinish()
+      if not result then
+        return nil, status
+      end
+  
+      local bitlen_left = state.ReaderBitlenLeft()
+      local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
+      return result, bytelen_left
+    end
+    return decompressContinue, decompressFinish
+  else
+    local result, status = Inflate(state)
+    if not result then
+      return nil, status
+    end
+    state.SkipToByteBoundary()
 
-	local adler32_expected = adler_byte0*16777216
-		+ adler_byte1*65536 + adler_byte2*256 + adler_byte3
-	local adler32_actual = LibDeflate:Adler32(result)
-	if not IsEqualAdler32(adler32_expected, adler32_actual) then
-		return nil, -15 -- Adler32 checksum does not match
-	end
+    local adler_byte0 = ReadBits(8)
+    local adler_byte1 = ReadBits(8)
+    local adler_byte2 = ReadBits(8)
+    local adler_byte3 = ReadBits(8)
+    if state.ReaderBitlenLeft() < 0 then
+      return nil, 2 -- available inflate data did not terminate
+    end
 
-	local bitlen_left = state.ReaderBitlenLeft()
-	local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
-	return result, bytelen_left
+    local adler32_expected = adler_byte0*16777216
+      + adler_byte1*65536 + adler_byte2*256 + adler_byte3
+    local adler32_actual = LibDeflate:Adler32(result)
+    if not IsEqualAdler32(adler32_expected, adler32_actual) then
+      return nil, -15 -- Adler32 checksum does not match
+    end
+
+    local bitlen_left = state.ReaderBitlenLeft()
+    local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
+    return result, bytelen_left
+  end	
 end
 
 --- Decompress a raw deflate compressed data.
@@ -2748,7 +2912,7 @@ end
 -- @see LibDeflate:CompressDeflate
 function LibDeflate:DecompressDeflate(str, configs)
   if not configs then configs = {} end
-	local arg_valid, arg_err = IsValidArguments(str, false, nil, true, configs)
+	local arg_valid, arg_err = IsValidArguments(str)
 	if not arg_valid then
 		error(("Usage: LibDeflate:DecompressDeflate(str, configs): "
 			..arg_err), 2)
@@ -2774,13 +2938,14 @@ end
 -- If the decompression fails (The first return value of this function is nil),
 -- this return value is undefined.
 -- @see LibDeflate:CompressDeflateWithDict
-function LibDeflate:DecompressDeflateWithDict(str, dictionary)
+function LibDeflate:DecompressDeflateWithDict(str, dictionary, configs)
+  if not configs then configs = {} end
 	local arg_valid, arg_err = IsValidArguments(str, true, dictionary)
 	if not arg_valid then
 		error(("Usage: LibDeflate:DecompressDeflateWithDict(str, dictionary): "
 			..arg_err), 2)
 	end
-	return DecompressDeflateInternal(str, dictionary)
+	return DecompressDeflateInternal(str, dictionary, configs)
 end
 
 --- Decompress a zlib compressed data.
@@ -2796,13 +2961,14 @@ end
 -- If the decompression fails (The first return value of this function is nil),
 -- this return value is undefined.
 -- @see LibDeflate:CompressZlib
-function LibDeflate:DecompressZlib(str)
+function LibDeflate:DecompressZlib(str, configs)
+  if not configs then configs = {} end
 	local arg_valid, arg_err = IsValidArguments(str)
 	if not arg_valid then
 		error(("Usage: LibDeflate:DecompressZlib(str): "
 			..arg_err), 2)
 	end
-	return DecompressZlibInternal(str)
+	return DecompressZlibInternal(str, nil, configs)
 end
 
 --- Decompress a zlib compressed data with a preset dictionary.
@@ -2823,13 +2989,14 @@ end
 -- If the decompression fails (The first return value of this function is nil),
 -- this return value is undefined.
 -- @see LibDeflate:CompressZlibWithDict
-function LibDeflate:DecompressZlibWithDict(str, dictionary)
+function LibDeflate:DecompressZlibWithDict(str, dictionary, configs)
+  if not configs then configs = {} end
 	local arg_valid, arg_err = IsValidArguments(str, true, dictionary)
 	if not arg_valid then
 		error(("Usage: LibDeflate:DecompressZlibWithDict(str, dictionary): "
 			..arg_err), 2)
 	end
-	return DecompressZlibInternal(str, dictionary)
+	return DecompressZlibInternal(str, dictionary, configs)
 end
 
 -- Calculate the huffman code of fixed block

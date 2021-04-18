@@ -347,6 +347,7 @@ local function MemCheckAndBenchmarkFunc(lib, func_name, ...)
 	local start_time
 	local elapsed_time
 	local ret
+  local configs = select(3, ...) or select(2, ...) or {}
 	FullMemoryCollect()
 	memory_before =  math.floor(collectgarbage("count")*1024)
 	FullMemoryCollect()
@@ -354,7 +355,13 @@ local function MemCheckAndBenchmarkFunc(lib, func_name, ...)
 	elapsed_time = -1
 	local repeat_count = 0
 	while elapsed_time < 0.015 do
-		ret = {lib[func_name](lib, ...)}
+    if configs.async then
+      local resume, finish = lib[func_name](lib, ...)
+      repeat until not resume()
+      ret = {finish()}
+    else
+      ret = {lib[func_name](lib, ...)}
+    end
 		elapsed_time = os.clock() - start_time
 		repeat_count = repeat_count + 1
 	end
@@ -406,7 +413,7 @@ local dictionary32768 = LibDeflate:CreateDictionary(dictionary32768_str
 
 local _CheckCompressAndDecompressCounter = 0
 local function CheckCompressAndDecompress(string_or_filename, is_file, levels
-	, strategy, output_prefix)
+	, strategy, output_prefix, async)
 
 	-- For 100% code coverage
 	if _CheckCompressAndDecompressCounter % 3 == 0 then
@@ -457,13 +464,13 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 
 		for i=1, #levels+1 do -- also test level == nil
 			local level = levels[i]
-			local configs = {level = level, strategy = strategy}
+			local configs = {level = level, strategy = strategy, async = async}
 
 			print(
-				(">>>>> %s: %s size: %d B Level: %s Strategy: %s")
+				(">>>>> %s: %s size: %d B Level: %s Strategy: %s Async: %s")
 				:format(is_file and "File" or "String",
 					string_or_filename:sub(1, 40),  origin:len()
-					,tostring(level), tostring(strategy)
+					,tostring(level), tostring(strategy), tostring(async)
 				))
 			local compress_to_run = {
 				{"CompressDeflate", origin, configs},
@@ -489,6 +496,7 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 					-- to see if it is still okay to decompress
 
 				else
+          configs.async = false
 					lu.assertEquals(compress_pad_bitlen, 0
 						, compress_func_name)
 				end
@@ -695,14 +703,14 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 	return 0
 end
 
-local function CheckCompressAndDecompressString(str, levels, strategy)
-	return CheckCompressAndDecompress(str, false, levels, strategy)
+local function CheckCompressAndDecompressString(str, levels, strategy, async)
+	return CheckCompressAndDecompress(str, false, levels, strategy, nil, async)
 end
 
 local function CheckCompressAndDecompressFile(inputFileName, levels, strategy
-	, output_prefix)
+	, output_prefix, async)
 	return CheckCompressAndDecompress(inputFileName, true, levels, strategy
-									  , output_prefix)
+									  , output_prefix, async)
 end
 
 local function CheckDecompressIncludingError(compress, decompress, is_zlib)
@@ -1185,6 +1193,18 @@ TestBasicStrings = {}
 		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
 
+	function TestBasicStrings:TestAllLiteralsAsync()
+		CheckCompressAndDecompressString("abcdefgh", "all", nil, true)
+	end
+
+  function TestBasicStrings:TestLongRepeatAsync()
+		local repeated = {}
+		for i=1, 100000 do
+			repeated[i] = "c"
+		end
+		CheckCompressAndDecompressString(table.concat(repeated), "all", nil, true)
+	end
+
 TestMyData = {}
 	function TestMyData:TestItemStrings()
 		CheckCompressAndDecompressFile("tests/data/itemStrings.txt", "all")
@@ -1198,6 +1218,10 @@ TestMyData = {}
 		CheckCompressAndDecompressFile("tests/data/reconnectData.txt", "all")
 	end
 
+	function TestMyData:TestSmallTestAsync()
+		CheckCompressAndDecompressFile("tests/data/smalltest.txt", "all", nil, nil, true)
+	end
+
 TestThirdPartySmall = {}
 	function TestThirdPartySmall:TestEmpty()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/empty", "all")
@@ -1209,6 +1233,10 @@ TestThirdPartySmall = {}
 
 	function TestThirdPartySmall:TestXYZZY()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/xyzzy", "all")
+	end
+
+	function TestThirdPartySmall:TestXYZZYAsync()
+		CheckCompressAndDecompressFile("tests/data/3rdparty/xyzzy", "all", nil, nil, true)
 	end
 
 TestThirdPartyMedium = {}
@@ -1272,6 +1300,16 @@ TestThirdPartyMedium = {}
 
 	function TestThirdPartyMedium:TestSum()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/sum", "all")
+	end
+
+	function TestThirdPartyMedium:TestRandomOrg10KBinAsync()
+		CheckCompressAndDecompressFile("tests/data/3rdparty/random_org_10k.bin"
+			, "all", nil, nil, true)
+	end
+
+	function TestThirdPartyMedium:TestBadData1SnappyAsync()
+		CheckCompressAndDecompressFile("tests/data/3rdparty/baddata1.snappy"
+			, "all", nil, nil, true)
 	end
 
 Test_64K = {}
@@ -1341,6 +1379,14 @@ Test_64K = {}
 			repeated[i] = "c"
 		end
 		CheckCompressAndDecompressString(table.concat(repeated), "all")
+	end
+  
+	function Test_64K:Test64KFileMinus1Async()
+		CheckCompressAndDecompressFile("tests/data/64kminus1.txt", "all", nil, nil, true)
+	end
+
+	function Test_64K:Test64KFilePlus3Async()
+		CheckCompressAndDecompressFile("tests/data/64kplus3.txt", "all", nil, nil, true)
 	end
 
 -- > 64K
@@ -1416,6 +1462,14 @@ TestThirdPartyBig = {}
 	function TestThirdPartyBig:TestKennedyXls()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/kennedy.xls"
 			, {0,1,2,3,4})
+	end	
+	function TestThirdPartyBig:TestGeoProtodataAsync()
+		CheckCompressAndDecompressFile("tests/data/3rdparty/geo.protodata"
+			, {0,1,2,3,4,5}, nil, nil, true)
+	end
+	function TestThirdPartyBig:Testptt5Async()
+		CheckCompressAndDecompressFile("tests/data/3rdparty/ptt5"
+			, {0,1,2,3,4}, nil, nil, true)
 	end
 
 TestWoWData = {}
@@ -1426,6 +1480,14 @@ TestWoWData = {}
 	function TestWoWData:TestTotalRp3Data()
 		CheckCompressAndDecompressFile("tests/data/totalrp3.txt"
 			, {0,1,2,3,4})
+	end
+	function TestWoWData:TestWarlockWeakAurasAsync()
+		CheckCompressAndDecompressFile("tests/data/warlockWeakAuras.txt"
+			, {0,1,2,3,4}, nil, nil, true)
+	end
+	function TestWoWData:TestTotalRp3DataAsync()
+		CheckCompressAndDecompressFile("tests/data/totalrp3.txt"
+			, {0,1,2,3,4}, nil, nil, true)
 	end
 
 TestDecompress = {}
@@ -2661,7 +2723,7 @@ TestErrors = {}
 	end
 	function TestErrors:TestDecompressDeflate()
 		TestInvalidCompressDecompressArgs(
-			"Usage: LibDeflate:DecompressDeflate(str): "
+			"Usage: LibDeflate:DecompressDeflate(str, configs): "
 			, function(str, _, _)
 				return LibDeflate:DecompressDeflate(str) end
 			, false, false)
@@ -2907,6 +2969,7 @@ TestCommandLine = {}
 			, {level = 1, strategy = "huffman_only"}
 			, {level = 5, strategy = "dynamic"}
 			, {level = 9, strategy = "fixed"}
+			, {level = 9, async = true}
 			, nil
 		}
 		for k, func_name in ipairs(funcs) do
@@ -2920,9 +2983,9 @@ TestCommandLine = {}
 						:format(func_name))
 				else
 					print(
-					("Testing TestCommandline: %s level: %s strategy: %s")
+					("Testing TestCommandline: %s level: %s strategy: %s async: %s")
 						:format(func_name, tostring(configs.level)
-						, tostring(configs.strategy)))
+						, tostring(configs.strategy), tostring(configs.async)))
 				end
 				local returned_status, stdout, stderr =
 					RunCommandline(args[k].." "..addition_arg
@@ -2933,7 +2996,17 @@ TestCommandLine = {}
 					:format(GetFileData("tests/test_commandline.tmp"):len()))
 				lu.assertEquals(returned_status, 0)
 				local result
-				if func_name:find("Dict") then
+        if configs.async and func_name:find("Dict") then
+          local resume, finish = LibDeflate[func_name](LibDeflate, 
+            GetFileData(inputs[k]), dictionary32768, configs)
+          repeat until not resume()
+          result = finish()   
+        elseif configs.async then
+          local resume, finish = LibDeflate[func_name](LibDeflate, 
+            GetFileData(inputs[k]), configs)
+          repeat until not resume()
+          result = finish()
+        elseif func_name:find("Dict") then
 					result = LibDeflate[func_name](LibDeflate, GetFileData(
 						inputs[k]), dictionary32768, configs)
 				else
@@ -3032,8 +3105,11 @@ CodeCoverage = {}
 	AddAllToCoverageTest(TestEncode)
 	AddAllToCoverageTest(TestErrors)
 	AddToCoverageTest(TestMyData, "TestSmallTest")
+	AddToCoverageTest(TestMyData, "TestSmallTestAsync")
 	AddToCoverageTest(TestThirdPartyBig, "Testptt5")
+	AddToCoverageTest(TestThirdPartyBig, "Testptt5Async")
 	AddToCoverageTest(TestThirdPartyBig, "TestGeoProtodata")
+	AddToCoverageTest(TestThirdPartyBig, "TestGeoProtodataAsync")
 	AddToCoverageTest(TestCompressStrategy, "TestIsFixedStrategyInEffect")
 	AddToCoverageTest(TestCompressStrategy, "TestIsDynamicStrategyInEffect")
 	AddToCoverageTest(TestCompressStrategy, "TestIsHuffmanOnlyStrategyInEffect")
