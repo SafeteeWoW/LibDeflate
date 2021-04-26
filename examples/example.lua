@@ -52,16 +52,26 @@ else
 	assert(example_input == decompress_deflate)
 end
 
--- Compress asynchronously
-local compress_resume, compress_complete = LibDeflate:CompressDeflate(example_input, {level=9, async=true})
-repeat until not compress_resume()
-local compress_async = compress_complete()
+-- Compress in Chunks Mode
+local compress_co = LibDeflate:CompressDeflate(example_input, {level=9, chunksMode=true})
+local ongoing, compressed_chunks = true
+repeat 
+  ongoing, compressed_chunks = compress_co()
+until not ongoing
 
--- Decompress asynchronously
-local decompress_resume, decompress_complete = LibDeflate:DecompressDeflate(compress_deflate, {async=true})
-repeat until not decompress_resume()
-local decompress_async = decompress_complete()
-assert(decompress_async == example_input)
+-- Decompress in Chunks Mode
+local decompress_co = LibDeflate:DecompressDeflate(compressed_chunks, {chunksMode=true})
+local ongoing, decompressed_chunks = true
+repeat 
+  ongoing, decompressed_chunks = decompress_co()
+until not ongoing
+if decompressed_chunks == nil then
+	error("Decompression fails.")
+else
+	-- Decompression succeeds.
+	assert(example_input == decompressed_chunks)
+end
+
 
 -- If it is to transmit through WoW addon channel,
 -- compressed data must be encoded so NULL ("\000") is not transmitted.
