@@ -354,11 +354,14 @@ local function MemCheckAndBenchmarkFunc(lib, func_name, ...)
 	start_time = os.clock()
 	elapsed_time = -1
 	local repeat_count = 0
+
 	while elapsed_time < 0.015 do
-    if configs.async then
-      local resume, finish = lib[func_name](lib, ...)
-      repeat until not resume()
-      ret = {finish()}
+    if configs.chunksMode then
+      local co_handler = lib[func_name](lib, ...)
+      repeat 
+        ret = {co_handler()}
+      until not ret[1]
+      table.remove(ret, 1)
     else
       ret = {lib[func_name](lib, ...)}
     end
@@ -370,7 +373,6 @@ local function MemCheckAndBenchmarkFunc(lib, func_name, ...)
 	memory_after = math.floor(collectgarbage("count")*1024)
 	local memory_used = memory_running - memory_before
 	local memory_leaked = memory_after - memory_before
-
 	return memory_leaked, memory_used
 		, elapsed_time*1000/repeat_count, unpack(ret)
 end
@@ -413,7 +415,7 @@ local dictionary32768 = LibDeflate:CreateDictionary(dictionary32768_str
 
 local _CheckCompressAndDecompressCounter = 0
 local function CheckCompressAndDecompress(string_or_filename, is_file, levels
-	, strategy, output_prefix, async)
+	, strategy, output_prefix, chunksMode)
 
 	-- For 100% code coverage
 	if _CheckCompressAndDecompressCounter % 3 == 0 then
@@ -464,13 +466,13 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 
 		for i=1, #levels+1 do -- also test level == nil
 			local level = levels[i]
-			local configs = {level = level, strategy = strategy, async = async}
+			local configs = {level = level, strategy = strategy, chunksMode = chunksMode}
 
 			print(
-				(">>>>> %s: %s size: %d B Level: %s Strategy: %s Async: %s")
+				(">>>>> %s: %s size: %d B Level: %s Strategy: %s chunksMode: %s")
 				:format(is_file and "File" or "String",
 					string_or_filename:sub(1, 40),  origin:len()
-					,tostring(level), tostring(strategy), tostring(async)
+					,tostring(level), tostring(strategy), tostring(chunksMode)
 				))
 			local compress_to_run = {
 				{"CompressDeflate", origin, configs},
@@ -494,9 +496,8 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 						, compress_func_name)
 					-- put random value in the padding bits,
 					-- to see if it is still okay to decompress
-
-				else
-          configs.async = false
+  
+          else
 					lu.assertEquals(compress_pad_bitlen, 0
 						, compress_func_name)
 				end
@@ -703,14 +704,14 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels
 	return 0
 end
 
-local function CheckCompressAndDecompressString(str, levels, strategy, async)
-	return CheckCompressAndDecompress(str, false, levels, strategy, nil, async)
+local function CheckCompressAndDecompressString(str, levels, strategy, chunksMode)
+	return CheckCompressAndDecompress(str, false, levels, strategy, nil, chunksMode)
 end
 
 local function CheckCompressAndDecompressFile(inputFileName, levels, strategy
-	, output_prefix, async)
+	, output_prefix, chunksMode)
 	return CheckCompressAndDecompress(inputFileName, true, levels, strategy
-									  , output_prefix, async)
+									  , output_prefix, chunksMode)
 end
 
 local function CheckDecompressIncludingError(compress, decompress, is_zlib)
@@ -1193,11 +1194,11 @@ TestBasicStrings = {}
 		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
 
-	function TestBasicStrings:TestAllLiteralsAsync()
+	function TestBasicStrings:TestAllLiteralsChunks()
 		CheckCompressAndDecompressString("abcdefgh", "all", nil, true)
 	end
 
-  function TestBasicStrings:TestLongRepeatAsync()
+  function TestBasicStrings:TestLongRepeatChunks()
 		local repeated = {}
 		for i=1, 100000 do
 			repeated[i] = "c"
@@ -1218,7 +1219,7 @@ TestMyData = {}
 		CheckCompressAndDecompressFile("tests/data/reconnectData.txt", "all")
 	end
 
-	function TestMyData:TestSmallTestAsync()
+	function TestMyData:TestSmallTestChunks()
 		CheckCompressAndDecompressFile("tests/data/smalltest.txt", "all", nil, nil, true)
 	end
 
@@ -1235,7 +1236,7 @@ TestThirdPartySmall = {}
 		CheckCompressAndDecompressFile("tests/data/3rdparty/xyzzy", "all")
 	end
 
-	function TestThirdPartySmall:TestXYZZYAsync()
+	function TestThirdPartySmall:TestXYZZYChunks()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/xyzzy", "all", nil, nil, true)
 	end
 
@@ -1302,12 +1303,12 @@ TestThirdPartyMedium = {}
 		CheckCompressAndDecompressFile("tests/data/3rdparty/sum", "all")
 	end
 
-	function TestThirdPartyMedium:TestRandomOrg10KBinAsync()
+	function TestThirdPartyMedium:TestRandomOrg10KBinChunks()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/random_org_10k.bin"
 			, "all", nil, nil, true)
 	end
 
-	function TestThirdPartyMedium:TestBadData1SnappyAsync()
+	function TestThirdPartyMedium:TestBadData1SnappyChunks()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/baddata1.snappy"
 			, "all", nil, nil, true)
 	end
@@ -1381,11 +1382,11 @@ Test_64K = {}
 		CheckCompressAndDecompressString(table.concat(repeated), "all")
 	end
   
-	function Test_64K:Test64KFileMinus1Async()
+	function Test_64K:Test64KFileMinus1Chunks()
 		CheckCompressAndDecompressFile("tests/data/64kminus1.txt", "all", nil, nil, true)
 	end
 
-	function Test_64K:Test64KFilePlus3Async()
+	function Test_64K:Test64KFilePlus3Chunks()
 		CheckCompressAndDecompressFile("tests/data/64kplus3.txt", "all", nil, nil, true)
 	end
 
@@ -1463,11 +1464,11 @@ TestThirdPartyBig = {}
 		CheckCompressAndDecompressFile("tests/data/3rdparty/kennedy.xls"
 			, {0,1,2,3,4})
 	end	
-	function TestThirdPartyBig:TestGeoProtodataAsync()
+	function TestThirdPartyBig:TestGeoProtodataChunks()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/geo.protodata"
 			, {0,1,2,3,4,5}, nil, nil, true)
 	end
-	function TestThirdPartyBig:Testptt5Async()
+	function TestThirdPartyBig:Testptt5Chunks()
 		CheckCompressAndDecompressFile("tests/data/3rdparty/ptt5"
 			, {0,1,2,3,4}, nil, nil, true)
 	end
@@ -1481,11 +1482,11 @@ TestWoWData = {}
 		CheckCompressAndDecompressFile("tests/data/totalrp3.txt"
 			, {0,1,2,3,4})
 	end
-	function TestWoWData:TestWarlockWeakAurasAsync()
+	function TestWoWData:TestWarlockWeakAurasChunks()
 		CheckCompressAndDecompressFile("tests/data/warlockWeakAuras.txt"
 			, {0,1,2,3,4}, nil, nil, true)
 	end
-	function TestWoWData:TestTotalRp3DataAsync()
+	function TestWoWData:TestTotalRp3DataChunks()
 		CheckCompressAndDecompressFile("tests/data/totalrp3.txt"
 			, {0,1,2,3,4}, nil, nil, true)
 	end
@@ -2969,7 +2970,7 @@ TestCommandLine = {}
 			, {level = 1, strategy = "huffman_only"}
 			, {level = 5, strategy = "dynamic"}
 			, {level = 9, strategy = "fixed"}
-			, {level = 9, async = true}
+			, {level = 9, chunksMode = true}
 			, nil
 		}
 		for k, func_name in ipairs(funcs) do
@@ -2983,9 +2984,9 @@ TestCommandLine = {}
 						:format(func_name))
 				else
 					print(
-					("Testing TestCommandline: %s level: %s strategy: %s async: %s")
+					("Testing TestCommandline: %s level: %s strategy: %s chunksMode: %s")
 						:format(func_name, tostring(configs.level)
-						, tostring(configs.strategy), tostring(configs.async)))
+						, tostring(configs.strategy), tostring(configs.chunksMode)))
 				end
 				local returned_status, stdout, stderr =
 					RunCommandline(args[k].." "..addition_arg
@@ -2996,16 +2997,20 @@ TestCommandLine = {}
 					:format(GetFileData("tests/test_commandline.tmp"):len()))
 				lu.assertEquals(returned_status, 0)
 				local result
-        if configs.async and func_name:find("Dict") then
-          local resume, finish = LibDeflate[func_name](LibDeflate, 
+        if configs.chunksMode and func_name:find("Dict") then
+          local co_handler = LibDeflate[func_name](LibDeflate, 
             GetFileData(inputs[k]), dictionary32768, configs)
-          repeat until not resume()
-          result = finish()   
-        elseif configs.async then
-          local resume, finish = LibDeflate[func_name](LibDeflate, 
+          local ongoing, result = true
+          repeat 
+            ongoing, result = co_handler()
+          until not ongoing
+        elseif configs.chunksMode then
+          local co_handler = LibDeflate[func_name](LibDeflate, 
             GetFileData(inputs[k]), configs)
-          repeat until not resume()
-          result = finish()
+            local ongoing, result = true
+            repeat 
+              ongoing, result = co_handler()
+            until not ongoing
         elseif func_name:find("Dict") then
 					result = LibDeflate[func_name](LibDeflate, GetFileData(
 						inputs[k]), dictionary32768, configs)
@@ -3105,11 +3110,11 @@ CodeCoverage = {}
 	AddAllToCoverageTest(TestEncode)
 	AddAllToCoverageTest(TestErrors)
 	AddToCoverageTest(TestMyData, "TestSmallTest")
-	AddToCoverageTest(TestMyData, "TestSmallTestAsync")
+	AddToCoverageTest(TestMyData, "TestSmallTestChunks")
 	AddToCoverageTest(TestThirdPartyBig, "Testptt5")
-	AddToCoverageTest(TestThirdPartyBig, "Testptt5Async")
+	AddToCoverageTest(TestThirdPartyBig, "Testptt5Chunks")
 	AddToCoverageTest(TestThirdPartyBig, "TestGeoProtodata")
-	AddToCoverageTest(TestThirdPartyBig, "TestGeoProtodataAsync")
+	AddToCoverageTest(TestThirdPartyBig, "TestGeoProtodataChunks")
 	AddToCoverageTest(TestCompressStrategy, "TestIsFixedStrategyInEffect")
 	AddToCoverageTest(TestCompressStrategy, "TestIsDynamicStrategyInEffect")
 	AddToCoverageTest(TestCompressStrategy, "TestIsHuffmanOnlyStrategyInEffect")

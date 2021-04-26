@@ -164,39 +164,45 @@ else
 	assert(example_input == decompress_deflate)
 end
 
--- Can also compress and decompress asynchronously
-local compress_resume, compress_complete = LibDeflate:CompressDeflate(example_input, {level=9, async=true})
-do until not compress_resume()
-local compress_async = compress_complete()
+-- Can also compress and decompress in chunks mode
+local compress_co = LibDeflate:CompressDeflate(example_input, {level=9, chunksMode=true})
+local ongoing, compressed_chunks = true
+repeat 
+  ongoing, compressed_chunks = compress_co()
+until not ongoing
 
-local decompress_resume, decompress_complete = LibDeflate:DecompressDeflate(compress_deflate, {async=true})
-do until not decompress_resume()
-local decompress_async = decompress_complete()
-assert(decompress_async == example_input)
+local decompress_co = LibDeflate:DecompressDeflate(compressed_chunks, {chunksMode=true})
+local ongoing, decompressed_chunks = true
+repeat 
+  ongoing, decompressed_chunks = decompress_co()
+until not ongoing
+if decompressed_chunks == nil then
+	error("Decompression fails.")
+else
+	-- Decompression succeeds.
+	assert(example_input == decompressed_chunks)
+end
 
--- In WoW, asynchronous processing can be handled on frame updates
+-- In WoW, coroutine processing can be handled on frame updates to reduce loss of framerate.
 local processing = CreateFrame('Frame')
-local wow_compress_resume, wow_compress_complete = LibDeflate:CompressDeflate(example_input, {level=9, async=true})
+local WoW_compress_co = LibDeflate:CompressDeflate(example_input, {level=9, chunksMode=true})
 processing:SetScript('OnUpdate', function()
-  if not wow_compress_resume() then
-    local compressed = wow_compress_complete()
+  local ongoing, WoW_compressed = WoW_compress_co()
+  if not ongoing then
+    -- do something with `WoW_compressed`
     processing:SetScript('OnUpdate', nil)
   end
 end)
 
-local wow_decompress_resume, wow_decompress_complete = LibDeflate:DecompressDeflate(example_input, {async=true})
+local WoW_decompress_co = LibDeflate:DecompressDeflate(compress_deflate, {chunksMode=true})
 processing:SetScript('OnUpdate', function()
-  if not wow_decompress_resume() then
-    local decompressed = wow_decompress_complete()
+  local ongoing, WoW_decompressed = WoW_decompress_co()
+  if not ongoing then
+    -- do something with `WoW_decompressed`
+	  assert(example_input == WoW_decompressed)
     processing:SetScript('OnUpdate', nil)
   end
 end)
-
--- Decompress asynchronously
-local decompress_resume, decompress_complete = LibDeflate:DecompressDeflate(compress_deflate, {async=true})
-do until not decompress_resume()
-local decompress_async = decompress_complete()
-assert(decompress_async == example_input)
 
 
 -- To transmit through WoW addon channel, data must be encoded so NULL ("\000")
