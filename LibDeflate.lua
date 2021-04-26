@@ -147,6 +147,11 @@ local table_concat = table.concat
 local table_sort = table.sort
 local tostring = tostring
 local type = type
+local coroutine_create = coroutine.create
+local coroutine_status = coroutine.status
+local coroutine_resume = coroutine.resume
+local coroutine_yield = coroutine.yield
+
 
 -- Converts i to 2^i, (0<=i<=32)
 -- This is used to implement bit left shift and bit right shift.
@@ -637,7 +642,9 @@ local function IsValidArguments(str,
 		end
 		if type_configs == "table" then
 			for k, v in pairs(configs) do
-				if k ~= "level" and k ~= "strategy" then
+		if k ~= "level" and k ~= "strategy"
+				and k ~= "chunksMode" and k ~= "yieldOnChunkSize"
+				and k ~= "yieldOnChunkTime" and k ~= "timeFn" then
 					return false,
 					("'configs' - unsupported table key in the configs: '%s'.")
 					:format(k)
@@ -1137,17 +1144,23 @@ end
 -- @param end str[index] will be the last character to be loaded
 -- @param offset str[index] will be loaded into t[index-offset]
 -- @return t
-local function LoadStringToTable(str, t, start, stop, offset)
+local function LoadStringToTable(str, t, start, stop, offset, chunks)
 	local i = start - offset
 	while i <= stop - 15 - offset do
 		t[i], t[i+1], t[i+2], t[i+3], t[i+4], t[i+5], t[i+6], t[i+7], t[i+8],
 		t[i+9], t[i+10], t[i+11], t[i+12], t[i+13], t[i+14], t[i+15] =
 			string_byte(str, i + offset, i + 15 + offset)
 		i = i + 16
+    if chunks then
+      chunks:doYield(stop - start)
+    end
 	end
 	while (i <= stop - offset) do
 		t[i] = string_byte(str, i + offset, i + offset)
 		i = i + 1
+    if chunks then
+      chunks:doYield(stop - start)
+    end
 	end
 	return t
 end
@@ -1738,12 +1751,37 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 
 	local level
 	local strategy
+	local chunks
 	if configs then
 		if configs.level then
 			level = configs.level
 		end
 		if configs.strategy then
 			strategy = configs.strategy
+		end
+		if configs.chunksMode then
+			chunks = {
+        currentSize = 0,
+        yieldOnChunkSize = configs.yieldOnChunkSize or 32 * 1024 * 1024,
+        currentTime = nil,
+        yieldOnChunkTime = configs.yieldOnChunkTime,
+        timeFn = configs.getTimeFn
+      }
+      function chunks:doYield(addSize)
+        if not self.currentTime and self.timeFn then
+          self.currentTime = self.timeFn()
+        end
+
+        self.currentSize = self.currentSize + addSize
+        if self.currentSize > self.yieldOnChunkSize
+          or (self.currentTime and self.timeFn() - self.currentTime > self.yieldOnChunkTime) then
+          self.currentSize = 0
+          if self.timeFn then
+            self.currentTime = self.timeFn()
+          end
+          coroutine_yield()
+        end
+      end
 		end
 	end
 
@@ -1791,7 +1829,7 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 
 			-- GetBlockLZ77 needs block_start to block_end+3 to be loaded.
 			LoadStringToTable(str, string_table, block_start, block_end + 3
-				, offset)
+				, offset, chunks)
 			if block_start == 1 and dictionary then
 				local dict_string_table = dictionary.string_table
 				local dict_strlen = dictionary.strlen
@@ -1804,7 +1842,7 @@ local function Deflate(configs, WriteBits, WriteString, FlushWriter, str
 			if strategy == "huffman_only" then
 				lcodes = {}
 				LoadStringToTable(str, lcodes, block_start, block_end
-					, block_start-1)
+					, block_start-1, nil, chunks)
 				lextra_bits = {}
 				lcodes_counts = {}
 				lcodes[block_end - block_start+2] = 256 -- end of block
@@ -1925,16 +1963,43 @@ end
 -- @field strategy The compression strategy. "fixed" to only use fixed deflate
 -- compression block. "dynamic" to only use dynamic block. "huffman_only" to
 -- do no LZ77 compression. Only do huffman compression.
-
+-- @field chunksMode If true, function will return a coroutine handler 
+-- to resume the coroutine. See the readme for an example.
+-- @field yieldOnChunkSize If chunksMode is true, how large should the buffer 
+-- be before yielding the coroutine. Defaults to 32 * 1024 * 1024.
+-- @field yieldOnChunkTime If chunksMode is true, maximum duration between 
+-- yields. Requires timeFn.
+-- @field timeFn If chunksMode is true, include a function to use to calculate
+-- the current time for your environment.
 
 -- @see LibDeflate:CompressDeflate(str, configs)
 -- @see LibDeflate:CompressDeflateWithDict(str, dictionary, configs)
 local function CompressDeflateInternal(str, dictionary, configs)
 	local WriteBits, WriteString, FlushWriter = CreateWriter()
-	Deflate(configs, WriteBits, WriteString, FlushWriter, str, dictionary)
-	local total_bitlen, result = FlushWriter(_FLUSH_MODE_OUTPUT)
-	local padding_bitlen = (8-total_bitlen%8)%8
-	return result, padding_bitlen
+
+	if configs and configs.chunksMode then
+		local thread = coroutine_create(Deflate)
+		-- return coroutine handler
+    return function()
+			local co_success = coroutine_resume(thread, configs, WriteBits, WriteString, FlushWriter, str, dictionary)
+			if not co_success then
+				return false
+      elseif coroutine_status(thread) ~= 'dead' then
+				return true
+      else
+		local total_bitlen, result = FlushWriter(_FLUSH_MODE_OUTPUT)
+		local padding_bitlen = (8-total_bitlen%8)%8
+				return false, result, padding_bitlen
+	end
+			end
+	else
+		-- if synchronous mode
+		Deflate(configs, WriteBits, WriteString, FlushWriter, str, dictionary)
+		
+		local total_bitlen, result = FlushWriter(_FLUSH_MODE_OUTPUT)
+		local padding_bitlen = (8-total_bitlen%8)%8
+		return result, padding_bitlen
+	end
 end
 
 -- @see LibDeflate:CompressZlib
@@ -1972,27 +2037,63 @@ local function CompressZlibInternal(str, dictionary, configs)
 		WriteBits(byte0, 8)
 	end
 
-	Deflate(configs, WriteBits, WriteString, FlushWriter, str, dictionary)
-	FlushWriter(_FLUSH_MODE_BYTE_BOUNDARY)
+	if configs and configs.chunksMode then
+		local thread = coroutine_create(Deflate)
+		
+		-- return coroutine handler
+		return function()
+			local co_success, result, status = coroutine_resume(thread, configs, WriteBits, WriteString, FlushWriter, str, dictionary)
+			if not co_success then
+				return false
+      elseif coroutine_status(thread) ~= 'dead' then
+				return true
+			else
+		FlushWriter(_FLUSH_MODE_BYTE_BOUNDARY)
 
-	local adler32 = LibDeflate:Adler32(str)
+		local adler32 = LibDeflate:Adler32(str)
 
-	-- Most significant byte first
-	local byte3 = adler32%256
-	adler32 = (adler32 - byte3) / 256
-	local byte2 = adler32%256
-	adler32 = (adler32 - byte2) / 256
-	local byte1 = adler32%256
-	adler32 = (adler32 - byte1) / 256
-	local byte0 = adler32%256
+		-- Most significant byte first
+		local byte3 = adler32%256
+		adler32 = (adler32 - byte3) / 256
+		local byte2 = adler32%256
+		adler32 = (adler32 - byte2) / 256
+		local byte1 = adler32%256
+		adler32 = (adler32 - byte1) / 256
+		local byte0 = adler32%256
 
-	WriteBits(byte0, 8)
-	WriteBits(byte1, 8)
-	WriteBits(byte2, 8)
-	WriteBits(byte3, 8)
-	local total_bitlen, result = FlushWriter(_FLUSH_MODE_OUTPUT)
-	local padding_bitlen = (8-total_bitlen%8)%8
-	return result, padding_bitlen
+		WriteBits(byte0, 8)
+		WriteBits(byte1, 8)
+		WriteBits(byte2, 8)
+		WriteBits(byte3, 8)
+		local total_bitlen, result = FlushWriter(_FLUSH_MODE_OUTPUT)
+		local padding_bitlen = (8-total_bitlen%8)%8
+				return false, result, padding_bitlen
+	end
+			end
+	else
+		Deflate(configs, WriteBits, WriteString, FlushWriter, str, dictionary)
+		
+		FlushWriter(_FLUSH_MODE_BYTE_BOUNDARY)
+
+		local adler32 = LibDeflate:Adler32(str)
+
+		-- Most significant byte first
+		local byte3 = adler32%256
+		adler32 = (adler32 - byte3) / 256
+		local byte2 = adler32%256
+		adler32 = (adler32 - byte2) / 256
+		local byte1 = adler32%256
+		adler32 = (adler32 - byte1) / 256
+		local byte0 = adler32%256
+
+		WriteBits(byte0, 8)
+		WriteBits(byte1, 8)
+		WriteBits(byte2, 8)
+		WriteBits(byte3, 8)
+		local total_bitlen, result = FlushWriter(_FLUSH_MODE_OUTPUT)
+		local padding_bitlen = (8-total_bitlen%8)%8
+		return result, padding_bitlen
+	end
 end
 
 --- Compress using the raw deflate format.
@@ -2016,6 +2117,7 @@ function LibDeflate:CompressDeflate(str, configs)
 	end
 	return CompressDeflateInternal(str, nil, configs)
 end
+
 
 --- Compress using the raw deflate format with a preset dictionary.
 -- @param str [string] The data to be compressed.
@@ -2044,6 +2146,7 @@ function LibDeflate:CompressDeflateWithDict(str, dictionary, configs)
 	return CompressDeflateInternal(str, dictionary, configs)
 end
 
+
 --- Compress using the zlib format.
 -- @param str [string] the data to be compressed.
 -- @param configs [table/nil] The configuration table to control the compression
@@ -2062,6 +2165,7 @@ function LibDeflate:CompressZlib(str, configs)
 	end
 	return CompressZlibInternal(str, nil, configs)
 end
+
 
 --- Compress using the zlib format with a preset dictionary.
 -- @param str [string] the data to be compressed.
@@ -2360,6 +2464,11 @@ local function DecodeUntilEndOfBlock(state, lcodes_huffman_bitlens
 	repeat
 		local symbol = Decode(lcodes_huffman_bitlens
 			, lcodes_huffman_symbols, lcodes_huffman_min_bitlen)
+			
+		if state.chunksMode then
+			state.chunksMode:doYield(symbol)
+		end
+			
 		if symbol < 0 or symbol > 285 then
 		-- invalid literal/length or distance code in fixed or dynamic block
 			return -10
@@ -2633,23 +2742,80 @@ local function Inflate(state)
 	return result
 end
 
--- @see LibDeflate:DecompressDeflate(str)
--- @see LibDeflate:DecompressDeflateWithDict(str, dictionary)
-local function DecompressDeflateInternal(str, dictionary)
+
+--- The description to decompression configuration table. <br>
+-- Any field can be nil to use its default. <br>
+-- Table with keys other than those below is an invalid table.
+-- @class table
+-- @name decompression_configs
+-- @field chunksMode If true, function will return a coroutine handler 
+-- to resume the coroutine. See the readme for an example.
+-- @field yieldOnChunkSize If chunksMode is true, how large should the buffer 
+-- be before yielding the coroutine. Defaults to 32 * 1024 * 1024.
+-- @field yieldOnChunkTime If chunksMode is true, maximum duration between 
+-- yields. Requires timeFn.
+-- @field timeFn If chunksMode is true, include a function to use to calculate
+-- the current time for your environment.
+
+-- @see LibDeflate:DecompressDeflate(str, configs)
+-- @see LibDeflate:DecompressDeflateWithDict(str, dictionary, configs)
+local function DecompressDeflateInternal(str, dictionary, configs)
 	local state = CreateDecompressState(str, dictionary)
-	local result, status = Inflate(state)
-	if not result then
-		return nil, status
+	if configs and configs.chunksMode then
+		local thread = coroutine_create(Inflate)
+		state.chunksMode = {
+			currentSize = 0,
+			yieldOnChunkSize = configs.yieldOnChunkSize or 32 * 1024 * 1024,
+			currentTime = nil,
+			yieldOnChunkTime = configs.yieldOnChunkTime,
+			timeFn = configs.getTimeFn
+		}
+		function state.chunksMode:doYield(addSize)
+			if not self.currentTime and self.timeFn then
+				self.currentTime = self.timeFn()
 	end
 
-	local bitlen_left = state.ReaderBitlenLeft()
-	local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
-	return result, bytelen_left
+			self.currentSize = self.currentSize + addSize
+			if self.currentSize > self.yieldOnChunkSize
+				or (self.currentTime and self.timeFn() - self.currentTime > self.yieldOnChunkTime) then
+				self.currentSize = 0
+				if self.timeFn then
+					self.currentTime = self.timeFn()
+			end
+				coroutine_yield()
+		end
+			end
+		local result, status
+		-- return coroutine handler
+		return function()
+			local co_success, result, status = coroutine_resume(thread, state)
+			if not co_success then
+				return false
+      elseif coroutine_status(thread) ~= 'dead' then
+				return true
+			elseif not result then
+				return false, nil, status
+			else
+			local bitlen_left = state.ReaderBitlenLeft()
+			local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
+				return false, result, bytelen_left
+		end
+		end
+	else
+		local result, status = Inflate(state, configs)
+		if not result then
+			return nil, status
+		end
+
+		local bitlen_left = state.ReaderBitlenLeft()
+		local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
+		return result, bytelen_left
+	end
 end
 
--- @see LibDeflate:DecompressZlib(str)
--- @see LibDeflate:DecompressZlibWithDict(str)
-local function DecompressZlibInternal(str, dictionary)
+-- @see LibDeflate:DecompressZlib(str, configs)
+-- @see LibDeflate:DecompressZlibWithDict(str, dictionary, configs)
+local function DecompressZlibInternal(str, dictionary, configs)
 	local state = CreateDecompressState(str, dictionary)
 	local ReadBits = state.ReadBits
 
@@ -2693,30 +2859,67 @@ local function DecompressZlibInternal(str, dictionary)
 			return nil, -17 -- dictionary adler32 does not match
 		end
 	end
-	local result, status = Inflate(state)
-	if not result then
-		return nil, status
-	end
-	state.SkipToByteBoundary()
 
-	local adler_byte0 = ReadBits(8)
-	local adler_byte1 = ReadBits(8)
-	local adler_byte2 = ReadBits(8)
-	local adler_byte3 = ReadBits(8)
-	if state.ReaderBitlenLeft() < 0 then
-		return nil, 2 -- available inflate data did not terminate
-	end
+	if configs and configs.chunksMode then
+		local thread = coroutine_create(Inflate)
+		-- return coroutine handler
+		return function()
+			local co_success, result, status = coroutine_resume(thread, state, configs)
+			if not co_success then
+				return false
+      elseif coroutine_status(thread) ~= 'dead' then
+				return true
+			elseif not result then
+				return false, nil, status
+			else
+				state.SkipToByteBoundary()
 
-	local adler32_expected = adler_byte0*16777216
+        local adler_byte0 = ReadBits(8)
+        local adler_byte1 = ReadBits(8)
+        local adler_byte2 = ReadBits(8)
+        local adler_byte3 = ReadBits(8)
+        if state.ReaderBitlenLeft() < 0 then
+          return nil, 2 -- available inflate data did not terminate
+        end
+
+        local adler32_expected = adler_byte0*16777216
+          + adler_byte1*65536 + adler_byte2*256 + adler_byte3
+        local adler32_actual = LibDeflate:Adler32(result)
+        if not IsEqualAdler32(adler32_expected, adler32_actual) then
+          return nil, -15 -- Adler32 checksum does not match
+        end
+
+			local bitlen_left = state.ReaderBitlenLeft()
+			local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
+        return false, result, bytelen_left
+		end
+		end
+	else
+		local result, status = Inflate(state, configs)
+		if not result then
+			return nil, status
+		end
+		state.SkipToByteBoundary()
+
+		local adler_byte0 = ReadBits(8)
+		local adler_byte1 = ReadBits(8)
+		local adler_byte2 = ReadBits(8)
+		local adler_byte3 = ReadBits(8)
+		if state.ReaderBitlenLeft() < 0 then
+			return nil, 2 -- available inflate data did not terminate
+		end
+
+		local adler32_expected = adler_byte0*16777216
 		+ adler_byte1*65536 + adler_byte2*256 + adler_byte3
-	local adler32_actual = LibDeflate:Adler32(result)
-	if not IsEqualAdler32(adler32_expected, adler32_actual) then
-		return nil, -15 -- Adler32 checksum does not match
-	end
+		local adler32_actual = LibDeflate:Adler32(result)
+		if not IsEqualAdler32(adler32_expected, adler32_actual) then
+			return nil, -15 -- Adler32 checksum does not match
+		end
 
-	local bitlen_left = state.ReaderBitlenLeft()
-	local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
-	return result, bytelen_left
+		local bitlen_left = state.ReaderBitlenLeft()
+		local bytelen_left = (bitlen_left - bitlen_left % 8) / 8
+		return result, bytelen_left
+	end	
 end
 
 --- Decompress a raw deflate compressed data.
@@ -2732,13 +2935,14 @@ end
 -- If the decompression fails (The first return value of this function is nil),
 -- this return value is undefined.
 -- @see LibDeflate:CompressDeflate
-function LibDeflate:DecompressDeflate(str)
+function LibDeflate:DecompressDeflate(str, configs)
+	if not configs then configs = {} end
 	local arg_valid, arg_err = IsValidArguments(str)
 	if not arg_valid then
-		error(("Usage: LibDeflate:DecompressDeflate(str): "
+		error(("Usage: LibDeflate:DecompressDeflate(str, configs): "
 			..arg_err), 2)
 	end
-	return DecompressDeflateInternal(str)
+	return DecompressDeflateInternal(str, nil, configs)
 end
 
 --- Decompress a raw deflate compressed data with a preset dictionary.
@@ -2759,13 +2963,14 @@ end
 -- If the decompression fails (The first return value of this function is nil),
 -- this return value is undefined.
 -- @see LibDeflate:CompressDeflateWithDict
-function LibDeflate:DecompressDeflateWithDict(str, dictionary)
+function LibDeflate:DecompressDeflateWithDict(str, dictionary, configs)
+	if not configs then configs = {} end
 	local arg_valid, arg_err = IsValidArguments(str, true, dictionary)
 	if not arg_valid then
 		error(("Usage: LibDeflate:DecompressDeflateWithDict(str, dictionary): "
 			..arg_err), 2)
 	end
-	return DecompressDeflateInternal(str, dictionary)
+	return DecompressDeflateInternal(str, dictionary, configs)
 end
 
 --- Decompress a zlib compressed data.
@@ -2781,13 +2986,14 @@ end
 -- If the decompression fails (The first return value of this function is nil),
 -- this return value is undefined.
 -- @see LibDeflate:CompressZlib
-function LibDeflate:DecompressZlib(str)
+function LibDeflate:DecompressZlib(str, configs)
+	if not configs then configs = {} end
 	local arg_valid, arg_err = IsValidArguments(str)
 	if not arg_valid then
 		error(("Usage: LibDeflate:DecompressZlib(str): "
 			..arg_err), 2)
 	end
-	return DecompressZlibInternal(str)
+	return DecompressZlibInternal(str, nil, configs)
 end
 
 --- Decompress a zlib compressed data with a preset dictionary.
@@ -2808,13 +3014,14 @@ end
 -- If the decompression fails (The first return value of this function is nil),
 -- this return value is undefined.
 -- @see LibDeflate:CompressZlibWithDict
-function LibDeflate:DecompressZlibWithDict(str, dictionary)
+function LibDeflate:DecompressZlibWithDict(str, dictionary, configs)
+	if not configs then configs = {} end
 	local arg_valid, arg_err = IsValidArguments(str, true, dictionary)
 	if not arg_valid then
 		error(("Usage: LibDeflate:DecompressZlibWithDict(str, dictionary): "
 			..arg_err), 2)
 	end
-	return DecompressZlibInternal(str, dictionary)
+	return DecompressZlibInternal(str, dictionary, configs)
 end
 
 -- Calculate the huffman code of fixed block
@@ -2827,7 +3034,7 @@ do
 		_fix_block_literal_huffman_bitlen[sym] = 9
 	end
 	for sym=256, 279 do
-	    _fix_block_literal_huffman_bitlen[sym] = 7
+		_fix_block_literal_huffman_bitlen[sym] = 7
 	end
 	for sym=280, 287 do
 		_fix_block_literal_huffman_bitlen[sym] = 8

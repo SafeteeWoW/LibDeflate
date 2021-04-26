@@ -52,6 +52,26 @@ else
 	assert(example_input == decompress_deflate)
 end
 
+-- Compress in Chunks Mode
+local compress_co = LibDeflate:CompressDeflate(example_input, {level=9, chunksMode=true})
+local ongoing, compressed_chunks = true
+repeat 
+  ongoing, compressed_chunks = compress_co()
+until not ongoing
+
+-- Decompress in Chunks Mode
+local decompress_co = LibDeflate:DecompressDeflate(compressed_chunks, {chunksMode=true})
+local ongoing, decompressed_chunks = true
+repeat 
+  ongoing, decompressed_chunks = decompress_co()
+until not ongoing
+if decompressed_chunks == nil then
+	error("Decompression fails.")
+else
+	-- Decompression succeeds.
+	assert(example_input == decompressed_chunks)
+end
+
 
 -- If it is to transmit through WoW addon channel,
 -- compressed data must be encoded so NULL ("\000") is not transmitted.
@@ -91,7 +111,6 @@ local compress_deflate_with_level = LibDeflate:CompressDeflate(example_input
 local decompress_deflate_with_level = LibDeflate:DecompressDeflate(
 	compress_deflate_with_level)
 assert(decompress_deflate_with_level == example_input)
-
 
 -- Compress with a preset dictionary
 local dict_str = "121231234" -- example preset dictionary string.

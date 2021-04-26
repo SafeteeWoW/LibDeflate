@@ -139,7 +139,7 @@ or ```LibStub:GetLibrary("LibDeflate")``` (case sensitive) for World of Warcraft
 
 
 ## Usage
-```
+```lua
 local LibDeflate
 if LibStub then -- You are using LibDeflate as WoW addon
 	LibDeflate = LibStub:GetLibrary("LibDeflate")
@@ -163,6 +163,46 @@ else
 	-- Decompression succeeds.
 	assert(example_input == decompress_deflate)
 end
+
+-- Can also compress and decompress in chunks mode
+local compress_co = LibDeflate:CompressDeflate(example_input, {level=9, chunksMode=true})
+local ongoing, compressed_chunks = true
+repeat 
+  ongoing, compressed_chunks = compress_co()
+until not ongoing
+
+local decompress_co = LibDeflate:DecompressDeflate(compressed_chunks, {chunksMode=true})
+local ongoing, decompressed_chunks = true
+repeat 
+  ongoing, decompressed_chunks = decompress_co()
+until not ongoing
+if decompressed_chunks == nil then
+	error("Decompression fails.")
+else
+	-- Decompression succeeds.
+	assert(example_input == decompressed_chunks)
+end
+
+-- In WoW, coroutine processing can be handled on frame updates to reduce loss of framerate.
+local processing = CreateFrame('Frame')
+local WoW_compress_co = LibDeflate:CompressDeflate(example_input, {level=9, chunksMode=true})
+processing:SetScript('OnUpdate', function()
+  local ongoing, WoW_compressed = WoW_compress_co()
+  if not ongoing then
+    -- do something with `WoW_compressed`
+    processing:SetScript('OnUpdate', nil)
+  end
+end)
+
+local WoW_decompress_co = LibDeflate:DecompressDeflate(compress_deflate, {chunksMode=true})
+processing:SetScript('OnUpdate', function()
+  local ongoing, WoW_decompressed = WoW_decompress_co()
+  if not ongoing then
+    -- do something with `WoW_decompressed`
+	  assert(example_input == WoW_decompressed)
+    processing:SetScript('OnUpdate', nil)
+  end
+end)
 
 
 -- To transmit through WoW addon channel, data must be encoded so NULL ("\000")
