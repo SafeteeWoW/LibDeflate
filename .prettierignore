@@ -1,0 +1,4 @@
+tests/data/3rdparty/cp.html
+.vscode
+docs/**/*.html
+docs/**/*.css
