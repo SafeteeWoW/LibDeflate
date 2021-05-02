@@ -1,0 +1,115 @@
+# Check if code and doc have been formatted
+
+name: check_format
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+  workflow_dispatch:
+
+jobs:
+  check_lua_format:
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install LuaFormatter
+        run: |
+          cd
+          git clone --recurse-submodules https://github.com/Koihik/LuaFormatter.git
+          cd LuaFormatter
+          git checkout abfe1646162338b7361f35733fd48d7d10cba69e
+          mkdir -p build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          sudo cmake --build . --target install -j "$(nproc)"
+
+      - name: Format all Lua code
+        run: tools/format_lua.sh
+
+      - name: Check if anything changed after formatting
+        run: git diff --exit-code
+
+  check_doc_format:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install prettier
+        run: |
+          cd
+          npm install prettier@2.2.1
+
+      - name: Format all Markdown and YAML code
+        run: tools/format_doc.sh
+
+      - name: Check if anything changed after formatting
+        run: git diff --exit-code
+
+  check_sh_format:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install shfmt
+        run: |
+          cd
+          GO111MODULE=on go get mvdan.cc/sh/v3/cmd/shfmt@v3.2.4
+
+      - name: Check if all sh code has been formatted
+        run: |
+          eval `go env`
+          export PATH="${GOPATH}/bin:$PATH"
+          hash -r
+          tools/format_sh.sh
+
+      - name: Check if anything changed after formatting
+        run: git diff --exit-code
+
+  check_c_format:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Show the version of clang-format
+        run: clang-format --version
+
+      - name: Format all C/C++ code
+        run: tools/format_c.sh
+
+      - name: Check if anything changed after formatting
+        run: git diff --exit-code
+
+  check_pwsh_format:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install PowerShell-Beautifier
+        shell: pwsh
+        run: Install-Module -Name PowerShell-Beautifier -RequiredVersion 1.2.5 -Force
+
+      - name: Format all Powershell code
+        run: tools/format_pwsh.sh
+
+      - name: Check if anything changed after formatting
+        run: git diff --exit-code
+
+  check_py_format:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install yapf as the python formatter
+        run: sudo python3 -m pip install yapf==0.31.0
+
+      - name: Format all Python code
+        run: tools/format_py.sh
+
+      - name: Check if anything changed after formatting
+        run: git diff --exit-code
