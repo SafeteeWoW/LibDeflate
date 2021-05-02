@@ -1,23 +1,23 @@
 # Performance Benchmark
 
-+ Operating System: Windows 10 version 1909 (Build 18363)
-+ Lua Interpreters:
-  + Lua 5.1.5
-  + LuaJIT 2.0.5
-+ CPU: Intel Core i7-7700K@4.2 GHz
+- Operating System: Windows 10 version 1909 (Build 18363)
+- Lua Interpreters:
+  - Lua 5.1.5
+  - LuaJIT 2.0.5
+- CPU: Intel Core i7-7700K@4.2 GHz
 
 ---
 
-+ For LibDeflate, `CompressDeflate` is used for all compressions in this benchmark, `DecompressDeflate` is used for decompression. Different compression level configurations (Level 1, Level 5 and Level 8) are used.
+- For LibDeflate, `CompressDeflate` is used for all compressions in this benchmark, `DecompressDeflate` is used for decompression. Different compression level configurations (Level 1, Level 5 and Level 8) are used.
 
-+ For LibCompress, `Compress`, `CompressLZW`, `CompressHuffman` are used for
-compression. `Decompress` is used to decompress all compression results.
-`Compress` runs both CompressLZW and CompressHuffman and pick the smallest result.
+- For LibCompress, `Compress`, `CompressLZW`, `CompressHuffman` are used for
+  compression. `Decompress` is used to decompress all compression results.
+  `Compress` runs both CompressLZW and CompressHuffman and pick the smallest result.
 
 ---
 
-+ Interpreter: Lua 5.1.5
-+ Input data: [WeakAuras2 String](https://raw.githubusercontent.com/SafeteeWoW/LibDeflate/master/tests/data/warlockWeakAuras.txt), Size: 132462 bytes
+- Interpreter: Lua 5.1.5
+- Input data: [WeakAuras2 String](https://raw.githubusercontent.com/SafeteeWoW/LibDeflate/master/tests/data/warlockWeakAuras.txt), Size: 132462 bytes
 
 <table>
 <thead>
@@ -82,8 +82,8 @@ compression. `Decompress` is used to decompress all compression results.
 
 ---
 
-+ Interpreter: Lua 5.1.5
-+ Input data: [Total RP3 Extended Campaign](https://raw.githubusercontent.com/SafeteeWoW/LibDeflate/master/tests/data/totalrp3.txt), Size: 191755 bytes
+- Interpreter: Lua 5.1.5
+- Input data: [Total RP3 Extended Campaign](https://raw.githubusercontent.com/SafeteeWoW/LibDeflate/master/tests/data/totalrp3.txt), Size: 191755 bytes
 
 <table>
 <thead>
@@ -148,8 +148,8 @@ compression. `Decompress` is used to decompress all compression results.
 
 ---
 
-+ Interpreter: LuaJIT 2.0.5
-+ Input data: [WeakAuras2 String](https://raw.githubusercontent.com/SafeteeWoW/LibDeflate/master/tests/data/warlockWeakAuras.txt), Size: 132462 bytes
+- Interpreter: LuaJIT 2.0.5
+- Input data: [WeakAuras2 String](https://raw.githubusercontent.com/SafeteeWoW/LibDeflate/master/tests/data/warlockWeakAuras.txt), Size: 132462 bytes
 
 <table>
 <thead>
@@ -214,8 +214,8 @@ compression. `Decompress` is used to decompress all compression results.
 
 ---
 
-+ Interpreter: LuaJIT 2.0.5
-+ Input data: [Total RP3 Extended Campaign](https://raw.githubusercontent.com/SafeteeWoW/LibDeflate/master/tests/data/totalrp3.txt), Size: 191755 bytes
+- Interpreter: LuaJIT 2.0.5
+- Input data: [Total RP3 Extended Campaign](https://raw.githubusercontent.com/SafeteeWoW/LibDeflate/master/tests/data/totalrp3.txt), Size: 191755 bytes
 
 <table>
 <thead>

@@ -7,11 +7,13 @@
 [![GitHub issues](https://img.shields.io/github/issues/SafeteeWoW/LibDeflate)](https://github.com/SafeteeWoW/LibDeflate/issues)
 
 # LibDeflate
+
 ## Pure Lua compressor and decompressor with high compression ratio using DEFLATE/zlib format.
 
 Copyright (C) 2018-2020 Haoqian He
 
 ## Introduction
+
 LibDeflate is pure Lua compressor and decompressor with high compression ratio,
 which compresses almost as good as [zlib](https://github.com/madler/zlib). The
 purpose of this project is to give a reasonable good compression when you only
@@ -20,12 +22,13 @@ any external Lua libraries. LibDeflate does not have any dependencies except you
 need to have a working Lua interpreter.
 
 LibDeflate uses the following compression formats:
-1. *DEFLATE*, as defined by the specification
-[RFC1951](https://tools.ietf.org/html/rfc1951). DEFLATE is the default compression method of ZIP.
-2.  *zlib*, as defined by the specification
-[RFC1950](https://tools.ietf.org/html/rfc1950).
-zlib format uses DEFLATE formats to compress data and adds several bytes as
-headers and checksum.
+
+1. _DEFLATE_, as defined by the specification
+   [RFC1951](https://tools.ietf.org/html/rfc1951). DEFLATE is the default compression method of ZIP.
+2. _zlib_, as defined by the specification
+   [RFC1950](https://tools.ietf.org/html/rfc1950).
+   zlib format uses DEFLATE formats to compress data and adds several bytes as
+   headers and checksum.
 
 A simple C program utilizing [zlib](https://github.com/madler/zlib) should be
 compatible with LibDeflate. If you are not sure how to write this program,
@@ -33,17 +36,20 @@ goto the [zlib](https://github.com/madler/zlib) repository, or read
 [tests/zdeflate.c](https://github.com/SafeteeWoW/LibDeflate/blob/master/tests/zdeflate.c) in this repository.
 
 ## Supported Lua Versions
+
 LibDeflate supports and is fully tested under Lua 5.1/5.2/5.3/5.4, LuaJIT 2.0/2.1,
 for Linux, MaxOS and Windows. Click the Travis CI(Linux/MaxOS) and
 Appveyor(Windows) badge on the top of this README for the test results. Click
 the CodeCov badge to see the test coverage (should be 100%).
 
 ## Documentation
+
 [Documentation](https://safeteewow.github.io/LibDeflate/source/LibDeflate.lua.html) is hosted on Github.
 Beside run as a library, LibDeflate can also be run directly in commmandline.
 See the documentation for detail.
 
 ## Limitation
+
 Though many performance optimization has been done in the source code, as a
 pure Lua implementation, the compression speed of LibDeflate is significantly
 slower than a C compressor. LibDeflate aims to compress small files, and it is
@@ -52,11 +58,12 @@ need to compress files hundreds of MetaBytes, please use a C compressor, or a
 Lua compressor with C binding.
 
 ## Performance
+
 Below is a simple benchmark compared with another pure Lua compressor [LibCompress](https://www.wowace.com/projects/libcompress).
 More benchmarks can be viewed in the [documentation](https://safeteewow.github.io/LibDeflate/topics/benchmark.md.html).
 
-+ Interpreter: Lua 5.1.5
-+ Input data: [WeakAuras2 String](https://raw.githubusercontent.com/SafeteeWoW/LibDeflate/master/tests/data/warlockWeakAuras.txt), Size: 132462 bytes
+- Interpreter: Lua 5.1.5
+- Input data: [WeakAuras2 String](https://raw.githubusercontent.com/SafeteeWoW/LibDeflate/master/tests/data/warlockWeakAuras.txt), Size: 132462 bytes
 
 <table>
 <thead>
@@ -119,26 +126,25 @@ More benchmarks can be viewed in the [documentation](https://safeteewow.github.i
 </tbody>
 </table>
 
-
 LibDeflate with compression level 1 compresses as fast as LibCompress, but already produces significantly smaller data than LibCompress. High compression level takes a bit more time to get better compression.
 
 ## Download And Install
 
-+ The [official repository](https://github.com/SafeteeWoW/LibDeflate) locates on Github.
-[LibDeflate.lua](https://github.com/SafeteeWoW/LibDeflate/blob/master/LibDeflate.lua) is the only file of LibDeflate. Copy the file
-to your LUA_PATH to install it.
+- The [official repository](https://github.com/SafeteeWoW/LibDeflate) locates on Github.
+  [LibDeflate.lua](https://github.com/SafeteeWoW/LibDeflate/blob/master/LibDeflate.lua) is the only file of LibDeflate. Copy the file
+  to your LUA_PATH to install it.
 
-+ To download as a World of Warcraft library, goto [LibDeflate Curseforge Page](https://wow.curseforge.com/projects/libdeflate) or [LibDeflate WoWInterface Page](https://www.wowinterface.com/downloads/info25453-LibDeflate.html)
+- To download as a World of Warcraft library, goto [LibDeflate Curseforge Page](https://wow.curseforge.com/projects/libdeflate) or [LibDeflate WoWInterface Page](https://www.wowinterface.com/downloads/info25453-LibDeflate.html)
 
-+ You can also install via Luarocks using the command "luarocks install libdeflate"
+- You can also install via Luarocks using the command "luarocks install libdeflate"
 
-+ All packages files can also in downloaded in the [Github Release Page](https://github.com/SafeteeWoW/LibDeflate/releases)
+- All packages files can also in downloaded in the [Github Release Page](https://github.com/SafeteeWoW/LibDeflate/releases)
 
-+ To use after installation, ```require("LibDeflate")``` (case sensitive) in your Lua interpreter,
-or ```LibStub:GetLibrary("LibDeflate")``` (case sensitive) for World of Warcraft.
-
+- To use after installation, `require("LibDeflate")` (case sensitive) in your Lua interpreter,
+  or `LibStub:GetLibrary("LibDeflate")` (case sensitive) for World of Warcraft.
 
 ## Usage
+
 ```
 local LibDeflate
 if LibStub then -- You are using LibDeflate as WoW addon
@@ -187,6 +193,7 @@ local printable_compressed = LibDeflate:EncodeForPrint(compress_deflate)
 -- in the string before decode it.
 assert(LibDeflate:DecodeForPrint(printable_compressed) == compress_deflate)
 ```
+
 See Full examples in [examples/example.lua](https://github.com/SafeteeWoW/LibDeflate/blob/master/examples/example.lua)
 
 ## License
