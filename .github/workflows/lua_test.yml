@@ -1,0 +1,111 @@
+# Run test
+name: lua_test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+  workflow_dispatch:
+
+jobs:
+  lua_test_win:
+    strategy:
+      fail-fast: false
+      matrix:
+        LUA:
+          [
+            "lua-5.1.5",
+            "lua-5.2.4",
+            "lua-5.3.6",
+            "lua-5.4.3",
+            "luajit-2.0.5",
+            "luajit-2.1.0-beta3",
+          ]
+        os: ["windows-2019"]
+    runs-on: ${{ matrix.os }}
+    env:
+      LUA: ${{ matrix.LUA }}
+      LUAROCKS: 3.7.0
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install GNU Make
+        run: choco install make --version=4.3 -y --allowdowngrade
+
+      - name: Install Mingw
+        run: choco install mingw --version=8.1.0 -y --allowdowngrade
+
+      - name: Install Lua and Luarocks
+        run: env "LUA=${LUA}" "LUAROCKS=${LUAROCKS}" .github/workflows/script/install_lua_luarocks.sh
+        shell: bash
+
+      - name: Install reference compressor (zdeflate, puff)
+        run: .github/workflows/script/install_compressor.sh
+        shell: bash
+
+      - name: Test if example work
+        run: |
+          . .github/workflows/script/setenv_lua.ps1
+          lua -v
+          lua examples/example.lua
+
+      - name: Install luaunit
+        run: |
+          . .github/workflows/script/setenv_lua.ps1
+          luarocks install luaunit 3.4-1
+
+      - name: Run tests
+        run: |
+          . .github/workflows/script/setenv_lua.ps1
+          lua -v
+          lua tests/Test.lua --verbose --shuffle
+
+  lua_test_unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        LUA:
+          [
+            "lua-5.1.5",
+            "lua-5.2.4",
+            "lua-5.3.6",
+            "lua-5.4.3",
+            "luajit-2.0.5",
+            "luajit-2.1.0-beta3",
+          ]
+        os: ["ubuntu-20.04", "macos-10.15"]
+    runs-on: ${{ matrix.os }}
+    env:
+      LUA: ${{ matrix.LUA }}
+      LUAROCKS: 3.7.0
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Lua and Luarocks
+        run: sudo env "LUA=${LUA}" "LUAROCKS=${LUAROCKS}" .github/workflows/script/install_lua_luarocks.sh
+
+      - name: Install reference compressor (zdeflate, puff)
+        run: .github/workflows/script/install_compressor.sh
+
+      - name: Test if example works
+        run: |
+          set -exuo pipefail
+          source .github/workflows/script/setenv_lua.sh
+          lua examples/example.lua
+
+      - name: Install luaunit
+        run: |
+          sudo env "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}" bash -c '
+            set -euxo pipefail
+            source .github/workflows/script/setenv_lua.sh
+            luarocks install --deps-mode none luaunit 3.4-1
+          '
+
+      - name: Run tests
+        run: |
+          set -exuo pipefail
+          source .github/workflows/script/setenv_lua.sh
+          lua -v
+          lua tests/Test.lua --verbose --shuffle
