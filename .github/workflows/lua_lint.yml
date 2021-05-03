@@ -1,0 +1,39 @@
+# Lint lua code
+
+name: lua_lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+  workflow_dispatch:
+
+jobs:
+  lua_lint:
+    runs-on: ubuntu-20.04
+    env:
+      LUA: lua-5.1.5
+      LUAROCKS: 3.7.0
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Lua and Luarocks
+        run: sudo env "LUA=${LUA}" "LUAROCKS=${LUAROCKS}" .github/workflows/script/install_lua_luarocks.sh
+
+      - name: Install luacheck
+        run: |
+          sudo env "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}" bash -c '
+            set -exuo pipefail
+            source .github/workflows/script/setenv_lua.sh
+            luarocks install --deps-mode none luafilesystem 1.8.0-1
+            luarocks install --deps-mode none argparse 0.7.1-1
+            luarocks install --deps-mode none luacheck 0.24.0-2
+          '
+
+      - name: Lint Lua code
+        run: |
+          set -exuo pipefail
+          source .github/workflows/script/setenv_lua.sh
+          tools/lint_lua_code.sh
