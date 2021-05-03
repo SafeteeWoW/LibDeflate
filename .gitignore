@@ -32,3 +32,4 @@ zdeflate
 *.log
 tests/huge_data/*
 !tests/huge_data/README.md
+.vscode
