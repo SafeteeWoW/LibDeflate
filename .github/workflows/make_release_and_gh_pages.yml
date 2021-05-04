@@ -1,0 +1,68 @@
+# Generate doc and store as artifact
+# Make release package and store as artifact
+# upload doc to github pages
+name: make_release_and_gh_pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+  workflow_dispatch:
+
+jobs:
+  make_release_and_gh_pages:
+    runs-on: ubuntu-20.04
+    env:
+      LUA: lua-5.1.5
+      LUAROCKS: 3.7.0
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Lua and Luarocks
+        run: sudo env "LUA=${LUA}" "LUAROCKS=${LUAROCKS}" .github/workflows/script/install_lua_luarocks.sh
+
+      - name: Install LDoc
+        run: |
+          sudo env "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}" bash -c '
+            set -exuo pipefail
+            source .github/workflows/script/setenv_lua.sh
+            luarocks install --deps-mode none luafilesystem 1.8.0-1
+            luarocks install --deps-mode none markdown 0.33-1
+            luarocks install --deps-mode none penlight 1.10.0-1
+            luarocks install --deps-mode none ldoc 1.4.6-2
+          '
+
+      - name: Generate doc
+        run: |
+          set -exuo pipefail
+          source .github/workflows/script/setenv_lua.sh
+          tools/gen_doc.sh
+
+      - name: Zip the doc
+        run: |
+          cd docs
+          zip -9 -v -r ../docs.zip .
+
+      - name: Upload generated docs as artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: docs
+          path: docs.zip
+
+      - name: Create WoW release package
+        run: |
+          tools/gen_packages.sh
+          cp .release/*.zip ./
+
+      - name: Upload package as artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: wow_release
+          path: libdeflate-*.zip
+          if-no-files-found: error
+
+      - name: Upload to github pages if any doc update
+        if: ${{ github.ref == 'refs/heads/main' }}
+        run: .github/workflows/script/upload_gh_pages.sh
