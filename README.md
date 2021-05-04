@@ -8,7 +8,7 @@
 
 ## Pure Lua compressor and decompressor with high compression ratio using DEFLATE/zlib format.
 
-Copyright (C) 2018-2020 Haoqian He
+Copyright (C) 2018-2021 Haoqian He
 
 ## Introduction
 

@@ -5,7 +5,7 @@ DEFLATE/zlib format.
 
 @file LibDeflate.lua
 @author Haoqian He (Github: SafeteeWoW; World of Warcraft: Safetyy-Illidan(US))
-@copyright LibDeflate <2018-2020> Haoqian He
+@copyright LibDeflate <2018-2021> Haoqian He
 @license zlib License
 
 This library is implemented according to the following specifications. <br>
@@ -26,7 +26,7 @@ https://github.com/safeteeWow/LibDeflate/issues
 ]] --[[
 zlib License
 
-(C) 2018-2020 Haoqian He
+(C) 2018-2021 Haoqian He
 
 This software is provided 'as-is', without any express or implied
 warranty.  In no event will the authors be held liable for any damages
@@ -102,7 +102,7 @@ do
   local _MINOR = 3
 
   local _COPYRIGHT = "LibDeflate " .. _VERSION ..
-                       " Copyright (C) 2018-2020 Haoqian He." ..
+                       " Copyright (C) 2018-2021 Haoqian He." ..
                        " Licensed under the zlib License"
 
   -- Register in the World of Warcraft library "LibStub" if detected.
