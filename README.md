@@ -1,3 +1,4 @@
+[![CI](https://github.com/SafeteeWoW/LibDeflate/actions/workflows/lua_test.yml/badge.svg)](https://github.com/SafeteeWoW/LibDeflate/actions/workflows/lua_test.yml)
 [![codecov.io](http://codecov.io/github/safeteeWoW/LibDeflate/branch/master/graphs/badge.svg)](http://codecov.io/github/safeteeWoW/LibDeflate)
 [![license](https://img.shields.io/github/license/SafeteeWoW/LibDeflate)](LICENSE.txt)
 [![LuaRocks](https://img.shields.io/luarocks/v/SafeteeWoW/libdeflate)](http://luarocks.org/modules/SafeteeWoW/libdeflate)
