@@ -2512,10 +2512,7 @@ local function RunCommandline(args, stdin)
   end
   local stdout_filename = "tests/test.stderr"
   local stderr_filename = "tests/test.stdout"
-  local libdeflate_file = "./LibDeflate.lua"
-  if os.getenv("OS") and os.getenv("OS"):find("Windows") then
-    libdeflate_file = "LibDeflate.lua"
-  end
+  local libdeflate_file = "LibDeflate.lua"
   local status, _, ret = os.execute(
                            lua_program .. " " .. libdeflate_file .. " " .. args ..
                              " >" .. input_filename .. "> " .. stdout_filename ..
