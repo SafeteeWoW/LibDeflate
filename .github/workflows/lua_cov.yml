@@ -1,0 +1,69 @@
+# Run code coverage tests
+name: lua_cov
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+  workflow_dispatch:
+
+jobs:
+  lua_cov:
+    runs-on: ubuntu-20.04
+    env:
+      LUA: luajit-2.1.0-beta3
+      LUAROCKS: 3.7.0
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install Lua and Luarocks
+        run: sudo env "LUA=${LUA}" "LUAROCKS=${LUAROCKS}" .github/workflows/script/install_lua_luarocks.sh
+
+      - name: Install reference compressor (zdeflate, puff)
+        run: .github/workflows/script/install_compressor.sh
+
+      - name: Install lua packages
+        run: |
+          sudo env "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}" bash -c '
+            set -exuo pipefail
+            source .github/workflows/script/setenv_lua.sh
+            luarocks install --deps-mode none luafilesystem 1.8.0-1
+            luarocks install --deps-mode none dkjson 2.5-2
+            luarocks install --deps-mode none lua-path 0.3.1-2
+            luarocks install --deps-mode none luaunit 3.4-1
+            luarocks install --deps-mode none luacov 0.15.0-1
+            luarocks install --deps-mode none luacov-coveralls 0.2.3-1
+            luarocks install --deps-mode none cluacov 0.1.2-1
+          '
+
+      - name: Run commandline coverage tests
+        run: |
+          source .github/workflows/script/setenv_lua.sh
+          lua -v
+          lua tests/Test.lua CommandLineCodeCoverage --verbose
+
+      - name: Run code coverage tests
+        run: |
+          set -exuo pipefail
+          source .github/workflows/script/setenv_lua.sh
+          lua -v
+          lua -lluacov tests/Test.lua CodeCoverage --verbose
+
+      - name: Generate the code coverage report
+        run: |
+          set -exuo pipefail
+          source .github/workflows/script/setenv_lua.sh
+          luacov
+
+      - name: Print the code coverage report
+        run: cat luacov.report.out
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: code_coverage_report
+          path: luacov.report.out
+
+      - name: Upload coverage result to codecov.io
+        run: bash <(curl --retry 10 --retry-delay 10 -s https://codecov.io/bash)
