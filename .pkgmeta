@@ -16,3 +16,4 @@ license-output: LICENSE.txt
 ignore:
     - tests
     - rockspecs
+    - tools
