@@ -1,56 +1,108 @@
-# Licenses for files under this directory
+# Test Instructions
+
+## Use Github workflow yaml as a reference
+
+If you get any issues after reading this document,
+use Github Workflow config file [lua_test.yml](../.github/workflows/lua_test.yml)
+as a golden reference, including the version of Luarocks packages
+
+## Test requirement
+
+1. Do not add external dependencies not in this repository, for the default testsuite.
+
+2. 100% code coverage required.
+
+## Luarocks packages for testing
+
+1. luaunit: Required for all kinds of tests.
+
+2. luacov: Required only for code coverage tests.
+
+3. cluacov: Recommend for code coverage tests. This speed up code coverage tests.
+
+4. luacov-coveralls: Only used in CI, for [coveralls.io](coveralls.io) service.
+
+5. luabitop: Only needed when using Lua5.1 or LuaJIT, and compare performance against LibCompress.
+
+## Install reference compressor/decompressor and add to PATH
+
+Two reference programs are included to test LibDeflate for DEFLATE format compliance. Building them and add them to the PATH are required,
+otherwise most tests will fail.
+
+[puff](pufftest.c): Decompressor only.
+
+[zdeflate](zdeflate.c): Compressor and compressor.
+
+1. Build zlib. Read [install_compressor.sh](../.github/workflows/script/install_compressor.sh) for reference. Download [zlib](https://www.zlib.net/), unzip it, and change working directory to zlib directory. For Linux or MacOS, run `./configure && make`. For Windows, assuming you have installed MinGW, run `make -f win32/Makefile.gcc`
+
+2. Set the environment variable "ZLIB_PATH" to the absolute path of the zlib directory.
+
+3. In _this_ directory, where this README locates, run "make" to build puff and zdeflate.
+
+4. Add _this_ directory, where this README locates, to the environment variable PATH.
+
+## Run the tests
+
+When running test, the working directory must be the root directory of this repository (The directory where LibDeflate.lua locates),
+otherwise most tests will fail.
+
+Run two test scripts at the same time is **NOT SUPPORTED**.
+
+You can use LuaJIT or the original Lua interpreter. I prefer LuaJIT during development because it is faster.
+
+1. Run test suite:
+
+   `luajit tests/Test.lua --verbose --shuffle`
+
+2. Run complete code coverage test:
+
+   First delete the file _luacov.stats.out_, if exists.
+
+   Run the following two commands in order.
+
+   `luajit tests/Test.lua CommandLineCodeCoverage --verbose` (For commandline part coverage)
+   `luajit -lluacov tests\Test.lua CodeCoverage --verbose` (For other test coverage)
+
+   Finally, `luacov` to generate test report in _luacov.report.out_
+
+3. Run HugeTests
+
+   It is slow to test big files. These files are not included in the repository.
+   Testing these files are not included in CI.
+
+   First, download data by the script [dev_scripts/download_huge_data.sh](dev_scripts/download_huge_data.sh)
+
+   `luajit tests/Test.lua HugeTests --verbose`
+
+## Helper scripts
+
+There are some helper scripts in [dev_scripts](dev_scripts) directory inside this directory.
+
+Read comment in these scripts for usage.
+
+Any working directory is ok when running these scripts.
+
+## Test Instructions for Windows
+
+This library is developed in Linux environment.
+
+If you are using Windows, I suggest to use a Bash terminal, such as Git Bash
+
+## Add tests
+
+1. If new API is added in [LibDeflate.lua](../LibDeflate.lua), please add the function name into `TestExported:TestExported`
+
+2. All test code should be added to [Test.lua](Test.lua)
+
+3. If extra reference data needed: For small data, put them to the [data](data) folder and add to repository. Big data should added as an url in [dev_scripts/download_huge_data.sh](dev_scripts/download_huge_data.sh)
+
+4. To add a test cases included in the default test suite, add a class whose name begins with **Test** in [Test.lua](Test.lua)
+
+5. By default, test cases are not included in code coverage tests. This is for speed reasons. Code coverage tests should only include minimal amount of tests required to reach 100% code coverage.
+   Use function `AddAllToCoverageTest` or `AddToCoverageTest` to add test to code coverage test.
+
+## Licenses for files under this directory
 
 This folder contains some third party code and data.
 The license used by LibDeflate does not apply to the 3rdparty code or data.
 Their original licenses shall be complied when used.
-
-# Test Instructions for Windows
-
-This library is developed on Windows, so this instruction assumes your OS is
-Windows. However, the tests also supports Linux/MacOS and should be very similar
-to Windows. If there is anything unclear, please refer to the test scripts
-in : .appveyor.yml (For Windows tests), .travis.yml (For Linus/MacOS tests)
-
-## Test Environment Setup
-
-**The shell I use is x86 Native Tools Command Prompt for Visual Studio**
-
-1. Install luajit and make sure it is in your _PATH_. luajit can be downloaded from luajit.org
-2. Install luarocks. Then setup PATH, LUA_PATH and LUA_CPATH according to luarocks' instruction. Then install the following three packages:
-   `luacheck, ldoc, luaunit, luacov, luacov-coveralls, cluacov`.
-3. Make sure the following command works: `luajit -lluaunit -lluacov`. If not,
-   you should check if LUA_PATH an LUA_CPATH are correctly set for LuaRocks.
-4. Download zlib source code from zlib.net, and decompress the source to some directory.
-5. Set the environment variable _ZLIB_PATH_ to the path of zlib source code directory and set the working directory to that directory.
-6. Set the working directory to the _tests_ directory in this repository. Run the command `nmake /f Makefile_Windows`. Two executables _puff.exe_ and _zdeflate.exe_. Those two programs are called in the test suite as the reference program.
-7. Add the _tests_ directory in this repository to your _PATH_, otherwise the test suite cannot locate the above two programs.
-
-## Run the tests
-
-**For all following commands, I assume your working directory is the root directory of this repository (The directory where LibDeflate.lua locates)**
-
-**It is not supported to run two test scripts at the same time.**
-
-1. Run test suite:  
-   `luajit -lluacov tests\Test.lua --verbose --shuffle`
-
-2. Run complete code coverage test:  
-   First delete the file _luacov.stats.out_, if exists  
-   `luajit tests\Test.lua CommandLineCodeCoverage --verbose` (For commandline part coverage)  
-   `luajit -lluacov tests\Test.lua CodeCoverage --verbose` (For actual test coverage)  
-   Run two commands in order.  
-   For speed tests, this coverage tests only select part of tests in the test suite, but should be enough to achieve 100% code coverage.
-
-3. View the code coverage test report:  
-   The above commands will generate store the test result in the file _luacov.stats.out_. To view it in readable format, run the command `luacov`,
-   a readable report _luacov.report.out_ will be generated. (If the command `luacov` cannot be found, you should add the directory of _luacov.bat_ to _PATH_, which locates in some directory under your Lua installation)
-
-4. Above important tests will be run in online CI. There are some other extra tests not run in CI (For speed reasons), please see the batch scripts under _tests\dev_scripts_.  
-   These are some batch scripts to run the test commands, so no need to
-   run the command manually in the commandline. Just open them in the Windows
-   explorer. Those scripts set the working directory to the root of git repo
-   directory first, then run the test commands.
-
-## Other environment setup I used
-
-1. Install Git for Windows in the default setup path.
