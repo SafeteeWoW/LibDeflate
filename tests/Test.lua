@@ -499,6 +499,26 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels,
         end
         WriteToFile(compress_filename, compress_data)
 
+        local decompress_to_run = {
+          {"DecompressDeflate", compress_data},
+          {"DecompressDeflateWithDict", compress_data, dictionary32768, configs},
+
+          {"DecompressZlib", compress_data, configs},
+          {"DecompressZlibWithDict", compress_data, dictionary32768, configs}
+        }
+        lu.assertEquals(#decompress_to_run, #compress_to_run)
+
+        -- Try decompress by LibDeflate
+        local decompress_memory_leaked, decompress_memory_used, decompress_time,
+              decompress_data, decompress_unprocess_byte =
+          MemCheckAndBenchmarkFunc(LibDeflate, unpack(decompress_to_run[j]))
+        AssertLongStringEqual(decompress_data, origin, compress_func_name ..
+                                " LibDeflate decompress result not match origin string.")
+        lu.assertEquals(decompress_unprocess_byte, 0,
+                        compress_func_name ..
+                          " Unprocessed bytes after LibDeflate decompression " ..
+                          tostring(decompress_unprocess_byte))
+
         if compress_running[1] == "CompressDeflate" then
           local returnedStatus_puff, stdout_puff =
             RunProgram("puff -w ", compress_filename, decompress_filename)
@@ -509,15 +529,6 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels,
           AssertLongStringEqual(stdout_puff, origin,
                                 "puff fails with " .. compress_func_name)
         end
-
-        local decompress_to_run = {
-          {"DecompressDeflate", compress_data},
-          {"DecompressDeflateWithDict", compress_data, dictionary32768, configs},
-
-          {"DecompressZlib", compress_data, configs},
-          {"DecompressZlibWithDict", compress_data, dictionary32768, configs}
-        }
-        lu.assertEquals(#decompress_to_run, #compress_to_run)
 
         local zdeflate_decompress_to_run =
           {
@@ -541,17 +552,6 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels,
                           stderr_zdeflate)
         AssertLongStringEqual(stdout_zdeflate, origin, compress_func_name ..
                                 "zdeflate decompress result not match origin string.")
-
-        -- Try decompress by LibDeflate
-        local decompress_memory_leaked, decompress_memory_used, decompress_time,
-              decompress_data, decompress_unprocess_byte =
-          MemCheckAndBenchmarkFunc(LibDeflate, unpack(decompress_to_run[j]))
-        AssertLongStringEqual(decompress_data, origin, compress_func_name ..
-                                " LibDeflate decompress result not match origin string.")
-        lu.assertEquals(decompress_unprocess_byte, 0,
-                        compress_func_name ..
-                          " Unprocessed bytes after LibDeflate decompression " ..
-                          tostring(decompress_unprocess_byte))
 
         print(("%s:   Size : %d B,Time: %.3f ms, " ..
                 "Speed: %.0f KB/s, Memory: %d B," ..
