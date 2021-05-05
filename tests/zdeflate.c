@@ -19,6 +19,7 @@ the Zlib project. This program is used to test the correctness of LibDeflate.
  */
 
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,13 +44,14 @@ the Zlib project. This program is used to test the correctness of LibDeflate.
    level is supplied, Z_VERSION_ERROR if the version of zlib.h and the
    version of the library linked do not match, or Z_ERRNO if there is
    an error reading or writing the files. */
-int def(FILE* source, FILE* dest, int level, int strategy, int isZlib,
-        char* dictionary, int dictSize) {
-  int ret, flush;
-  unsigned have;
-  z_stream strm;
-  unsigned char in[CHUNK];
-  unsigned char out[CHUNK];
+static int def(FILE* source, FILE* dest, int level, int strategy, int isZlib,
+               unsigned char* dictionary, int dictSize) {
+  int ret = 0;
+  int flush = 0;
+  unsigned have = 0;
+  z_stream strm = {0};
+  unsigned char in[CHUNK] = {0};
+  unsigned char out[CHUNK] = {0};
 
   /* allocate deflate state */
   strm.zalloc = Z_NULL;
@@ -99,12 +101,13 @@ int def(FILE* source, FILE* dest, int level, int strategy, int isZlib,
    invalid or incomplete, Z_VERSION_ERROR if the version of zlib.h and
    the version of the library linked do not match, or Z_ERRNO if there
    is an error reading or writing the files. */
-int inf(FILE* source, FILE* dest, int isZlib, char* dictionary, int dictSize) {
-  int ret;
-  unsigned have;
-  z_stream strm;
-  unsigned char in[CHUNK];
-  unsigned char out[CHUNK];
+static int inf(FILE* source, FILE* dest, int isZlib, unsigned char* dictionary,
+               int dictSize) {
+  int ret = 0;
+  unsigned have = 0;
+  z_stream strm = {0};
+  unsigned char in[CHUNK] = {0};
+  unsigned char out[CHUNK] = {0};
 
   /* allocate inflate state */
   strm.zalloc = Z_NULL;
@@ -177,8 +180,8 @@ int inf(FILE* source, FILE* dest, int isZlib, char* dictionary, int dictSize) {
 }
 
 /* report a zlib or i/o error */
-void zerr(int ret) {
-  fputs("zpipe: ", stderr);
+static void zerr(int ret) {
+  fputs("zdeflate: ", stderr);
   switch (ret) {
     case Z_ERRNO:
       if (ferror(stdin)) fputs("error reading stdin\n", stderr);
@@ -195,14 +198,18 @@ void zerr(int ret) {
       break;
     case Z_VERSION_ERROR:
       fputs("zlib version mismatch!\n", stderr);
+      break;
     case EXTRA_BYTE_AFTER_STREAM_ERROR:
       fputs("Extra bytes after deflate data\n", stderr);
+      break;
+    default:
+      fprintf(stderr, "Unknown zlib error number: %d\n", ret);
   }
 }
 
 /* compress or decompress from stdin to stdout */
 int main(int argc, char** argv) {
-  int ret;
+  int ret = 0;
 
   /* avoid end-of-line conversions */
   SET_BINARY_MODE(stdin);
@@ -213,7 +220,7 @@ int main(int argc, char** argv) {
   int strategy = Z_DEFAULT_STRATEGY;
   int isDecompress = 0;
   int isZlib = 0;
-  char* dictionary = 0;
+  unsigned char* dictionary = 0;
   int dictSize = 0;
 
   int i = 0;
@@ -254,43 +261,66 @@ int main(int argc, char** argv) {
     else if (strcmp(arg, "--default") == 0)
       strategy = Z_DEFAULT_STRATEGY;
     else if (strcmp(arg, "--dict") == 0) {
-      dictionary = (char*)malloc(32769);
+      const int max_dict_size = 32768;
+      dictionary = (unsigned char*)malloc(max_dict_size + 1);
       i++;
       char* filename = argv[i];
       FILE* file = fopen(filename, "rb");
       if (file) {
-        fseek(file, 0, SEEK_END);
+        ret = fseek(file, 0, SEEK_END);
+        if (ret != 0) {
+          fprintf(stderr, "fseek for file %s fails with code %d: %s", filename,
+                  ret, strerror(errno));
+          ret = 100;
+          break;
+        }
         dictSize = ftell(file);
+        if (dictSize > max_dict_size) {
+          fprintf(
+              stderr,
+              "Dictionary file size %d is larger than the max allowed size: %d",
+              dictSize, max_dict_size);
+          ret = 101;
+          break;
+        }
         rewind(file);
-        fread(dictionary, 1, dictSize, file);
+        int actual_size = fread(dictionary, 1, dictSize, file);
+        if (actual_size != dictSize) {
+          fprintf(stderr,
+                  "Read file error. Actual bytes read: %d, excepted bytes "
+                  "read: %d: %s",
+                  actual_size, dictSize, strerror(errno));
+          ret = 102;
+          break;
+        }
         dictionary[dictSize] = 0;
         fclose(file);
       } else {
         fprintf(stderr, "Cant open dictionary file %s", filename);
-        return 255;
+        ret = 103;
+        break;
       }
     } else {
       fputs(
-          "zpipe usage: zpipe [-d] [--zlib] [-0/-1/.../-9] "
+          "zdeflate usage: zdeflate [-d] [--zlib] [-0/-1/.../-9] "
           "[--filter/--huffman/--rle/--fix/--default] "
           "< source > dest\n",
           stderr);
-      return 1;
+      ret = 104;
+      break;
     }
   }
   /* do compression if no arguments */
-  if (!isDecompress) {
-    ret = def(stdin, stdout, level, strategy, isZlib, dictionary, dictSize);
-    if (ret != Z_OK) zerr(ret);
-    return ret;
-  } else {
-    ret = inf(stdin, stdout, isZlib, dictionary, dictSize);
-    if (ret != Z_OK) zerr(ret);
-    return ret;
+  if (ret == 0) {
+    if (!isDecompress) {
+      ret = def(stdin, stdout, level, strategy, isZlib, dictionary, dictSize);
+      if (ret != Z_OK) zerr(ret);
+    } else {
+      ret = inf(stdin, stdout, isZlib, dictionary, dictSize);
+      if (ret != Z_OK) zerr(ret);
+    }
   }
 
-  if (dictionary) {
-    free(dictionary);
-  }
-  return 0;
+  free(dictionary);
+  return ret;
 }
