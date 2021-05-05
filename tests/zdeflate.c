@@ -26,8 +26,7 @@ the Zlib project. This program is used to test the correctness of LibDeflate.
 
 #include "zlib.h"
 
-#if defined(MSDOS) || defined(OS2) || defined(WIN32) || defined(__CYGWIN__) || \
-    defined(_WIN32)
+#if defined(MSDOS) || defined(OS2) || defined(WIN32) || defined(__CYGWIN__) || defined(_WIN32)
 #include <fcntl.h>
 #include <io.h>
 #define SET_BINARY_MODE(file) setmode(fileno(file), O_BINARY)
@@ -44,8 +43,7 @@ the Zlib project. This program is used to test the correctness of LibDeflate.
    level is supplied, Z_VERSION_ERROR if the version of zlib.h and the
    version of the library linked do not match, or Z_ERRNO if there is
    an error reading or writing the files. */
-static int def(FILE* source, FILE* dest, int level, int strategy, int isZlib,
-               unsigned char* dictionary, int dictSize) {
+static int def(FILE* source, FILE* dest, int level, int strategy, int isZlib, unsigned char* dictionary, int dictSize) {
   int ret = 0;
   int flush = 0;
   unsigned have = 0;
@@ -101,8 +99,7 @@ static int def(FILE* source, FILE* dest, int level, int strategy, int isZlib,
    invalid or incomplete, Z_VERSION_ERROR if the version of zlib.h and
    the version of the library linked do not match, or Z_ERRNO if there
    is an error reading or writing the files. */
-static int inf(FILE* source, FILE* dest, int isZlib, unsigned char* dictionary,
-               int dictSize) {
+static int inf(FILE* source, FILE* dest, int isZlib, unsigned char* dictionary, int dictSize) {
   int ret = 0;
   unsigned have = 0;
   z_stream strm = {0};
@@ -269,17 +266,13 @@ int main(int argc, char** argv) {
       if (file) {
         ret = fseek(file, 0, SEEK_END);
         if (ret != 0) {
-          fprintf(stderr, "fseek for file %s fails with code %d: %s", filename,
-                  ret, strerror(errno));
+          fprintf(stderr, "fseek for file %s fails with code %d: %s", filename, ret, strerror(errno));
           ret = 100;
           break;
         }
         dictSize = ftell(file);
         if (dictSize > max_dict_size) {
-          fprintf(
-              stderr,
-              "Dictionary file size %d is larger than the max allowed size: %d",
-              dictSize, max_dict_size);
+          fprintf(stderr, "Dictionary file size %d is larger than the max allowed size: %d", dictSize, max_dict_size);
           ret = 101;
           break;
         }

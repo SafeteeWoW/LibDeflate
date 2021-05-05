@@ -38,11 +38,9 @@ static char Rcs_Id[] = "$Id: fields.c,v 1.7 1994/01/06 05:26:37 geoff Exp $";
 
 field_t *fieldread P((FILE * file, char *delims, int flags, int maxf));
 /* Read a line with fields from a file */
-field_t *fieldmake P((char *line, int allocated, char *delims, int flags,
-                      int maxf));
+field_t *fieldmake P((char *line, int allocated, char *delims, int flags, int maxf));
 /* Make a field structure from a line */
-static field_t *fieldparse P((field_t * fieldp, char *line, char *delims,
-                              int flags, int maxf));
+static field_t *fieldparse P((field_t * fieldp, char *line, char *delims, int flags, int maxf));
 /* Parse the fields in a line */
 static int fieldbackch P((char *str, char **out, int strip));
 /* Process backslash sequences */
@@ -69,11 +67,10 @@ extern int strlen();
  * fields, and return them to the caller.  The field_t structure
  * returned must eventually be freed with fieldfree.
  */
-field_t *fieldread(file, delims, flags,
-                   maxf) FILE *file; /* File to read lines from */
-char *delims; /* Characters to use for field delimiters */
-int flags;    /* Option flags;  see fields.h */
-int maxf;     /* Maximum number of fields to parse */
+field_t *fieldread(file, delims, flags, maxf) FILE *file; /* File to read lines from */
+char *delims;                                             /* Characters to use for field delimiters */
+int flags;                                                /* Option flags;  see fields.h */
+int maxf;                                                 /* Maximum number of fields to parse */
 {
   register char *linebuf; /* Buffer to hold the line read in */
   int linemax;            /* Maximum line buffer size */
@@ -103,12 +100,11 @@ int maxf;     /* Maximum number of fields to parse */
   return fieldmake(linebuf, 1, delims, flags, maxf);
 }
 
-field_t *fieldmake(line, allocated, delims, flags,
-                   maxf) char *line; /* Line to make into a field structure */
-int allocated;                       /* NZ if line allocated with malloc */
-char *delims; /* Characters to use for field delimiters */
-int flags;    /* Option flags;  see fields.h */
-int maxf;     /* Maximum number of fields to parse */
+field_t *fieldmake(line, allocated, delims, flags, maxf) char *line; /* Line to make into a field structure */
+int allocated;                                                       /* NZ if line allocated with malloc */
+char *delims;                                                        /* Characters to use for field delimiters */
+int flags;                                                           /* Option flags;  see fields.h */
+int maxf;                                                            /* Maximum number of fields to parse */
 {
   register field_t *fieldp; /* Structure describing the fields */
   int linesize;             /* Current line buffer size */
@@ -137,13 +133,12 @@ int maxf;     /* Maximum number of fields to parse */
   return fieldparse(fieldp, line, delims, flags, maxf);
 }
 
-static field_t *fieldparse(
-    fieldp, line, delims, flags,
-    maxf) register field_t *fieldp; /* Field structure to parse into */
-register char *line;                /* Line to be parsed */
-char *delims;                       /* Characters to use for field delimiters */
-int flags;                          /* Option flags;  see fields.h */
-int maxf;                           /* Maximum number of fields to parse */
+static field_t *fieldparse(fieldp, line, delims, flags,
+                           maxf) register field_t *fieldp; /* Field structure to parse into */
+register char *line;                                       /* Line to be parsed */
+char *delims;                                              /* Characters to use for field delimiters */
+int flags;                                                 /* Option flags;  see fields.h */
+int maxf;                                                  /* Maximum number of fields to parse */
 {
   int fieldmax;  /* Max size of fields array */
   char *lineout; /* Where to store xlated char in line */
@@ -156,13 +151,11 @@ int maxf;                           /* Maximum number of fields to parse */
     fieldfree(fieldp);
     return NULL;
   }
-  if ((flags & (FLD_SHQUOTES | FLD_SNGLQUOTES | FLD_BACKQUOTES |
-                FLD_DBLQUOTES)) == FLD_SHQUOTES)
+  if ((flags & (FLD_SHQUOTES | FLD_SNGLQUOTES | FLD_BACKQUOTES | FLD_DBLQUOTES)) == FLD_SHQUOTES)
     flags |= FLD_SNGLQUOTES | FLD_BACKQUOTES | FLD_DBLQUOTES;
   while (1) {
     if (flags & FLD_RUNS) {
-      while (*line != '\0' && strchr(delims, *line) != NULL)
-        line++; /* Skip runs of delimiters */
+      while (*line != '\0' && strchr(delims, *line) != NULL) line++; /* Skip runs of delimiters */
       if (*line == '\0') break;
     }
     fieldp->fields[fieldp->nfields] = lineout = line;
@@ -170,16 +163,13 @@ int maxf;                           /* Maximum number of fields to parse */
      * Skip to the next delimiter.  At the end of skipping, "line" will
      * point to either a delimiter or a null byte.
      */
-    if (flags & (FLD_SHQUOTES | FLD_SNGLQUOTES | FLD_BACKQUOTES |
-                 FLD_DBLQUOTES | FLD_BACKSLASH)) {
+    if (flags & (FLD_SHQUOTES | FLD_SNGLQUOTES | FLD_BACKQUOTES | FLD_DBLQUOTES | FLD_BACKSLASH)) {
       while (*line != '\0') {
         if (strchr(delims, *line) != NULL)
           break;
-        else if (((flags & FLD_SNGLQUOTES) && *line == '\'') ||
-                 ((flags & FLD_BACKQUOTES) && *line == '`') ||
+        else if (((flags & FLD_SNGLQUOTES) && *line == '\'') || ((flags & FLD_BACKQUOTES) && *line == '`') ||
                  ((flags & FLD_DBLQUOTES) && *line == '"')) {
-          if ((flags & FLD_SHQUOTES) == 0 &&
-              line != fieldp->fields[fieldp->nfields])
+          if ((flags & FLD_SHQUOTES) == 0 && line != fieldp->fields[fieldp->nfields])
             quote = '\0';
           else
             quote = *line;
@@ -201,8 +191,7 @@ int maxf;                           /* Maximum number of fields to parse */
               if ((flags & FLD_STRIPQUOTES) == 0) *lineout++ = quote;
               line++; /* Go on past quote */
               if ((flags & FLD_SHQUOTES) == 0) {
-                while (*line != '\0' && strchr(delims, *line) == NULL)
-                  line++; /* Skip to delimiter */
+                while (*line != '\0' && strchr(delims, *line) == NULL) line++; /* Skip to delimiter */
               }
               break;
             } else if (*line == '\\') {
@@ -223,8 +212,7 @@ int maxf;                           /* Maximum number of fields to parse */
         }
       }
     } else {
-      while (*line != '\0' && strchr(delims, *line) == NULL)
-        line++; /* Skip to delimiter */
+      while (*line != '\0' && strchr(delims, *line) == NULL) line++; /* Skip to delimiter */
       lineout = line;
     }
     fieldp->nfields++;
@@ -233,8 +221,7 @@ int maxf;                           /* Maximum number of fields to parse */
     *lineout = '\0';
     if (fieldp->nfields >= fieldmax) {
       fieldmax += field_field_inc;
-      fieldp->fields =
-          (char **)realloc(fieldp->fields, fieldmax * sizeof(char *));
+      fieldp->fields = (char **)realloc(fieldp->fields, fieldmax * sizeof(char *));
       if (fieldp->fields == NULL) {
         fieldfree(fieldp);
         return NULL;
@@ -245,8 +232,7 @@ int maxf;                           /* Maximum number of fields to parse */
    * Shrink the field pointers and return the field structure.
    */
   if ((flags & FLD_NOSHRINK) == 0 && fieldp->nfields >= fieldmax) {
-    fieldp->fields = (char **)realloc(fieldp->fields,
-                                      (fieldp->nfields + 1) * sizeof(char *));
+    fieldp->fields = (char **)realloc(fieldp->fields, (fieldp->nfields + 1) * sizeof(char *));
     if (fieldp->fields == NULL) {
       fieldfree(fieldp);
       return NULL;
@@ -256,10 +242,9 @@ int maxf;                           /* Maximum number of fields to parse */
   return fieldp;
 }
 
-static int fieldbackch(
-    str, out, strip) register char *str; /* First char of backslash sequence */
-register char **out;                     /* Where to store result */
-int strip;                               /* NZ to convert the sequence */
+static int fieldbackch(str, out, strip) register char *str; /* First char of backslash sequence */
+register char **out;                                        /* Where to store result */
+int strip;                                                  /* NZ to convert the sequence */
 {
   register int ch; /* Character being developed */
   char *origstr;   /* Original value of str */
@@ -340,7 +325,7 @@ int strip;                               /* NZ to convert the sequence */
 
 int fieldwrite(file, fieldp, delim) FILE *file; /* File to write to */
 register field_t *fieldp;                       /* Field structure to write */
-int delim; /* Delimiter to place between fields */
+int delim;                                      /* Delimiter to place between fields */
 {
   int error;            /* NZ if an error occurs */
   register int fieldno; /* Number of field being written */

@@ -21,8 +21,7 @@
 
 #include "puff.h"
 
-#if defined(MSDOS) || defined(OS2) || defined(WIN32) || defined(__CYGWIN__) || \
-    defined(_WIN32)
+#if defined(MSDOS) || defined(OS2) || defined(WIN32) || defined(__CYGWIN__) || defined(_WIN32)
 #include <fcntl.h>
 #include <io.h>
 #define SET_BINARY_MODE(file) setmode(fileno(file), O_BINARY)
@@ -118,8 +117,7 @@ int main(int argc, char **argv) {
     return 4;
   }
   if (len == 0) {
-    fprintf(stderr, "could not read %s, or it was empty\n",
-            name == NULL ? "<stdin>" : name);
+    fprintf(stderr, "could not read %s, or it was empty\n", name == NULL ? "<stdin>" : name);
     free(source);
     return 3;
   }

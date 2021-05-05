@@ -89,11 +89,11 @@
  * Maximums for allocations and loops.  It is not useful to change these --
  * they are fixed by the deflate format.
  */
-#define MAXBITS 15    /* maximum bits in a code */
-#define MAXLCODES 286 /* maximum number of literal/length codes */
-#define MAXDCODES 30  /* maximum number of distance codes */
+#define MAXBITS 15                       /* maximum bits in a code */
+#define MAXLCODES 286                    /* maximum number of literal/length codes */
+#define MAXDCODES 30                     /* maximum number of distance codes */
 #define MAXCODES (MAXLCODES + MAXDCODES) /* maximum codes lengths to read */
-#define FIXLCODES 288 /* number of fixed literal/length codes */
+#define FIXLCODES 288                    /* number of fixed literal/length codes */
 
 /* input and output state */
 struct state {
@@ -171,8 +171,7 @@ local int stored(struct state *s) {
   if (s->incnt + 4 > s->inlen) return 2; /* not enough input */
   len = s->in[s->incnt++];
   len |= s->in[s->incnt++] << 8;
-  if (s->in[s->incnt++] != (~len & 0xff) ||
-      s->in[s->incnt++] != ((~len >> 8) & 0xff))
+  if (s->in[s->incnt++] != (~len & 0xff) || s->in[s->incnt++] != ((~len >> 8) & 0xff))
     return -2; /* didn't match complement! */
 
   /* copy len bytes from in to out */
@@ -333,10 +332,9 @@ local int construct(struct huffman *h, const short *length, int n) {
 
   /* count number of codes of each length */
   for (len = 0; len <= MAXBITS; len++) h->count[len] = 0;
-  for (symbol = 0; symbol < n; symbol++)
-    (h->count[length[symbol]])++; /* assumes lengths are within bounds */
-  if (h->count[0] == n)           /* no codes! */
-    return 0;                     /* complete, but decode() will fail */
+  for (symbol = 0; symbol < n; symbol++) (h->count[length[symbol]])++; /* assumes lengths are within bounds */
+  if (h->count[0] == n)                                                /* no codes! */
+    return 0;                                                          /* complete, but decode() will fail */
 
   /* check for an over-subscribed or incomplete set of lengths */
   left = 1; /* one possible code of zero length */
@@ -416,27 +414,22 @@ local int construct(struct huffman *h, const short *length, int n) {
  *   since though their behavior -is- defined for overlapping arrays, it is
  *   defined to do the wrong thing in this case.
  */
-local int codes(struct state *s, const struct huffman *lencode,
-                const struct huffman *distcode) {
+local int codes(struct state *s, const struct huffman *lencode, const struct huffman *distcode) {
   int symbol;                    /* decoded symbol */
   int len;                       /* length for copy */
   unsigned dist;                 /* distance for copy */
   static const short lens[29] = {/* Size base for length codes 257..285 */
-                                 3,  4,  5,  6,   7,   8,   9,   10,  11, 13,
-                                 15, 17, 19, 23,  27,  31,  35,  43,  51, 59,
-                                 67, 83, 99, 115, 131, 163, 195, 227, 258};
+                                 3,  4,  5,  6,  7,  8,  9,  10, 11,  13,  15,  17,  19,  23, 27,
+                                 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
   static const short lext[29] = {/* Extra bits for length codes 257..285 */
-                                 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2,
-                                 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
-  static const short dists[30] = {
-      /* Offset base for distance codes 0..29 */
-      1,    2,    3,    4,    5,    7,    9,    13,    17,    25,
-      33,   49,   65,   97,   129,  193,  257,  385,   513,   769,
-      1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577};
-  static const short dext[30] = {/* Extra bits for distance codes 0..29 */
-                                 0, 0, 0,  0,  1,  1,  2,  2,  3,  3,
-                                 4, 4, 5,  5,  6,  6,  7,  7,  8,  8,
-                                 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
+                                 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
+  static const short dists[30] = {/* Offset base for distance codes 0..29 */
+                                  1,    2,    3,    4,    5,    7,    9,    13,    17,    25,
+                                  33,   49,   65,   97,   129,  193,  257,  385,   513,   769,
+                                  1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577};
+  static const short dext[30] = {
+      /* Extra bits for distance codes 0..29 */
+      0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
 
   /* decode literals and length/distance pairs */
   do {
@@ -631,14 +624,14 @@ local int fixed(struct state *s) {
  *   block is around 80 bytes.
  */
 local int dynamic(struct state *s) {
-  int nlen, ndist, ncode;  /* number of lengths in descriptor */
-  int index;               /* index of lengths[] */
-  int err;                 /* construct() return value */
-  short lengths[MAXCODES]; /* descriptor code lengths */
+  int nlen, ndist, ncode;                         /* number of lengths in descriptor */
+  int index;                                      /* index of lengths[] */
+  int err;                                        /* construct() return value */
+  short lengths[MAXCODES];                        /* descriptor code lengths */
   short lencnt[MAXBITS + 1], lensym[MAXLCODES];   /* lencode memory */
   short distcnt[MAXBITS + 1], distsym[MAXDCODES]; /* distcode memory */
-  struct huffman lencode, distcode; /* length and distance codes */
-  static const short order[19] =    /* permutation of code length codes */
+  struct huffman lencode, distcode;               /* length and distance codes */
+  static const short order[19] =                  /* permutation of code length codes */
       {16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
 
   /* construct lencode and distcode */
@@ -683,7 +676,7 @@ local int dynamic(struct state *s) {
       else /* == 18, repeat zero 11..138 times */
         symbol = 11 + bits(s, 7);
       if (index + symbol > nlen + ndist) return -6; /* too many lengths! */
-      while (symbol--) /* repeat last or zero symbol times */
+      while (symbol--)                              /* repeat last or zero symbol times */
         lengths[index++] = len;
     }
   }
@@ -776,13 +769,10 @@ int puff(unsigned char *dest,         /* pointer to destination pointer */
   else {
     /* process blocks until last block or error */
     do {
-      last = bits(&s, 1); /* one if last block */
-      type = bits(&s, 2); /* block type 0..3 */
-      err = type == 0 ? stored(&s)
-                      : (type == 1 ? fixed(&s)
-                                   : (type == 2 ? dynamic(&s)
-                                                : -1)); /* type == 3, invalid */
-      if (err != 0) break;                              /* return with error */
+      last = bits(&s, 1);                                                                      /* one if last block */
+      type = bits(&s, 2);                                                                      /* block type 0..3 */
+      err = type == 0 ? stored(&s) : (type == 1 ? fixed(&s) : (type == 2 ? dynamic(&s) : -1)); /* type == 3, invalid */
+      if (err != 0) break;                                                                     /* return with error */
     } while (!last);
   }
 
