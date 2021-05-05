@@ -499,7 +499,7 @@ local function CheckCompressAndDecompress(string_or_filename, is_file, levels,
         end
         WriteToFile(compress_filename, compress_data)
 
-        if not compress_running[1] == "CompressDeflate" then
+        if compress_running[1] == "CompressDeflate" then
           local returnedStatus_puff, stdout_puff =
             RunProgram("puff -w ", compress_filename, decompress_filename)
           lu.assertEquals(returnedStatus_puff, 0,
