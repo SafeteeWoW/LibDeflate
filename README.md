@@ -36,9 +36,9 @@ goto the [zlib](https://github.com/madler/zlib) repository, or read
 ## Supported Lua Versions
 
 LibDeflate supports and is fully tested under Lua 5.1/5.2/5.3/5.4, LuaJIT 2.0/2.1,
-for Linux, MaxOS and Windows. Click the Travis CI(Linux/MaxOS) and
-Appveyor(Windows) badge on the top of this README for the test results. Click
-the CodeCov badge to see the test coverage (should be 100%).
+for Linux, MaxOS and Windows.
+Click the CI badge on the top of this README for the test results.
+Click the CodeCov badge to see the test coverage (should be 100%).
 
 ## Documentation
 
