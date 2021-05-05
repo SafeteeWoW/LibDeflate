@@ -17,3 +17,4 @@ ignore:
     - tests
     - rockspecs
     - tools
+    - dev_docs
